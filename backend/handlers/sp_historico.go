@@ -44,11 +44,24 @@ type ComplianceCD struct {
 	CdID              int     `json:"cd_id"`
 	CdNome            string  `json:"cd_nome"`
 	FilialNome        string  `json:"filial_nome"`
+	CodFilial         int     `json:"cod_filial"`
+	// Calibragem
 	UltimaCalibragem  *string `json:"ultima_calibragem"`
 	DiasDesdeUltima   *int    `json:"dias_desde_ultima"`
 	UltimoStatus      *string `json:"ultimo_status"`
 	TotalCiclos       int     `json:"total_ciclos"`
-	Alerta            bool    `json:"alerta"` // true se > 30 dias ou nunca calibrado
+	// Importações
+	UltimoImportEm    *string `json:"ultimo_import_em"`
+	DiasDesdeImport   *int    `json:"dias_desde_import"`
+	TotalImports      int     `json:"total_imports"`
+	// Propostas pendentes
+	PropostasPendentes  int  `json:"propostas_pendentes"`
+	DiasOldestPendente  *int `json:"dias_oldest_pendente"`
+	// Gestor responsável
+	UltimoGestorNome  *string `json:"ultimo_gestor_nome"`
+	// Status calculado
+	StatusCompliance  string  `json:"status_compliance"` // ok|atencao|critico|aguardando_motor|nunca_iniciado
+	Alerta            bool    `json:"alerta"`
 }
 
 // ─── Criar histórico (chamado pelo motor) ─────────────────────────────────────
@@ -248,6 +261,39 @@ func SpHistoricoFecharHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ─── Cálculo de status de compliance ─────────────────────────────────────────
+
+func calcularStatusCompliance(c ComplianceCD) string {
+	// Nunca houve qualquer import
+	if c.TotalImports == 0 {
+		return "nunca_iniciado"
+	}
+	// Tem import mas motor nunca foi rodado (0 ciclos)
+	if c.TotalCiclos == 0 {
+		if c.DiasDesdeImport != nil && *c.DiasDesdeImport > 7 {
+			return "critico" // Importou há mais de 7 dias e não rodou o motor
+		}
+		return "aguardando_motor"
+	}
+	// Tem ciclos — verifica recência
+	if c.DiasDesdeUltima != nil {
+		if *c.DiasDesdeUltima > 60 {
+			return "critico"
+		}
+		if *c.DiasDesdeUltima > 30 {
+			return "atencao"
+		}
+	}
+	// Propostas paradas
+	if c.DiasOldestPendente != nil && *c.DiasOldestPendente > 14 {
+		return "critico"
+	}
+	if c.DiasOldestPendente != nil && *c.DiasOldestPendente > 7 {
+		return "atencao"
+	}
+	return "ok"
+}
+
 // ─── Handler: compliance ──────────────────────────────────────────────────────
 
 // SpComplianceHandler retorna indicadores de compliance por CD.
@@ -267,20 +313,29 @@ func SpComplianceHandler(db *sql.DB) http.HandlerFunc {
 
 		filialFilter := r.URL.Query().Get("filial_id")
 
-		// Lista todos os CDs ativos da empresa + última calibragem
 		query := `
 			SELECT
-				cd.id, cd.nome, f.nome,
-				MAX(h.executado_em)              AS ultima_calibragem,
+				cd.id, cd.nome, f.nome, f.cod_filial,
+				MAX(h.executado_em) AS ultima_calibragem,
 				EXTRACT(DAY FROM now() - MAX(h.executado_em))::int AS dias_desde_ultima,
 				(SELECT h2.status FROM smartpick.sp_historico h2
 				 WHERE h2.cd_id = cd.id AND h2.empresa_id = $1
-				 ORDER BY h2.executado_em DESC LIMIT 1)   AS ultimo_status,
-				COUNT(h.id)                      AS total_ciclos
+				 ORDER BY h2.executado_em DESC LIMIT 1) AS ultimo_status,
+				COUNT(DISTINCT h.id) AS total_ciclos,
+				MAX(j.created_at)   AS ultimo_import,
+				EXTRACT(DAY FROM now() - MAX(j.created_at))::int AS dias_desde_import,
+				COUNT(DISTINCT j.id) AS total_imports,
+				COUNT(p.id) FILTER (WHERE p.status = 'pendente') AS propostas_pendentes,
+				EXTRACT(DAY FROM now() - MIN(p.created_at) FILTER (WHERE p.status = 'pendente'))::int AS dias_oldest_pendente,
+				(SELECT u.full_name FROM smartpick.sp_historico h3
+				 JOIN public.users u ON u.id = h3.executado_por
+				 WHERE h3.cd_id = cd.id AND h3.empresa_id = $1
+				 ORDER BY h3.executado_em DESC LIMIT 1) AS ultimo_gestor
 			FROM smartpick.sp_centros_dist cd
 			JOIN smartpick.sp_filiais f ON f.id = cd.filial_id
-			LEFT JOIN smartpick.sp_historico h
-			       ON h.cd_id = cd.id AND h.empresa_id = $1
+			LEFT JOIN smartpick.sp_historico h ON h.cd_id = cd.id AND h.empresa_id = $1
+			LEFT JOIN smartpick.sp_csv_jobs j ON j.cd_id = cd.id AND j.empresa_id = $1
+			LEFT JOIN smartpick.sp_propostas p ON p.cd_id = cd.id AND p.empresa_id = $1
 			WHERE cd.empresa_id = $1 AND cd.ativo = true
 		`
 		args := []any{spCtx.EmpresaID}
@@ -288,7 +343,7 @@ func SpComplianceHandler(db *sql.DB) http.HandlerFunc {
 			query += " AND f.id = $2"
 			args = append(args, filialFilter)
 		}
-		query += " GROUP BY cd.id, cd.nome, f.nome ORDER BY f.nome, cd.nome"
+		query += " GROUP BY cd.id, cd.nome, f.id, f.nome, f.cod_filial ORDER BY f.nome, cd.nome"
 
 		rows, err := db.Query(query, args...)
 		if err != nil {
@@ -301,15 +356,18 @@ func SpComplianceHandler(db *sql.DB) http.HandlerFunc {
 		for rows.Next() {
 			var c ComplianceCD
 			if err := rows.Scan(
-				&c.CdID, &c.CdNome, &c.FilialNome,
+				&c.CdID, &c.CdNome, &c.FilialNome, &c.CodFilial,
 				&c.UltimaCalibragem, &c.DiasDesdeUltima,
 				&c.UltimoStatus, &c.TotalCiclos,
+				&c.UltimoImportEm, &c.DiasDesdeImport, &c.TotalImports,
+				&c.PropostasPendentes, &c.DiasOldestPendente,
+				&c.UltimoGestorNome,
 			); err != nil {
 				continue
 			}
-			// Alerta se nunca calibrado ou mais de 30 dias
-			c.Alerta = c.UltimaCalibragem == nil ||
-				(c.DiasDesdeUltima != nil && *c.DiasDesdeUltima > 30)
+			c.StatusCompliance = calcularStatusCompliance(c)
+			c.Alerta = c.StatusCompliance == "critico" || c.StatusCompliance == "atencao" ||
+				c.StatusCompliance == "nunca_iniciado" || c.StatusCompliance == "aguardando_motor"
 			cds = append(cds, c)
 		}
 		if cds == nil {

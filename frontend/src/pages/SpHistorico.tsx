@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { RefreshCw, AlertTriangle, CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { RefreshCw, AlertTriangle, CheckCircle2, Clock, XCircle, UploadCloud, Hourglass, Ban } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -39,10 +39,18 @@ interface ComplianceCD {
   cd_id: number
   cd_nome: string
   filial_nome: string
+  cod_filial: number
   ultima_calibragem: string | null
   dias_desde_ultima: number | null
   ultimo_status: string | null
   total_ciclos: number
+  ultimo_import_em: string | null
+  dias_desde_import: number | null
+  total_imports: number
+  propostas_pendentes: number
+  dias_oldest_pendente: number | null
+  ultimo_gestor_nome: string | null
+  status_compliance: 'ok' | 'atencao' | 'critico' | 'aguardando_motor' | 'nunca_iniciado'
   alerta: boolean
 }
 
@@ -150,7 +158,12 @@ export default function SpHistorico() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const alertas = compliance.filter(c => c.alerta).length
+  const alertas   = compliance.filter(c => c.alerta).length
+  const criticos  = compliance.filter(c => c.status_compliance === 'critico').length
+  const atencao   = compliance.filter(c => c.status_compliance === 'atencao').length
+  const nunca     = compliance.filter(c => c.status_compliance === 'nunca_iniciado').length
+  const aguardando= compliance.filter(c => c.status_compliance === 'aguardando_motor').length
+  const ok        = compliance.filter(c => c.status_compliance === 'ok').length
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -251,13 +264,15 @@ export default function SpHistorico() {
         </TabsContent>
 
         {/* ── Aba: Compliance ───────────────────────────────────────────── */}
-        <TabsContent value="compliance" className="space-y-3">
-          {alertas > 0 && (
-            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span><strong>{alertas} CD(s)</strong> sem calibragem há mais de 30 dias ou nunca calibrado.</span>
-            </div>
-          )}
+        <TabsContent value="compliance" className="space-y-4">
+          {/* Resumo semáforo */}
+          <div className="flex flex-wrap gap-2">
+            {criticos   > 0 && <CompliancePill color="red"    label="Crítico"          count={criticos}   />}
+            {nunca      > 0 && <CompliancePill color="gray"   label="Nunca iniciado"   count={nunca}      />}
+            {aguardando > 0 && <CompliancePill color="blue"   label="Aguardando motor" count={aguardando} />}
+            {atencao    > 0 && <CompliancePill color="yellow" label="Atenção"          count={atencao}    />}
+            {ok         > 0 && <CompliancePill color="green"  label="Em dia"           count={ok}         />}
+          </div>
 
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {compliance.length === 0 && (
@@ -265,53 +280,152 @@ export default function SpHistorico() {
                 Nenhum CD ativo encontrado.
               </p>
             )}
-            {compliance.map(c => (
-              <div
-                key={c.cd_id}
-                className={`border rounded-lg p-3 space-y-1.5 ${c.alerta ? 'border-red-200 bg-red-50' : 'bg-white'}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-semibold">{c.cd_nome}</p>
-                    <p className="text-xs text-muted-foreground">{c.filial_nome}</p>
-                  </div>
-                  {c.alerta
-                    ? <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                    : <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                  }
-                </div>
-
-                <div className="text-xs space-y-0.5">
-                  <p>
-                    <span className="text-muted-foreground">Última calibragem: </span>
-                    {c.ultima_calibragem
-                      ? new Date(c.ultima_calibragem).toLocaleDateString('pt-BR')
-                      : <span className="text-red-600 font-medium">Nunca</span>
-                    }
-                  </p>
-                  {c.dias_desde_ultima != null && (
-                    <p>
-                      <span className="text-muted-foreground">Há: </span>
-                      <span className={c.dias_desde_ultima > 30 ? 'text-red-600 font-semibold' : ''}>
-                        {c.dias_desde_ultima} dias
-                      </span>
-                    </p>
-                  )}
-                  <p>
-                    <span className="text-muted-foreground">Ciclos: </span>
-                    {c.total_ciclos}
-                  </p>
-                  {c.ultimo_status && (
-                    <div className="pt-0.5">
-                      <StatusBadge status={c.ultimo_status} />
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+            {[...compliance]
+              .sort((a, b) => statusOrder(a.status_compliance) - statusOrder(b.status_compliance))
+              .map(c => <ComplianceCard key={c.cd_id} c={c} />)
+            }
           </div>
         </TabsContent>
       </Tabs>
+    </div>
+  )
+}
+
+// ─── Helpers de compliance ────────────────────────────────────────────────────
+
+function statusOrder(s: string) {
+  const order: Record<string, number> = {
+    critico: 1, nunca_iniciado: 2, aguardando_motor: 3, atencao: 4, ok: 5,
+  }
+  return order[s] ?? 9
+}
+
+const statusMeta: Record<string, {
+  dot: string; border: string; bg: string;
+  Icon: React.ElementType; label: string; msg: (c: ComplianceCD) => string
+}> = {
+  critico: {
+    dot: 'bg-red-500', border: 'border-red-300', bg: 'bg-red-50',
+    Icon: AlertTriangle, label: 'Crítico',
+    msg: c => c.total_ciclos === 0
+      ? `Importou há ${c.dias_desde_import ?? '?'} dias — motor não foi rodado`
+      : c.dias_oldest_pendente != null && c.dias_oldest_pendente > 14
+        ? `Propostas pendentes há ${c.dias_oldest_pendente} dias sem aprovação`
+        : `Sem calibragem há ${c.dias_desde_ultima ?? '?'} dias`,
+  },
+  nunca_iniciado: {
+    dot: 'bg-gray-400', border: 'border-gray-200', bg: 'bg-gray-50',
+    Icon: Ban, label: 'Nunca iniciado',
+    msg: () => 'Nenhum arquivo CSV importado até o momento',
+  },
+  aguardando_motor: {
+    dot: 'bg-blue-500', border: 'border-blue-200', bg: 'bg-blue-50',
+    Icon: Hourglass, label: 'Aguardando motor',
+    msg: c => `CSV importado há ${c.dias_desde_import ?? '?'} dias — motor de calibragem não executado`,
+  },
+  atencao: {
+    dot: 'bg-yellow-400', border: 'border-yellow-200', bg: 'bg-yellow-50',
+    Icon: Clock, label: 'Atenção',
+    msg: c => c.dias_oldest_pendente != null && c.dias_oldest_pendente > 7
+      ? `Propostas pendentes há ${c.dias_oldest_pendente} dias sem aprovação`
+      : `Sem calibragem há ${c.dias_desde_ultima ?? '?'} dias`,
+  },
+  ok: {
+    dot: 'bg-green-500', border: 'border-green-200', bg: 'bg-white',
+    Icon: CheckCircle2, label: 'Em dia',
+    msg: c => `Último ciclo há ${c.dias_desde_ultima ?? 0} dia(s)`,
+  },
+}
+
+function CompliancePill({ color, label, count }: { color: string; label: string; count: number }) {
+  const cls: Record<string, string> = {
+    red:    'bg-red-100 text-red-700 border-red-200',
+    gray:   'bg-gray-100 text-gray-600 border-gray-200',
+    blue:   'bg-blue-100 text-blue-700 border-blue-200',
+    yellow: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    green:  'bg-green-100 text-green-700 border-green-200',
+  }
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${cls[color]}`}>
+      <span className={`w-2 h-2 rounded-full ${color === 'red' ? 'bg-red-500' : color === 'gray' ? 'bg-gray-400' : color === 'blue' ? 'bg-blue-500' : color === 'yellow' ? 'bg-yellow-400' : 'bg-green-500'}`} />
+      {count} {label}
+    </span>
+  )
+}
+
+function ComplianceCard({ c }: { c: ComplianceCD }) {
+  const meta = statusMeta[c.status_compliance] ?? statusMeta.ok
+  const { Icon } = meta
+
+  return (
+    <div className={`border ${meta.border} ${meta.bg} rounded-lg p-3 space-y-2`}>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold truncate">{c.cd_nome}</p>
+          <p className="text-xs text-muted-foreground">{c.filial_nome} · cód. {c.cod_filial}</p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={`inline-block w-2.5 h-2.5 rounded-full ${meta.dot}`} />
+          <span className="text-[10px] font-medium text-muted-foreground">{meta.label}</span>
+        </div>
+      </div>
+
+      {/* Motivo */}
+      <div className="flex items-start gap-1.5 text-xs">
+        <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${c.status_compliance === 'ok' ? 'text-green-600' : c.status_compliance === 'critico' ? 'text-red-600' : 'text-yellow-600'}`} />
+        <span className={c.status_compliance === 'critico' ? 'text-red-700 font-medium' : 'text-muted-foreground'}>
+          {meta.msg(c)}
+        </span>
+      </div>
+
+      {/* Métricas */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+        <MetricRow label="Última calibragem"
+          value={c.ultima_calibragem ? new Date(c.ultima_calibragem).toLocaleDateString('pt-BR') : 'Nunca'}
+          alert={!c.ultima_calibragem}
+        />
+        <MetricRow label="Ciclos completos" value={String(c.total_ciclos)} />
+        <MetricRow label="Último import"
+          value={c.ultimo_import_em ? `${c.dias_desde_import ?? 0}d atrás` : 'Nunca'}
+          alert={!c.ultimo_import_em}
+          sub={c.total_imports > 1 ? `(${c.total_imports} imports)` : undefined}
+        />
+        {c.propostas_pendentes > 0 && (
+          <MetricRow label="Pendentes"
+            value={`${c.propostas_pendentes} propostas`}
+            sub={c.dias_oldest_pendente != null ? `mais antiga: ${c.dias_oldest_pendente}d` : undefined}
+            alert={c.dias_oldest_pendente != null && c.dias_oldest_pendente > 7}
+          />
+        )}
+      </div>
+
+      {/* Gestor */}
+      {c.ultimo_gestor_nome && (
+        <p className="text-[10px] text-muted-foreground border-t pt-1.5 truncate">
+          Gestor: <span className="font-medium text-foreground">{c.ultimo_gestor_nome}</span>
+        </p>
+      )}
+
+      {/* Aviso de import duplicado */}
+      {c.total_imports >= 3 && c.total_ciclos <= 1 && (
+        <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 flex items-center gap-1">
+          <UploadCloud className="h-3 w-3 shrink-0" />
+          {c.total_imports} importações sem ciclos — verificar duplicatas
+        </p>
+      )}
+    </div>
+  )
+}
+
+function MetricRow({ label, value, sub, alert }: {
+  label: string; value: string; sub?: string; alert?: boolean
+}) {
+  return (
+    <div>
+      <span className="text-muted-foreground">{label}: </span>
+      <span className={alert ? 'text-red-600 font-semibold' : 'font-medium'}>{value}</span>
+      {sub && <span className="text-muted-foreground ml-1">{sub}</span>}
     </div>
   )
 }
