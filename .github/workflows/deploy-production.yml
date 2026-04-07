@@ -54,16 +54,28 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-  notify:
+  deploy-coolify:
     needs: build-and-push
+    runs-on: ubuntu-latest
+    if: needs.build-and-push.result == 'success'
+
+    steps:
+      - name: Trigger Coolify redeploy
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "http://76.13.171.196:8000/api/v1/deploy?uuid=u4k84840408sc4wgogcw4c04&force=false")
+          echo "Coolify HTTP status: $STATUS"
+
+  notify:
+    needs: [build-and-push, deploy-coolify]
     runs-on: ubuntu-latest
     if: always()
 
     steps:
       - name: Deploy status
         run: |
-          echo "Build: ${{ needs.build-and-push.result }}"
+          echo "Build:  ${{ needs.build-and-push.result }}"
+          echo "Deploy: ${{ needs.deploy-coolify.result }}"
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
-          echo "Data: $(date)"
-          echo "Coolify faz redeploy automático via webhook."
+          echo "Data:   $(date)"
