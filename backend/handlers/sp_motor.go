@@ -109,7 +109,7 @@ func SpMotorCalibrarHandler(db *sql.DB) http.HandlerFunc {
 
 		// Idempotência: verifica se já foram geradas propostas para este job
 		var jaExiste bool
-		db.QueryRow(`SELECT EXISTS(SELECT 1 FROM smartpick.sp_propostas WHERE job_id = $1)`, body.JobID).Scan(&jaExiste)
+		db.QueryRow(`SELECT EXISTS(SELECT 1 FROM smartpick.sp_propostas WHERE job_id = $1 AND empresa_id = $2)`, body.JobID, spCtx.EmpresaID).Scan(&jaExiste)
 		if jaExiste {
 			http.Error(w, "Propostas já geradas para este job", http.StatusConflict)
 			return

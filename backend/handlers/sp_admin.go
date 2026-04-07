@@ -53,14 +53,19 @@ func SpLimparCalibragemHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Limpa tabelas na ordem correta (respeitando FK)
+		// sp_enderecos e sp_propostas não têm empresa_id diretamente; filtram via job_id
 		tabelas := []struct {
 			nome string
 			sql  string
 		}{
-			{"sp_historico",   `DELETE FROM smartpick.sp_historico   WHERE empresa_id = $1`},
-			{"sp_propostas",   `DELETE FROM smartpick.sp_propostas   WHERE empresa_id = $1`},
-			{"sp_enderecos",   `DELETE FROM smartpick.sp_enderecos   WHERE empresa_id = $1`},
-			{"sp_csv_jobs",    `DELETE FROM smartpick.sp_csv_jobs    WHERE empresa_id = $1`},
+			{"sp_historico", `DELETE FROM smartpick.sp_historico WHERE empresa_id = $1`},
+			{"sp_propostas", `DELETE FROM smartpick.sp_propostas WHERE empresa_id = $1`},
+			{"sp_enderecos", `
+				DELETE FROM smartpick.sp_enderecos
+				WHERE job_id IN (
+					SELECT id FROM smartpick.sp_csv_jobs WHERE empresa_id = $1
+				)`},
+			{"sp_csv_jobs", `DELETE FROM smartpick.sp_csv_jobs WHERE empresa_id = $1`},
 		}
 
 		totais := map[string]int64{}

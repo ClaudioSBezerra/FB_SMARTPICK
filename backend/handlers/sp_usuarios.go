@@ -59,17 +59,17 @@ func SpListUsuariosHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Lista usuários que têm vínculo com a empresa ativa ou são admin_fbtax
+		// Lista apenas usuários com vínculo explícito nesta empresa + o próprio usuário autenticado
 		rows, err := db.Query(`
 			SELECT DISTINCT u.id, u.email, u.full_name, u.sp_role, u.is_verified, u.trial_ends_at, u.created_at
 			FROM users u
-			WHERE u.sp_role != 'somente_leitura'
+			WHERE u.id = $2
 			   OR EXISTS (
 			       SELECT 1 FROM smartpick.sp_user_filiais uf
 			       WHERE uf.user_id = u.id AND uf.empresa_id = $1
 			   )
 			ORDER BY u.full_name
-		`, spCtx.EmpresaID)
+		`, spCtx.EmpresaID, spCtx.UserID)
 		if err != nil {
 			log.Printf("SpListUsuarios: %v", err)
 			http.Error(w, "Database error", http.StatusInternalServerError)
