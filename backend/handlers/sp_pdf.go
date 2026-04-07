@@ -312,7 +312,7 @@ func tableHeaderRow() core.Row {
 		col.New(3).Add(text.New("Produto",   hProps)),
 		col.New(1).Add(text.New("Cap.Atual", hProps)),
 		col.New(1).Add(text.New("Nova Cap.", hProps)),
-		col.New(1).Add(text.New("Delta",     hProps)),
+		col.New(1).Add(text.New("Ação",      hProps)),
 		col.New(2).Add(text.New("Justificativa", hProps)),
 	)
 }
@@ -326,7 +326,15 @@ func tableDataRow(p pdfProposta) core.Row {
 	if p.CapacidadeAtual != nil {
 		capAtual = fmt.Sprintf("%d", *p.CapacidadeAtual)
 	}
-	deltaStr := fmt.Sprintf("%+d", p.Delta)
+	var acaoStr string
+	switch {
+	case p.Delta > 0:
+		acaoStr = fmt.Sprintf("+%d cx", p.Delta)
+	case p.Delta < 0:
+		acaoStr = fmt.Sprintf("%d cx", p.Delta)
+	default:
+		acaoStr = "OK"
+	}
 
 	produto := p.Produto
 	if len(produto) > 30 {
@@ -344,7 +352,7 @@ func tableDataRow(p pdfProposta) core.Row {
 		col.New(3).Add(text.New(produto,                   lProps)),
 		col.New(1).Add(text.New(capAtual,                  dProps)),
 		col.New(1).Add(text.New(fmt.Sprintf("%d", p.NovaCapacidade), dProps)),
-		col.New(1).Add(text.New(deltaStr,                  dProps)),
+		col.New(1).Add(text.New(acaoStr,                   dProps)),
 		col.New(2).Add(text.New(just,                      lProps)),
 	)
 }

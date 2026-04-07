@@ -101,7 +101,8 @@ export default function SpGerarPDF() {
         <h3 className="text-sm font-semibold">Gerar relatório de calibragem</h3>
         <p className="text-xs text-muted-foreground">
           O PDF incluirá todas as propostas <strong>aprovadas</strong> do CD ou importação
-          selecionados, organizadas por curva (A / B / C) com cap. atual, nova cap. e delta.
+          selecionados, organizadas por curva (A / B / C) com cap. atual, nova cap. e ação
+          (<strong>+N cx</strong> = ampliar slot / <strong>−N cx</strong> = reduzir slot).
         </p>
 
         <div className="grid gap-3">
@@ -171,7 +172,7 @@ export default function SpGerarPDF() {
             : <p>• Todas as propostas aprovadas do CD</p>
           }
           <p>• Agrupamento por curva (A → B → C), ordenado por endereço</p>
-          <p>• Colunas: Endereço, Produto, Cap.Atual, Nova Cap., Delta, Justificativa</p>
+          <p>• Colunas: Endereço, Produto, Cap.Atual, Nova Cap., Ação (+N cx / -N cx), Justificativa</p>
         </div>
       )}
     </div>

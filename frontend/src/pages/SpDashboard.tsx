@@ -64,12 +64,14 @@ function ClasseBadge({ classe }: { classe: string | null }) {
   )
 }
 
-function DeltaBadge({ delta }: { delta: number }) {
-  if (delta === 0) return <span className="text-xs text-muted-foreground">0</span>
-  const cls = delta < 0
-    ? 'text-red-600 font-semibold'
-    : 'text-orange-600 font-semibold'
-  return <span className={`text-xs ${cls}`}>{delta > 0 ? '+' : ''}{delta}</span>
+function AcaoBadge({ delta }: { delta: number }) {
+  if (delta === 0) return <span className="text-xs text-green-600 font-medium">OK</span>
+  if (delta > 0) return (
+    <span className="text-xs text-red-600 font-semibold">+{delta} cx</span>
+  )
+  return (
+    <span className="text-xs text-yellow-700 font-semibold">{delta} cx</span>
+  )
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -178,7 +180,7 @@ function PropostasTable({
           <TableHead>Endereço</TableHead>
           <TableHead className="text-right">Cap.Atual</TableHead>
           <TableHead className="text-right">Sugestão</TableHead>
-          <TableHead className="text-right">Delta</TableHead>
+          <TableHead className="text-right">Ação</TableHead>
           <TableHead>Status</TableHead>
           <TableHead className="w-32">Ações</TableHead>
         </TableRow>
@@ -196,7 +198,7 @@ function PropostasTable({
             <TableCell className="text-right">
               <SugestaoCell proposta={p} onSave={onEditar} />
             </TableCell>
-            <TableCell className="text-right"><DeltaBadge delta={p.delta} /></TableCell>
+            <TableCell className="text-right"><AcaoBadge delta={p.delta} /></TableCell>
             <TableCell><StatusBadge status={p.status} /></TableCell>
             <TableCell>
               {p.status === 'pendente' && (
@@ -452,12 +454,12 @@ export default function SpDashboard() {
             <span className="font-bold text-yellow-800">{resumo.total_pendente}</span>
           </div>
           <div className="border rounded px-3 py-2 bg-red-50">
-            <span className="text-xs text-muted-foreground block">Urgência Falta</span>
+            <span className="text-xs text-muted-foreground block">Ampliar Slot</span>
             <span className="font-bold text-red-700">{resumo.falta_pendente}</span>
           </div>
-          <div className="border rounded px-3 py-2 bg-orange-50">
-            <span className="text-xs text-muted-foreground block">Urgência Espaço</span>
-            <span className="font-bold text-orange-700">{resumo.espaco_pendente}</span>
+          <div className="border rounded px-3 py-2 bg-yellow-50">
+            <span className="text-xs text-muted-foreground block">Reduzir Slot</span>
+            <span className="font-bold text-yellow-700">{resumo.espaco_pendente}</span>
           </div>
           <div className="border rounded px-3 py-2 bg-green-50">
             <span className="text-xs text-muted-foreground block">Aprovadas</span>
@@ -487,7 +489,7 @@ export default function SpDashboard() {
           <div className="flex items-center justify-between">
             <TabsList>
               <TabsTrigger value="falta">
-                Urgência — Falta
+                Ampliar Slot
                 {resumo && resumo.falta_pendente > 0 && (
                   <span className="ml-1.5 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
                     {resumo.falta_pendente}
@@ -495,9 +497,9 @@ export default function SpDashboard() {
                 )}
               </TabsTrigger>
               <TabsTrigger value="espaco">
-                Urgência — Espaço
+                Reduzir Slot
                 {resumo && resumo.espaco_pendente > 0 && (
-                  <span className="ml-1.5 bg-orange-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
+                  <span className="ml-1.5 bg-yellow-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
                     {resumo.espaco_pendente}
                   </span>
                 )}
@@ -514,8 +516,12 @@ export default function SpDashboard() {
             </TabsList>
           </div>
 
-          {/* ── Aba: Urgência de Falta ──────────────────────────────────── */}
+          {/* ── Aba: Ampliar Slot ───────────────────────────────────────── */}
           <TabsContent value="falta" className="space-y-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+              Slot <strong>subestimado</strong> — sugestão maior que a capacidade atual. Separador perde viagem: adicionar CX no endereço.
+            </p>
             <div className="flex justify-end">
               <Button
                 size="sm" variant="outline"
@@ -536,8 +542,12 @@ export default function SpDashboard() {
             />
           </TabsContent>
 
-          {/* ── Aba: Urgência de Espaço ─────────────────────────────────── */}
+          {/* ── Aba: Reduzir Slot ───────────────────────────────────────── */}
           <TabsContent value="espaco" className="space-y-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0" />
+              Slot <strong>superestimado</strong> — sugestão menor que a capacidade atual. Espaço desperdiçado: remover CX do endereço.
+            </p>
             <div className="flex justify-end">
               <Button
                 size="sm" variant="outline"
