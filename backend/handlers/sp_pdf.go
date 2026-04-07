@@ -290,7 +290,7 @@ func buildPDF(cdNome, filialNome, jobFilename string, propostas []pdfProposta) (
 		)
 
 		for _, p := range grupo {
-			mrt.AddRows(tableDataRow(p))
+			mrt.AddRows(tableDataRow(p)...)
 		}
 	}
 
@@ -309,22 +309,21 @@ func tableHeaderRow() core.Row {
 		col.New(1).Add(text.New("Curva",     hProps)),
 		col.New(2).Add(text.New("Endereço",  hProps)),
 		col.New(1).Add(text.New("Cód.",      hProps)),
-		col.New(3).Add(text.New("Produto",   hProps)),
+		col.New(4).Add(text.New("Produto",   hProps)),
 		col.New(1).Add(text.New("Cap.Atual", hProps)),
 		col.New(1).Add(text.New("Nova Cap.", hProps)),
-		col.New(1).Add(text.New("Ação",      hProps)),
-		col.New(2).Add(text.New("Justificativa", hProps)),
+		col.New(2).Add(text.New("Ação",      hProps)),
 	)
 }
 
-func tableDataRow(p pdfProposta) core.Row {
+func tableDataRow(p pdfProposta) []core.Row {
 	dProps := props.Text{Size: 7, Align: align.Center}
 	lProps := props.Text{Size: 7, Align: align.Left}
 
 	endereco := formatEndereco(p.Rua, p.Predio, p.Apto)
 	capAtual  := "—"
 	if p.CapacidadeAtual != nil {
-		capAtual = fmt.Sprintf("%d", *p.CapacidadeAtual)
+		capAtual = fmt.Sprintf("%d cx", *p.CapacidadeAtual)
 	}
 	var acaoStr string
 	switch {
@@ -337,24 +336,32 @@ func tableDataRow(p pdfProposta) core.Row {
 	}
 
 	produto := p.Produto
-	if len(produto) > 30 {
-		produto = produto[:28] + "…"
-	}
-	just := p.Justificativa
-	if len(just) > 40 {
-		just = just[:38] + "…"
+	if len(produto) > 38 {
+		produto = produto[:36] + "…"
 	}
 
-	return row.New(5).Add(
-		col.New(1).Add(text.New(p.ClasseVenda,             dProps)),
-		col.New(2).Add(text.New(endereco,                  dProps)),
-		col.New(1).Add(text.New(fmt.Sprintf("%d", p.Codprod), dProps)),
-		col.New(3).Add(text.New(produto,                   lProps)),
-		col.New(1).Add(text.New(capAtual,                  dProps)),
-		col.New(1).Add(text.New(fmt.Sprintf("%d", p.NovaCapacidade), dProps)),
-		col.New(1).Add(text.New(acaoStr,                   dProps)),
-		col.New(2).Add(text.New(just,                      lProps)),
+	dataRow := row.New(5).Add(
+		col.New(1).Add(text.New(p.ClasseVenda,                       dProps)),
+		col.New(2).Add(text.New(endereco,                            dProps)),
+		col.New(1).Add(text.New(fmt.Sprintf("%d", p.Codprod),        dProps)),
+		col.New(4).Add(text.New(produto,                             lProps)),
+		col.New(1).Add(text.New(capAtual,                            dProps)),
+		col.New(1).Add(text.New(fmt.Sprintf("%d cx", p.NovaCapacidade), dProps)),
+		col.New(2).Add(text.New(acaoStr,                             dProps)),
 	)
+
+	// Linha em branco para anotação manual do operador (alimentar no Winthor)
+	noteRow := row.New(5).Add(
+		col.New(1),
+		col.New(11).Add(text.New("Obs: _______________________________________________", props.Text{
+			Size:  6,
+			Align: align.Left,
+			Style: fontstyle.Normal,
+			Color: &props.Color{Red: 180, Green: 180, Blue: 180},
+		})),
+	)
+
+	return []core.Row{dataRow, noteRow}
 }
 
 func formatEndereco(rua, predio, apto *int) string {
