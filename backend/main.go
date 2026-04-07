@@ -335,6 +335,42 @@ func main() {
 	// ── Filiais (selector global) ─────────────────────────────────────────────
 	http.HandleFunc("/api/filiais", withAuth(handlers.GetFiliaisHandler, ""))
 
+	// ── SmartPick — Gestão de Usuários (RBAC) ────────────────────────────────
+	withSP := func(handlerFactory func(*sql.DB) http.HandlerFunc, requiredSpRole string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			database := getDB()
+			if database == nil {
+				http.Error(w, "Database initializing...", http.StatusServiceUnavailable)
+				return
+			}
+			handlers.SmartPickAuthMiddleware(database, handlerFactory(database), requiredSpRole)(w, r)
+		}
+	}
+
+	http.HandleFunc("/api/sp/usuarios", withSP(func(db *sql.DB) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				handlers.SpListUsuariosHandler(db)(w, r)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		}
+	}, "admin_fbtax"))
+	http.HandleFunc("/api/sp/usuarios/", withSP(func(db *sql.DB) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Path
+			switch {
+			case strings.HasSuffix(path, "/filiais"):
+				handlers.SpVincularFiliaisHandler(db)(w, r)
+			case strings.HasSuffix(path, "/role"):
+				handlers.SpUpdateRoleHandler(db)(w, r)
+			default:
+				http.Error(w, "Not found", http.StatusNotFound)
+			}
+		}
+	}, "admin_fbtax"))
+
 	// ── Frontend estático (SPA React) ─────────────────────────────────────────
 	staticDir := "./static"
 	if _, err := os.Stat(staticDir); err == nil {

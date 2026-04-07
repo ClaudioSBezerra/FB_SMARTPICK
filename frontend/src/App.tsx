@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from '@/components/ui/sonner'
 import GestaoAmbiente from './pages/GestaoAmbiente'
 import AdminUsers from './pages/AdminUsers'
+import SpUsuarios from './pages/SpUsuarios'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -143,7 +144,8 @@ function AppLayout() {
               <Route path="/config/parametros-motor" element={<ComingSoon title="Parâmetros do Motor" />} />
               <Route path="/config/planos"           element={<ComingSoon title="Planos e Limites" />} />
               <Route path="/config/gestao-ambiente"  element={<ProtectedRoute><GestaoAmbiente /></ProtectedRoute>} />
-              <Route path="/config/usuarios"         element={<AdminRoute><AdminUsers /></AdminRoute>} />
+              <Route path="/config/usuarios"         element={<AdminRoute><SpUsuarios /></AdminRoute>} />
+              <Route path="/config/usuarios-admin"   element={<AdminRoute><AdminUsers /></AdminRoute>} />
             </Routes>
           </div>
         </main>
