@@ -97,8 +97,8 @@ const Login = () => {
 
           {/* Subtítulo */}
           <p className="mt-5 text-base leading-relaxed" style={{ color: "#94a3b8" }}>
-            O motor de calibragem ABC que transforma dados do WMS em propostas
-            inteligentes de capacidade — com aprovação rastreável e relatórios em PDF.
+            O motor de calibragem transforma dados do WMS em propostas
+            inteligentes de capacidade — com aprovação rastreável e relatórios operacionais.
           </p>
         </div>
 
