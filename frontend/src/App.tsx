@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/sonner'
 import GestaoAmbiente from './pages/GestaoAmbiente'
 import AdminUsers from './pages/AdminUsers'
 import SpUsuarios from './pages/SpUsuarios'
+import SpAmbiente from './pages/SpAmbiente'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -140,9 +141,9 @@ function AppLayout() {
               <Route path="/pdf/gerar" element={<ComingSoon title="Geração de PDF" />} />
 
               {/* Configurações */}
-              <Route path="/config/ambiente"         element={<ComingSoon title="Filiais e CDs" />} />
-              <Route path="/config/parametros-motor" element={<ComingSoon title="Parâmetros do Motor" />} />
-              <Route path="/config/planos"           element={<ComingSoon title="Planos e Limites" />} />
+              <Route path="/config/ambiente"         element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
+              <Route path="/config/parametros-motor" element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
+              <Route path="/config/planos"           element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
               <Route path="/config/gestao-ambiente"  element={<ProtectedRoute><GestaoAmbiente /></ProtectedRoute>} />
               <Route path="/config/usuarios"         element={<AdminRoute><SpUsuarios /></AdminRoute>} />
               <Route path="/config/usuarios-admin"   element={<AdminRoute><AdminUsers /></AdminRoute>} />

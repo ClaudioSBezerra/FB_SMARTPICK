@@ -70,13 +70,13 @@ development_status:
   # Filiais + CDs + parâmetros motor + duplicação CD +
   # planos/limites + página admin ambiente
   # ─────────────────────────────────────────────────────────────
-  epic-3: backlog
-  3-1-migrations-de-filiais-e-cds: backlog
-  3-2-crud-de-filiais-e-cds-no-backend: backlog
-  3-3-migrations-de-parametros-do-motor: backlog
-  3-4-crud-de-parametros-do-motor-e-duplicacao-de-cd: backlog
-  3-5-gestao-de-planos-e-limites-de-cds: backlog
-  3-6-pagina-de-administracao-de-ambiente-frontend: backlog
+  epic-3: done
+  3-1-migrations-de-filiais-e-cds: done
+  3-2-crud-de-filiais-e-cds-no-backend: done
+  3-3-migrations-de-parametros-do-motor: done
+  3-4-crud-de-parametros-do-motor-e-duplicacao-de-cd: done
+  3-5-gestao-de-planos-e-limites-de-cds: done
+  3-6-pagina-de-administracao-de-ambiente-frontend: done
   epic-3-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────

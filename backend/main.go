@@ -357,6 +357,34 @@ func main() {
 			}
 		}
 	}, "admin_fbtax"))
+	// ── SmartPick — Filiais, CDs, Parâmetros do Motor e Planos ──────────────
+	http.HandleFunc("/api/sp/filiais", withSP(handlers.SpFiliaisHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/filiais/", withSP(func(db *sql.DB) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Path
+			switch {
+			case strings.HasSuffix(path, "/cds"):
+				handlers.SpCDsHandler(db)(w, r)
+			default:
+				handlers.SpFilialItemHandler(db)(w, r)
+			}
+		}
+	}, "gestor_filial"))
+	http.HandleFunc("/api/sp/cds/", withSP(func(db *sql.DB) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Path
+			switch {
+			case strings.HasSuffix(path, "/duplicar"):
+				handlers.SpDuplicarCDHandler(db)(w, r)
+			case strings.HasSuffix(path, "/params"):
+				handlers.SpMotorParamsHandler(db)(w, r)
+			default:
+				handlers.SpCDItemHandler(db)(w, r)
+			}
+		}
+	}, "gestor_filial"))
+	http.HandleFunc("/api/sp/plano", withSP(handlers.SpPlanoHandler, "gestor_filial"))
+
 	http.HandleFunc("/api/sp/usuarios/", withSP(func(db *sql.DB) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
