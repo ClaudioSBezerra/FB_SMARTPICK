@@ -122,10 +122,14 @@ func SpMotorCalibrarHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Cria registro de histórico antes de lançar o motor
+		historicoID := CriarHistorico(db, body.JobID, spCtx.EmpresaID, spCtx.UserID, cdID)
+
 		// Executa o motor em background para não bloquear o request
 		go func() {
 			gerado, erros := executarMotor(db, body.JobID, cdID, spCtx.EmpresaID, params)
 			log.Printf("[Motor] job %s: %d propostas geradas, %d erros", body.JobID, gerado, erros)
+			FecharHistoricoAuto(db, historicoID, body.JobID)
 		}()
 
 		w.Header().Set("Content-Type", "application/json")

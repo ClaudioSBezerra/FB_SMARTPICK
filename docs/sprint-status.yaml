@@ -120,9 +120,9 @@ development_status:
   # Migration histórico + registro automático + API compliance +
   # página histórico com indicadores
   # ─────────────────────────────────────────────────────────────
-  epic-7: backlog
-  7-1-migrations-de-historico: backlog
-  7-2-registro-automatico-de-historico-e-deteccao-de-nao-execucao: backlog
-  7-3-api-de-historico-e-compliance: backlog
-  7-4-pagina-de-historico-e-compliance-frontend: backlog
+  epic-7: done
+  7-1-migrations-de-historico: done
+  7-2-registro-automatico-de-historico-e-deteccao-de-nao-execucao: done
+  7-3-api-de-historico-e-compliance: done
+  7-4-pagina-de-historico-e-compliance-frontend: done
   epic-7-retrospective: optional

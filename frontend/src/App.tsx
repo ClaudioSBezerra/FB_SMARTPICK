@@ -8,6 +8,7 @@ import SpAmbiente from './pages/SpAmbiente'
 import SpUploadCSV from './pages/SpUploadCSV'
 import SpDashboard from './pages/SpDashboard'
 import SpGerarPDF from './pages/SpGerarPDF'
+import SpHistorico from './pages/SpHistorico'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -22,15 +23,6 @@ import { cn } from '@/lib/utils'
 
 const queryClient = new QueryClient()
 
-// ── Placeholder para módulos ainda não implementados ─────────────────────────
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-[50vh] space-y-4">
-      <h1 className="text-2xl font-bold text-muted-foreground">{title}</h1>
-      <p className="text-sm text-muted-foreground">Este módulo está em desenvolvimento.</p>
-    </div>
-  )
-}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -137,8 +129,8 @@ function AppLayout() {
               <Route path="/upload/log" element={<ProtectedRoute><SpUploadCSV /></ProtectedRoute>} />
 
               {/* Histórico (Epic 7) */}
-              <Route path="/historico"            element={<ComingSoon title="Histórico de Calibragem" />} />
-              <Route path="/historico/compliance" element={<ComingSoon title="Compliance" />} />
+              <Route path="/historico"            element={<ProtectedRoute><SpHistorico /></ProtectedRoute>} />
+              <Route path="/historico/compliance" element={<ProtectedRoute><SpHistorico /></ProtectedRoute>} />
 
               {/* PDF (Epic 6) */}
               <Route path="/pdf/gerar" element={<ProtectedRoute><SpGerarPDF /></ProtectedRoute>} />
