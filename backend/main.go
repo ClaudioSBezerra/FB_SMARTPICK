@@ -393,6 +393,9 @@ func main() {
 	http.HandleFunc("/api/sp/csv/jobs/",     withSP(handlers.SpCSVJobStatusHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/motor/calibrar", withSP(handlers.SpMotorCalibrarHandler, "gestor_geral"))
 
+	// ── SmartPick — Geração de PDF (Epic 6) ──────────────────────────────────
+	http.HandleFunc("/api/sp/pdf/calibracao", withSP(handlers.SpPDFCalibracaoHandler, "gestor_filial"))
+
 	// ── SmartPick — Dashboard de Urgência e Propostas (Epic 5) ───────────────
 	http.HandleFunc("/api/sp/propostas", withSP(handlers.SpPropostasHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/resumo", withSP(handlers.SpPropostasResumoHandler, "gestor_filial"))

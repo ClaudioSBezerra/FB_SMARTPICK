@@ -110,9 +110,9 @@ development_status:
   # Epic 6: Geração de PDF Operacional
   # PDF server-side via maroto + página de seleção e download
   # ─────────────────────────────────────────────────────────────
-  epic-6: backlog
-  6-1-geracao-de-pdf-no-backend: backlog
-  6-2-pagina-de-geracao-de-pdf-frontend: backlog
+  epic-6: done
+  6-1-geracao-de-pdf-no-backend: done
+  6-2-pagina-de-geracao-de-pdf-frontend: done
   epic-6-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────

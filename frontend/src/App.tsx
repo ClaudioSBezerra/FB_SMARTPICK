@@ -7,6 +7,7 @@ import SpUsuarios from './pages/SpUsuarios'
 import SpAmbiente from './pages/SpAmbiente'
 import SpUploadCSV from './pages/SpUploadCSV'
 import SpDashboard from './pages/SpDashboard'
+import SpGerarPDF from './pages/SpGerarPDF'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -140,7 +141,7 @@ function AppLayout() {
               <Route path="/historico/compliance" element={<ComingSoon title="Compliance" />} />
 
               {/* PDF (Epic 6) */}
-              <Route path="/pdf/gerar" element={<ComingSoon title="Geração de PDF" />} />
+              <Route path="/pdf/gerar" element={<ProtectedRoute><SpGerarPDF /></ProtectedRoute>} />
 
               {/* Configurações */}
               <Route path="/config/ambiente"         element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
