@@ -12,8 +12,8 @@ package handlers
 // POST /api/sp/propostas/aprovar-lote → aprovação em lote por job_id ou cd_id
 //
 // Semântica de urgência (delta = sugestao_calibragem - capacidade_atual):
-//   tipo=falta  → delta < 0  (sugestão reduz capacidade → risco de falta de produto)
-//   tipo=espaco → delta > 0  (sugestão aumenta capacidade → risco de falta de espaço)
+//   tipo=falta  → delta > 0  (sugestão aumenta capacidade → slot pequeno demais → falta de espaço no picking)
+//   tipo=espaco → delta < 0  (sugestão reduz capacidade → slot grande demais → excesso de espaço)
 
 import (
 	"database/sql"
@@ -121,9 +121,9 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 		}
 		switch tipo {
 		case "falta":
-			query += " AND delta < 0"
-		case "espaco":
 			query += " AND delta > 0"
+		case "espaco":
+			query += " AND delta < 0"
 		}
 
 		query += fmt.Sprintf(" ORDER BY ABS(delta) DESC LIMIT $%d", idx)
@@ -199,8 +199,8 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 				COUNT(*) FILTER (WHERE status = 'pendente')   AS total_pendente,
 				COUNT(*) FILTER (WHERE status = 'aprovada')   AS total_aprovada,
 				COUNT(*) FILTER (WHERE status = 'rejeitada')  AS total_rejeitada,
-				COUNT(*) FILTER (WHERE status = 'pendente' AND delta < 0) AS falta_pendente,
-				COUNT(*) FILTER (WHERE status = 'pendente' AND delta > 0) AS espaco_pendente
+				COUNT(*) FILTER (WHERE status = 'pendente' AND delta > 0) AS falta_pendente,
+				COUNT(*) FILTER (WHERE status = 'pendente' AND delta < 0) AS espaco_pendente
 			FROM smartpick.sp_propostas
 			%s
 		`, filter)
@@ -366,9 +366,9 @@ func SpPropostasAprovarLoteHandler(db *sql.DB) http.HandlerFunc {
 		}
 		switch body.Tipo {
 		case "falta":
-			filter += " AND delta < 0"
-		case "espaco":
 			filter += " AND delta > 0"
+		case "espaco":
+			filter += " AND delta < 0"
 		}
 
 		// Passa user como $idx
