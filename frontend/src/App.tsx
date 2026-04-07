@@ -6,6 +6,7 @@ import AdminUsers from './pages/AdminUsers'
 import SpUsuarios from './pages/SpUsuarios'
 import SpAmbiente from './pages/SpAmbiente'
 import SpUploadCSV from './pages/SpUploadCSV'
+import SpDashboard from './pages/SpDashboard'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -127,8 +128,8 @@ function AppLayout() {
               <Route path="/" element={<Navigate to="/dashboard/urgencia/falta" replace />} />
 
               {/* Dashboard de Urgência (Epic 5) */}
-              <Route path="/dashboard/urgencia/falta"  element={<ComingSoon title="Dashboard — Urgência de Falta" />} />
-              <Route path="/dashboard/urgencia/espaco" element={<ComingSoon title="Dashboard — Urgência de Espaço" />} />
+              <Route path="/dashboard/urgencia/falta"  element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
+              <Route path="/dashboard/urgencia/espaco" element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
 
               {/* Upload CSV (Epic 4) */}
               <Route path="/upload/csv" element={<ProtectedRoute><SpUploadCSV /></ProtectedRoute>} />

@@ -99,11 +99,11 @@ development_status:
   # API dashboard + duas abas (falta/espaço) + edição inline +
   # aprovação individual e em lote
   # ─────────────────────────────────────────────────────────────
-  epic-5: backlog
-  5-1-api-do-dashboard-de-urgencia: backlog
-  5-2-dashboard-de-urgencia-duas-abas-frontend: backlog
-  5-3-edicao-inline-de-propostas: backlog
-  5-4-aprovacao-individual-e-em-lote: backlog
+  epic-5: done
+  5-1-api-do-dashboard-de-urgencia: done
+  5-2-dashboard-de-urgencia-duas-abas-frontend: done
+  5-3-edicao-inline-de-propostas: done
+  5-4-aprovacao-individual-e-em-lote: done
   epic-5-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────
