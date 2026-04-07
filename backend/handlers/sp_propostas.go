@@ -53,11 +53,12 @@ type PropostaResponse struct {
 }
 
 type PropostasResumo struct {
-	TotalPendente  int `json:"total_pendente"`
-	TotalAprovada  int `json:"total_aprovada"`
-	TotalRejeitada int `json:"total_rejeitada"`
-	FaltaPendente  int `json:"falta_pendente"`
-	EspacoPendente int `json:"espaco_pendente"`
+	TotalPendente    int `json:"total_pendente"`
+	TotalAprovada    int `json:"total_aprovada"`
+	TotalRejeitada   int `json:"total_rejeitada"`
+	FaltaPendente    int `json:"falta_pendente"`
+	EspacoPendente   int `json:"espaco_pendente"`
+	CalibradoTotal   int `json:"calibrado_total"`
 }
 
 // ─── Lista de Propostas ───────────────────────────────────────────────────────
@@ -124,6 +125,8 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			query += " AND delta > 0"
 		case "espaco":
 			query += " AND delta < 0"
+		case "calibrado":
+			query += " AND delta = 0"
 		}
 
 		query += fmt.Sprintf(" ORDER BY ABS(delta) DESC LIMIT $%d", idx)
@@ -200,7 +203,8 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 				COUNT(*) FILTER (WHERE status = 'aprovada')   AS total_aprovada,
 				COUNT(*) FILTER (WHERE status = 'rejeitada')  AS total_rejeitada,
 				COUNT(*) FILTER (WHERE status = 'pendente' AND delta > 0) AS falta_pendente,
-				COUNT(*) FILTER (WHERE status = 'pendente' AND delta < 0) AS espaco_pendente
+				COUNT(*) FILTER (WHERE status = 'pendente' AND delta < 0) AS espaco_pendente,
+				COUNT(*) FILTER (WHERE delta = 0)             AS calibrado_total
 			FROM smartpick.sp_propostas
 			%s
 		`, filter)
@@ -208,7 +212,7 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 		var resumo PropostasResumo
 		err := db.QueryRow(query, args...).Scan(
 			&resumo.TotalPendente, &resumo.TotalAprovada, &resumo.TotalRejeitada,
-			&resumo.FaltaPendente, &resumo.EspacoPendente,
+			&resumo.FaltaPendente, &resumo.EspacoPendente, &resumo.CalibradoTotal,
 		)
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)

@@ -10,7 +10,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
-import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X } from 'lucide-react'
+import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ interface Resumo {
   total_rejeitada: number
   falta_pendente: number
   espaco_pendente: number
+  calibrado_total: number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -285,17 +286,18 @@ export default function SpDashboard() {
   })
 
   // ── Propostas ─────────────────────────────────────────────────────────────
-  function buildPropostasUrl(tipo: 'falta' | 'espaco') {
-    const p = new URLSearchParams({ tipo, status: 'pendente', limit: '500' })
-    if (cdID)  p.set('cd_id', cdID)
-    if (jobID) p.set('job_id', jobID)
+  function buildPropostasUrl(tipo: 'falta' | 'espaco' | 'calibrado', status?: string) {
+    const p = new URLSearchParams({ tipo, limit: '500' })
+    if (status) p.set('status', status)
+    if (cdID)   p.set('cd_id', cdID)
+    if (jobID)  p.set('job_id', jobID)
     return `/api/sp/propostas?${p}`
   }
 
   const { data: propostasFalta = [], refetch: refetchFalta } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'falta', cdID, jobID],
     queryFn: async () => {
-      const r = await fetch(buildPropostasUrl('falta'), { headers })
+      const r = await fetch(buildPropostasUrl('falta', 'pendente'), { headers })
       if (!r.ok) throw new Error()
       return r.json()
     },
@@ -304,7 +306,16 @@ export default function SpDashboard() {
   const { data: propostasEspaco = [], refetch: refetchEspaco } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'espaco', cdID, jobID],
     queryFn: async () => {
-      const r = await fetch(buildPropostasUrl('espaco'), { headers })
+      const r = await fetch(buildPropostasUrl('espaco', 'pendente'), { headers })
+      if (!r.ok) throw new Error()
+      return r.json()
+    },
+  })
+
+  const { data: propostasCalibrado = [], refetch: refetchCalibrado } = useQuery<Proposta[]>({
+    queryKey: ['sp-propostas', 'calibrado', cdID, jobID],
+    queryFn: async () => {
+      const r = await fetch(buildPropostasUrl('calibrado'), { headers })
       if (!r.ok) throw new Error()
       return r.json()
     },
@@ -428,7 +439,7 @@ export default function SpDashboard() {
           </div>
         )}
 
-        <Button size="sm" variant="outline" onClick={() => { refetchFalta(); refetchEspaco() }}>
+        <Button size="sm" variant="outline" onClick={() => { refetchFalta(); refetchEspaco(); refetchCalibrado() }}>
           <RefreshCw className="h-3.5 w-3.5 mr-1" /> Atualizar
         </Button>
       </div>
@@ -456,6 +467,12 @@ export default function SpDashboard() {
             <span className="text-xs text-muted-foreground block">Rejeitadas</span>
             <span className="font-bold text-gray-600">{resumo.total_rejeitada}</span>
           </div>
+          {resumo.calibrado_total > 0 && (
+            <div className="border rounded px-3 py-2 bg-blue-50">
+              <span className="text-xs text-muted-foreground block">Já Calibrados</span>
+              <span className="font-bold text-blue-700">{resumo.calibrado_total}</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -482,6 +499,15 @@ export default function SpDashboard() {
                 {resumo && resumo.espaco_pendente > 0 && (
                   <span className="ml-1.5 bg-orange-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
                     {resumo.espaco_pendente}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="calibrado">
+                <CheckCircle2 className="h-3.5 w-3.5 mr-1 text-blue-500" />
+                Já Calibrados
+                {resumo && resumo.calibrado_total > 0 && (
+                  <span className="ml-1.5 bg-blue-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
+                    {resumo.calibrado_total}
                   </span>
                 )}
               </TabsTrigger>
@@ -530,6 +556,50 @@ export default function SpDashboard() {
               onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
               loadingId={loadingId}
             />
+          </TabsContent>
+
+          {/* ── Aba: Já Calibrados (delta = 0) ──────────────────────────── */}
+          <TabsContent value="calibrado" className="space-y-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-blue-500 shrink-0" />
+              Estes produtos já estão com a capacidade ideal — sugestão igual à capacidade atual (delta = 0). Nenhuma ação necessária.
+            </p>
+            {propostasCalibrado.length === 0 ? (
+              <div className="text-center text-sm text-muted-foreground py-12">
+                Nenhum produto calibrado encontrado.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8">Curva</TableHead>
+                    <TableHead>Produto</TableHead>
+                    <TableHead>Cód.</TableHead>
+                    <TableHead>Endereço</TableHead>
+                    <TableHead className="text-right">Cap.Atual</TableHead>
+                    <TableHead className="text-right">Sugestão</TableHead>
+                    <TableHead>Justificativa</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {propostasCalibrado.map(p => (
+                    <TableRow key={p.id} className="opacity-75">
+                      <TableCell><ClasseBadge classe={p.classe_venda} /></TableCell>
+                      <TableCell className="text-xs max-w-[180px] truncate" title={p.produto}>
+                        {p.produto || '—'}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">{p.codprod}</TableCell>
+                      <TableCell><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
+                      <TableCell className="text-xs text-right">{p.capacidade_atual ?? '—'}</TableCell>
+                      <TableCell className="text-xs text-right text-blue-700 font-semibold">{p.sugestao_calibragem}</TableCell>
+                      <TableCell className="text-[11px] text-muted-foreground max-w-[240px] truncate" title={p.justificativa ?? ''}>
+                        {p.justificativa ?? '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </TabsContent>
         </Tabs>
       )}

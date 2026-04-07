@@ -88,7 +88,7 @@ export function AppRail() {
 
         {/* Logo */}
         <div className="flex items-center justify-center h-14 border-b shrink-0">
-          <img src="/favicon-fc.png" alt="SP" className="size-8 rounded-lg object-cover" />
+          <img src="/logo-fb.png" alt="Fortes Bezerra" className="size-8 rounded-lg object-cover" />
         </div>
 
         {/* Nav principal */}
