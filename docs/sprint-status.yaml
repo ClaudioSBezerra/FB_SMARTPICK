@@ -1,0 +1,128 @@
+# generated: 2026-04-06
+# project: FB_SMARTPICK
+# project_key: FB_SMARTPICK
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Epic 4 internal order: 4.1 → 4.4 → 4.2 → 4.3 → 4.5 → 4.6 (see readiness report)
+
+generated: "2026-04-06"
+project: FB_SMARTPICK
+project_key: FB_SMARTPICK
+tracking_system: file-system
+story_location: "_bmad-output/implementation-artifacts"
+
+development_status:
+  # ─────────────────────────────────────────────────────────────
+  # Epic 1: Fundação do Projeto
+  # Clone FB_APU02 → renomear módulo Go → banco fb_smartpick →
+  # schema smartpick → infra smartpick.fbtax.cloud
+  # ─────────────────────────────────────────────────────────────
+  epic-1: backlog
+  1-1-setup-do-clone-e-renomeacao-do-projeto: backlog
+  1-2-criacao-do-banco-de-dados-e-schema-smartpick: backlog
+  1-3-remocao-dos-modulos-de-dominio-do-apu02: backlog
+  epic-1-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Epic 2: Gestão de Usuários e Controle de Acesso SmartPick
+  # RBAC 4 perfis + sp_user_filiais + SmartPickAuthMiddleware +
+  # CRUD usuários + vínculo de filiais + página admin
+  # ─────────────────────────────────────────────────────────────
+  epic-2: backlog
+  2-1-migrations-de-rbac-smartpick: backlog
+  2-2-smartpick-auth-middleware: backlog
+  2-3-crud-de-usuarios-smartpick-no-backend: backlog
+  2-4-vinculo-de-filiais-a-usuarios: backlog
+  2-5-pagina-de-gestao-de-usuarios-smartpick-frontend: backlog
+  epic-2-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Epic 3: Administração de Ambiente e Planos
+  # Filiais + CDs + parâmetros motor + duplicação CD +
+  # planos/limites + página admin ambiente
+  # ─────────────────────────────────────────────────────────────
+  epic-3: backlog
+  3-1-migrations-de-filiais-e-cds: backlog
+  3-2-crud-de-filiais-e-cds-no-backend: backlog
+  3-3-migrations-de-parametros-do-motor: backlog
+  3-4-crud-de-parametros-do-motor-e-duplicacao-de-cd: backlog
+  3-5-gestao-de-planos-e-limites-de-cds: backlog
+  3-6-pagina-de-administracao-de-ambiente-frontend: backlog
+  epic-3-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Epic 4: Importação de Dados e Motor de Calibragem
+  # ATENÇÃO — Ordem recomendada de implementação:
+  #   4.1 → 4.4 → 4.2 → 4.3 → 4.5 → 4.6
+  # (migration sp_propostas antes do worker e do motor)
+  # ─────────────────────────────────────────────────────────────
+  epic-4: backlog
+  4-1-migrations-de-enderecos-jobs-csv-e-audit-log: backlog
+  4-2-worker-assincrono-de-csv: backlog
+  4-3-upload-de-csv-e-enfileiramento: backlog
+  4-4-migrations-de-propostas: backlog
+  4-5-motor-de-calibragem: backlog
+  4-6-pagina-de-upload-csv-e-log-de-processamento-frontend: backlog
+  epic-4-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Epic 5: Dashboard de Urgência e Aprovação de Propostas
+  # API dashboard + duas abas (falta/espaço) + edição inline +
+  # aprovação individual e em lote
+  # ─────────────────────────────────────────────────────────────
+  epic-5: backlog
+  5-1-api-do-dashboard-de-urgencia: backlog
+  5-2-dashboard-de-urgencia-duas-abas-frontend: backlog
+  5-3-edicao-inline-de-propostas: backlog
+  5-4-aprovacao-individual-e-em-lote: backlog
+  epic-5-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Epic 6: Geração de PDF Operacional
+  # PDF server-side via maroto + página de seleção e download
+  # ─────────────────────────────────────────────────────────────
+  epic-6: backlog
+  6-1-geracao-de-pdf-no-backend: backlog
+  6-2-pagina-de-geracao-de-pdf-frontend: backlog
+  epic-6-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Epic 7: Histórico e Compliance
+  # Migration histórico + registro automático + API compliance +
+  # página histórico com indicadores
+  # ─────────────────────────────────────────────────────────────
+  epic-7: backlog
+  7-1-migrations-de-historico: backlog
+  7-2-registro-automatico-de-historico-e-deteccao-de-nao-execucao: backlog
+  7-3-api-de-historico-e-compliance: backlog
+  7-4-pagina-de-historico-e-compliance-frontend: backlog
+  epic-7-retrospective: optional
