@@ -2,15 +2,12 @@ package handlers
 
 // sp_pdf.go — Geração de PDF Operacional de Calibragem
 //
-// Story 6.1 — Geração de PDF no Backend
+// GET /api/sp/pdf/calibracao?job_id=UUID  ou  ?cd_id=INT
 //
-// GET /api/sp/pdf/calibracao?job_id=X   → PDF das propostas aprovadas de um job
-// GET /api/sp/pdf/calibracao?cd_id=Y    → PDF das últimas propostas aprovadas de um CD
-//
-// O PDF contém:
-//   - Cabeçalho: nome do CD, filial, data de geração
-//   - Tabela por curva (A / B / C): endereço, produto, cap.atual, nova cap., delta, justificativa
-//   - Rodapé com paginação
+// Layout:
+//   - Página por RUA (subheader "RUA X — N itens", nova página a cada troca de RUA)
+//   - Colunas: Curva | Cód. | Produto | Prédio | Apto | Cap.Atual | Nova Cap. | Ação
+//   - Linha Obs. em branco após cada produto (anotação manual → Winthor)
 
 import (
 	"database/sql"
@@ -21,6 +18,7 @@ import (
 
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/page"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
@@ -38,7 +36,7 @@ type pdfProposta struct {
 	Rua, Predio, Apto *int
 	ClasseVenda     string
 	CapacidadeAtual *int
-	NovaCapacidade  int // sugestao_editada ?? sugestao_calibragem
+	NovaCapacidade  int
 	Delta           int
 	Justificativa   string
 	AprovadoEm      string
@@ -46,8 +44,6 @@ type pdfProposta struct {
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
-// SpPDFCalibracaoHandler gera o PDF de calibragem das propostas aprovadas.
-// GET /api/sp/pdf/calibracao?job_id=UUID  ou  ?cd_id=INT
 func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -67,7 +63,6 @@ func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// ── Carrega metadados do CD / job ────────────────────────────────────
 		var cdNome, filialNome, jobFilename string
 		var cdID int
 
@@ -96,7 +91,6 @@ func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// ── Carrega propostas aprovadas ──────────────────────────────────────
 		filter := "WHERE p.empresa_id = $1 AND p.status = 'aprovada'"
 		args   := []any{spCtx.EmpresaID}
 		idx    := 2
@@ -104,14 +98,12 @@ func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 		if jobIDStr != "" {
 			filter += fmt.Sprintf(" AND p.job_id = $%d", idx)
 			args = append(args, jobIDStr)
-			idx++
 		} else {
 			filter += fmt.Sprintf(" AND p.cd_id = $%d", idx)
 			args = append(args, cdIDStr)
-			idx++
 		}
-		_ = idx
 
+		// Ordenado por RUA → PREDIO → APTO → CURVA (operador percorre fisicamente)
 		query := fmt.Sprintf(`
 			SELECT p.codprod,
 			       COALESCE(p.produto,''),
@@ -124,7 +116,7 @@ func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 			       TO_CHAR(p.aprovado_em,'DD/MM/YYYY HH24:MI')
 			FROM smartpick.sp_propostas p
 			%s
-			ORDER BY p.classe_venda, p.rua NULLS LAST, p.predio NULLS LAST, p.apto NULLS LAST
+			ORDER BY p.rua NULLS LAST, p.predio NULLS LAST, p.apto NULLS LAST, p.classe_venda
 		`, filter)
 
 		rows, err := db.Query(query, args...)
@@ -161,8 +153,7 @@ func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// ── Gera PDF ─────────────────────────────────────────────────────────
-		bytes, err := buildPDF(cdNome, filialNome, jobFilename, propostas)
+		pdfBytes, err := buildPDF(cdNome, filialNome, jobFilename, propostas)
 		if err != nil {
 			http.Error(w, "Erro ao gerar PDF: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -174,12 +165,40 @@ func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/pdf")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(bytes)))
-		w.Write(bytes)
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(pdfBytes)))
+		w.Write(pdfBytes)
 	}
 }
 
-// ─── Construção do PDF com maroto v2 ─────────────────────────────────────────
+// ─── Agrupamento por RUA ──────────────────────────────────────────────────────
+
+type ruaGroup struct {
+	rua   *int
+	items []pdfProposta
+}
+
+func groupByRua(propostas []pdfProposta) []ruaGroup {
+	var groups []ruaGroup
+	for _, p := range propostas {
+		if len(groups) == 0 || !intPtrEq(groups[len(groups)-1].rua, p.Rua) {
+			groups = append(groups, ruaGroup{rua: p.Rua})
+		}
+		groups[len(groups)-1].items = append(groups[len(groups)-1].items, p)
+	}
+	return groups
+}
+
+func intPtrEq(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+// ─── Construção do PDF ────────────────────────────────────────────────────────
 
 func buildPDF(cdNome, filialNome, jobFilename string, propostas []pdfProposta) ([]byte, error) {
 	cfg := config.NewBuilder().
@@ -189,55 +208,14 @@ func buildPDF(cdNome, filialNome, jobFilename string, propostas []pdfProposta) (
 		}).
 		WithLeftMargin(10).
 		WithRightMargin(10).
-		WithTopMargin(15).
+		WithTopMargin(12).
 		Build()
 
 	mrt := maroto.New(cfg)
 
-	// ── Cabeçalho ──────────────────────────────────────────────────────────
-	mrt.AddRows(
-		row.New(12).Add(
-			col.New(12).Add(
-				text.New("Relatório de Calibragem de Picking", props.Text{
-					Size:  14,
-					Style: fontstyle.Bold,
-					Align: align.Center,
-				}),
-			),
-		),
-		row.New(7).Add(
-			col.New(6).Add(
-				text.New(fmt.Sprintf("CD: %s — Filial: %s", cdNome, filialNome), props.Text{
-					Size:  9,
-					Style: fontstyle.Normal,
-				}),
-			),
-			col.New(6).Add(
-				text.New(fmt.Sprintf("Gerado em: %s", time.Now().Format("02/01/2006 15:04")), props.Text{
-					Size:  9,
-					Align: align.Right,
-				}),
-			),
-		),
-	)
+	groups := groupByRua(propostas)
 
-	if jobFilename != "" {
-		mrt.AddRows(
-			row.New(6).Add(
-				col.New(12).Add(
-					text.New(fmt.Sprintf("Importação: %s", jobFilename), props.Text{
-						Size:  8,
-						Style: fontstyle.Italic,
-					}),
-				),
-			),
-		)
-	}
-
-	// Separador
-	mrt.AddRows(row.New(3).Add(col.New(12)))
-
-	// ── Resumo por curva ──────────────────────────────────────────────────
+	// Resumo para a primeira página
 	countA, countB, countC := 0, 0, 0
 	for _, p := range propostas {
 		switch p.ClasseVenda {
@@ -249,49 +227,89 @@ func buildPDF(cdNome, filialNome, jobFilename string, propostas []pdfProposta) (
 			countC++
 		}
 	}
-	mrt.AddRows(
-		row.New(7).Add(
-			col.New(12).Add(
-				text.New(fmt.Sprintf(
-					"Total de propostas aprovadas: %d   (Curva A: %d | Curva B: %d | Curva C: %d)",
-					len(propostas), countA, countB, countC,
-				), props.Text{Size: 8, Style: fontstyle.Italic}),
-			),
-		),
-		row.New(2).Add(col.New(12)), // espaço
-	)
 
-	// ── Cabeçalho da tabela ────────────────────────────────────────────────
-	mrt.AddRows(tableHeaderRow())
+	for i, g := range groups {
+		pg := page.New()
 
-	// ── Linhas por curva ───────────────────────────────────────────────────
-	curvas := []string{"A", "B", "C"}
-	for _, curva := range curvas {
-		var grupo []pdfProposta
-		for _, p := range propostas {
-			if p.ClasseVenda == curva {
-				grupo = append(grupo, p)
+		// ── Cabeçalho do documento (apenas primeira página) ──────────────
+		if i == 0 {
+			pg.Add(
+				row.New(10).Add(
+					col.New(12).Add(
+						text.New("Relatório de Calibragem de Picking", props.Text{
+							Size:  13,
+							Style: fontstyle.Bold,
+							Align: align.Center,
+						}),
+					),
+				),
+				row.New(6).Add(
+					col.New(7).Add(
+						text.New(fmt.Sprintf("CD: %s  —  Filial: %s", cdNome, filialNome), props.Text{
+							Size: 8,
+						}),
+					),
+					col.New(5).Add(
+						text.New(fmt.Sprintf("Gerado em: %s", time.Now().Format("02/01/2006 15:04")), props.Text{
+							Size:  8,
+							Align: align.Right,
+						}),
+					),
+				),
+			)
+			if jobFilename != "" {
+				pg.Add(
+					row.New(5).Add(
+						col.New(12).Add(
+							text.New(fmt.Sprintf("Importação: %s", jobFilename), props.Text{
+								Size:  7,
+								Style: fontstyle.Italic,
+							}),
+						),
+					),
+				)
 			}
-		}
-		if len(grupo) == 0 {
-			continue
+			pg.Add(
+				row.New(5).Add(
+					col.New(12).Add(
+						text.New(fmt.Sprintf(
+							"Total aprovado: %d itens  (Curva A: %d | B: %d | C: %d)  —  %d ruas",
+							len(propostas), countA, countB, countC, len(groups),
+						), props.Text{Size: 7, Style: fontstyle.Italic}),
+					),
+				),
+				row.New(3).Add(col.New(12)), // espaço
+			)
 		}
 
-		// Separador de curva
-		mrt.AddRows(
-			row.New(6).Add(
+		// ── Subheader da RUA ─────────────────────────────────────────────
+		ruaLabel := "—"
+		if g.rua != nil {
+			ruaLabel = fmt.Sprintf("%d", *g.rua)
+		}
+		pg.Add(
+			row.New(7).Add(
 				col.New(12).Add(
-					text.New(fmt.Sprintf("── Curva %s (%d itens) ──", curva, len(grupo)), props.Text{
-						Size:  8,
-						Style: fontstyle.Bold,
-					}),
+					text.New(
+						fmt.Sprintf("RUA %s  —  %d item(s)", ruaLabel, len(g.items)),
+						props.Text{
+							Size:  9,
+							Style: fontstyle.Bold,
+						},
+					),
 				),
 			),
 		)
 
-		for _, p := range grupo {
-			mrt.AddRows(tableDataRow(p)...)
+		// ── Cabeçalho da tabela ──────────────────────────────────────────
+		pg.Add(tableHeaderRow())
+
+		// ── Linhas de dados ──────────────────────────────────────────────
+		for _, p := range g.items {
+			pg.Add(tableDataRow(p)...)
 		}
+
+		mrt.AddPages(pg)
 	}
 
 	doc, err := mrt.Generate()
@@ -303,28 +321,38 @@ func buildPDF(cdNome, filialNome, jobFilename string, propostas []pdfProposta) (
 
 // ─── Helpers de tabela ────────────────────────────────────────────────────────
 
+// Colunas: Curva(1) | Cód(1) | Produto(4) | Prédio(1) | Apto(1) | Cap.Atual(1) | Nova Cap(1) | Ação(2)
 func tableHeaderRow() core.Row {
-	hProps := props.Text{Size: 7, Style: fontstyle.Bold, Align: align.Center}
+	h := props.Text{Size: 7, Style: fontstyle.Bold, Align: align.Center}
 	return row.New(6).Add(
-		col.New(1).Add(text.New("Curva",     hProps)),
-		col.New(2).Add(text.New("Endereço",  hProps)),
-		col.New(1).Add(text.New("Cód.",      hProps)),
-		col.New(4).Add(text.New("Produto",   hProps)),
-		col.New(1).Add(text.New("Cap.Atual", hProps)),
-		col.New(1).Add(text.New("Nova Cap.", hProps)),
-		col.New(2).Add(text.New("Ação",      hProps)),
+		col.New(1).Add(text.New("Curva",    h)),
+		col.New(1).Add(text.New("Cód.",     h)),
+		col.New(4).Add(text.New("Produto",  h)),
+		col.New(1).Add(text.New("Prédio",   h)),
+		col.New(1).Add(text.New("Apto",     h)),
+		col.New(1).Add(text.New("Cap.At.",  h)),
+		col.New(1).Add(text.New("Nova Cap", h)),
+		col.New(2).Add(text.New("Ação",     h)),
 	)
 }
 
 func tableDataRow(p pdfProposta) []core.Row {
-	dProps := props.Text{Size: 7, Align: align.Center}
-	lProps := props.Text{Size: 7, Align: align.Left}
+	d := props.Text{Size: 7, Align: align.Center}
+	l := props.Text{Size: 7, Align: align.Left}
 
-	endereco := formatEndereco(p.Rua, p.Predio, p.Apto)
-	capAtual  := "—"
+	predioStr := "—"
+	if p.Predio != nil {
+		predioStr = fmt.Sprintf("%d", *p.Predio)
+	}
+	aptoStr := "—"
+	if p.Apto != nil {
+		aptoStr = fmt.Sprintf("%d", *p.Apto)
+	}
+	capAtual := "—"
 	if p.CapacidadeAtual != nil {
 		capAtual = fmt.Sprintf("%d cx", *p.CapacidadeAtual)
 	}
+
 	var acaoStr string
 	switch {
 	case p.Delta > 0:
@@ -336,33 +364,37 @@ func tableDataRow(p pdfProposta) []core.Row {
 	}
 
 	produto := p.Produto
-	if len(produto) > 38 {
-		produto = produto[:36] + "…"
+	if len(produto) > 40 {
+		produto = produto[:38] + "…"
 	}
 
 	dataRow := row.New(5).Add(
-		col.New(1).Add(text.New(p.ClasseVenda,                       dProps)),
-		col.New(2).Add(text.New(endereco,                            dProps)),
-		col.New(1).Add(text.New(fmt.Sprintf("%d", p.Codprod),        dProps)),
-		col.New(4).Add(text.New(produto,                             lProps)),
-		col.New(1).Add(text.New(capAtual,                            dProps)),
-		col.New(1).Add(text.New(fmt.Sprintf("%d cx", p.NovaCapacidade), dProps)),
-		col.New(2).Add(text.New(acaoStr,                             dProps)),
+		col.New(1).Add(text.New(p.ClasseVenda,                         d)),
+		col.New(1).Add(text.New(fmt.Sprintf("%d", p.Codprod),          d)),
+		col.New(4).Add(text.New(produto,                               l)),
+		col.New(1).Add(text.New(predioStr,                             d)),
+		col.New(1).Add(text.New(aptoStr,                               d)),
+		col.New(1).Add(text.New(capAtual,                              d)),
+		col.New(1).Add(text.New(fmt.Sprintf("%d cx", p.NovaCapacidade), d)),
+		col.New(2).Add(text.New(acaoStr,                               d)),
 	)
 
-	// Linha em branco para anotação manual do operador (alimentar no Winthor)
 	noteRow := row.New(5).Add(
 		col.New(1),
-		col.New(11).Add(text.New("Obs: _______________________________________________", props.Text{
-			Size:  6,
-			Align: align.Left,
-			Style: fontstyle.Normal,
-			Color: &props.Color{Red: 180, Green: 180, Blue: 180},
-		})),
+		col.New(11).Add(text.New(
+			"Obs: _______________________________________________",
+			props.Text{
+				Size:  6,
+				Align: align.Left,
+				Color: &props.Color{Red: 180, Green: 180, Blue: 180},
+			},
+		)),
 	)
 
 	return []core.Row{dataRow, noteRow}
 }
+
+// ─── Utilitários ─────────────────────────────────────────────────────────────
 
 func formatEndereco(rua, predio, apto *int) string {
 	parts := []string{}
