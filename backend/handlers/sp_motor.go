@@ -333,16 +333,23 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 	if e.Capacidade != nil {
 		capAtual = *e.Capacidade
 	}
-	regra := ""
 	if curva == "A" && p.CurvaANuncaReduz && sugestao < capAtual {
 		sugestao = capAtual
-		regra = " [Curva A: mantida]"
 	}
 
-	justificativa := fmt.Sprintf(
-		"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) = %d%s",
-		curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, sugestao, regra,
-	)
+	formulaResult := caixasGiro * diasClasse
+	var justificativa string
+	if curva == "A" && p.CurvaANuncaReduz && sugestao == capAtual && formulaResult < capAtual {
+		justificativa = fmt.Sprintf(
+			"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) = %d cx → mantida em %d cx [Curva A nunca reduz]",
+			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, formulaResult, sugestao,
+		)
+	} else {
+		justificativa = fmt.Sprintf(
+			"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) = %d cx",
+			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, sugestao,
+		)
+	}
 
 	return sugestao, justificativa
 }

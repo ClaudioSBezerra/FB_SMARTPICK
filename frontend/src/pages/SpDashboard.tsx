@@ -10,7 +10,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
-import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2 } from 'lucide-react'
+import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -46,6 +46,7 @@ interface Resumo {
   falta_pendente: number
   espaco_pendente: number
   calibrado_total: number
+  curva_a_mantida: number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -323,6 +324,15 @@ export default function SpDashboard() {
     },
   })
 
+  const { data: propostasCurvaA = [], refetch: refetchCurvaA } = useQuery<Proposta[]>({
+    queryKey: ['sp-propostas', 'curva_a_mantida', cdID, jobID],
+    queryFn: async () => {
+      const r = await fetch(buildPropostasUrl('curva_a_mantida'), { headers })
+      if (!r.ok) throw new Error()
+      return r.json()
+    },
+  })
+
   function invalidateAll() {
     qc.invalidateQueries({ queryKey: ['sp-propostas'] })
     qc.invalidateQueries({ queryKey: ['sp-propostas-resumo'] })
@@ -441,7 +451,7 @@ export default function SpDashboard() {
           </div>
         )}
 
-        <Button size="sm" variant="outline" onClick={() => { refetchFalta(); refetchEspaco(); refetchCalibrado() }}>
+        <Button size="sm" variant="outline" onClick={() => { refetchFalta(); refetchEspaco(); refetchCalibrado(); refetchCurvaA() }}>
           <RefreshCw className="h-3.5 w-3.5 mr-1" /> Atualizar
         </Button>
       </div>
@@ -473,6 +483,12 @@ export default function SpDashboard() {
             <div className="border rounded px-3 py-2 bg-blue-50">
               <span className="text-xs text-muted-foreground block">Já Calibrados</span>
               <span className="font-bold text-blue-700">{resumo.calibrado_total}</span>
+            </div>
+          )}
+          {resumo.curva_a_mantida > 0 && (
+            <div className="border rounded px-3 py-2 bg-amber-50">
+              <span className="text-xs text-muted-foreground block">Curva A — Revisar</span>
+              <span className="font-bold text-amber-700">{resumo.curva_a_mantida}</span>
             </div>
           )}
         </div>
@@ -510,6 +526,15 @@ export default function SpDashboard() {
                 {resumo && resumo.calibrado_total > 0 && (
                   <span className="ml-1.5 bg-blue-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
                     {resumo.calibrado_total}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="curva_a_mantida">
+                <AlertTriangle className="h-3.5 w-3.5 mr-1 text-amber-500" />
+                Curva A — Revisar
+                {resumo && resumo.curva_a_mantida > 0 && (
+                  <span className="ml-1.5 bg-amber-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
+                    {resumo.curva_a_mantida}
                   </span>
                 )}
               </TabsTrigger>
@@ -607,6 +632,59 @@ export default function SpDashboard() {
                       </TableCell>
                     </TableRow>
                   ))}
+                </TableBody>
+              </Table>
+            )}
+          </TabsContent>
+          {/* ── Aba: Curva A — Revisar ──────────────────────────────────── */}
+          <TabsContent value="curva_a_mantida" className="space-y-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+              Produtos <strong>Curva A</strong> onde a fórmula sugeria redução, mas a regra <em>"Curva A nunca reduz"</em> manteve a capacidade atual.
+              Revisar com o gestor se a redução deve ser aplicada.
+            </p>
+            {propostasCurvaA.length === 0 ? (
+              <div className="text-center text-sm text-muted-foreground py-12">
+                Nenhum produto Curva A retido pela regra.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8">Curva</TableHead>
+                    <TableHead>Produto</TableHead>
+                    <TableHead>Cód.</TableHead>
+                    <TableHead>Endereço</TableHead>
+                    <TableHead className="text-right">Cap.Atual (cx)</TableHead>
+                    <TableHead className="text-right">Fórmula (cx)</TableHead>
+                    <TableHead className="text-right">Diferença</TableHead>
+                    <TableHead>Justificativa</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {propostasCurvaA.map(p => {
+                    // Extrai o resultado da fórmula da justificativa: "= X cx →"
+                    const match = p.justificativa?.match(/= (\d+) cx →/)
+                    const formulaCx = match ? parseInt(match[1]) : p.sugestao_calibragem
+                    const capAtual = p.capacidade_atual ?? 0
+                    const diff = formulaCx - capAtual
+                    return (
+                      <TableRow key={p.id} className="bg-amber-50/40">
+                        <TableCell><ClasseBadge classe={p.classe_venda} /></TableCell>
+                        <TableCell className="text-xs max-w-[180px] truncate" title={p.produto}>
+                          {p.produto || '—'}
+                        </TableCell>
+                        <TableCell className="text-xs font-mono">{p.codprod}</TableCell>
+                        <TableCell><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
+                        <TableCell className="text-xs text-right font-medium">{capAtual} cx</TableCell>
+                        <TableCell className="text-xs text-right text-amber-700 font-semibold">{formulaCx} cx</TableCell>
+                        <TableCell className="text-xs text-right text-amber-700 font-semibold">{diff} cx</TableCell>
+                        <TableCell className="text-[11px] text-muted-foreground max-w-[240px] truncate" title={p.justificativa ?? ''}>
+                          {p.justificativa ?? '—'}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             )}

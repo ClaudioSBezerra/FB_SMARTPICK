@@ -59,6 +59,7 @@ type PropostasResumo struct {
 	FaltaPendente    int `json:"falta_pendente"`
 	EspacoPendente   int `json:"espaco_pendente"`
 	CalibradoTotal   int `json:"calibrado_total"`
+	CurvaAMantida    int `json:"curva_a_mantida"`
 }
 
 // ─── Lista de Propostas ───────────────────────────────────────────────────────
@@ -126,7 +127,9 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 		case "espaco":
 			query += " AND delta < 0"
 		case "calibrado":
-			query += " AND delta = 0"
+			query += " AND delta = 0 AND (classe_venda != 'A' OR justificativa NOT LIKE '%mantida%')"
+		case "curva_a_mantida":
+			query += " AND classe_venda = 'A' AND delta = 0 AND justificativa LIKE '%mantida%'"
 		}
 
 		query += fmt.Sprintf(" ORDER BY ABS(delta) DESC LIMIT $%d", idx)
@@ -204,7 +207,8 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 				COUNT(*) FILTER (WHERE status = 'rejeitada')  AS total_rejeitada,
 				COUNT(*) FILTER (WHERE status = 'pendente' AND delta > 0) AS falta_pendente,
 				COUNT(*) FILTER (WHERE status = 'pendente' AND delta < 0) AS espaco_pendente,
-				COUNT(*) FILTER (WHERE delta = 0)             AS calibrado_total
+				COUNT(*) FILTER (WHERE delta = 0 AND (classe_venda != 'A' OR justificativa NOT LIKE '%mantida%')) AS calibrado_total,
+			COUNT(*) FILTER (WHERE classe_venda = 'A' AND delta = 0 AND justificativa LIKE '%mantida%') AS curva_a_mantida
 			FROM smartpick.sp_propostas
 			%s
 		`, filter)
@@ -212,7 +216,7 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 		var resumo PropostasResumo
 		err := db.QueryRow(query, args...).Scan(
 			&resumo.TotalPendente, &resumo.TotalAprovada, &resumo.TotalRejeitada,
-			&resumo.FaltaPendente, &resumo.EspacoPendente, &resumo.CalibradoTotal,
+			&resumo.FaltaPendente, &resumo.EspacoPendente, &resumo.CalibradoTotal, &resumo.CurvaAMantida,
 		)
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
