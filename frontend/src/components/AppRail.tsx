@@ -1,4 +1,4 @@
-import { Calculator, Landmark, Settings, LogOut, KeyRound, Telescope, FileText } from 'lucide-react'
+import { LayoutDashboard, Upload, Settings, LogOut, KeyRound, History, FileDown } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
@@ -31,17 +31,17 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 const mainItems = [
-  { id: 'notas',       icon: FileText,         label: 'Notas Importadas', path: '/apuracao/saida/notas' },
-  { id: 'apuracao',    icon: Calculator,       label: 'Apuração IBS/CBS', path: '/apuracao/creditos-perdidos' },
-  { id: 'rfb',         icon: Landmark,         label: 'Receita Federal',  path: '/rfb/gestao-creditos' },
-  { id: 'malha',       icon: Telescope,        label: 'Malha Fina',       path: '/malha-fina/nfe-entradas' },
+  { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard de Urgência', path: '/dashboard/urgencia/falta' },
+  { id: 'upload',    icon: Upload,          label: 'Importação CSV',         path: '/upload/csv' },
+  { id: 'historico', icon: History,         label: 'Histórico',              path: '/historico' },
+  { id: 'pdf',       icon: FileDown,        label: 'Gerar PDF',              path: '/pdf/gerar' },
 ]
 
 export function AppRail() {
-  const location  = useLocation()
-  const navigate  = useNavigate()
+  const location = useLocation()
+  const navigate = useNavigate()
   const { user, company, logout, token } = useAuth()
-  const active    = getActiveModule(location.pathname)
+  const active = getActiveModule(location.pathname)
 
   const [pwDialog,  setPwDialog]  = useState(false)
   const [pwCurrent, setPwCurrent] = useState('')
@@ -54,7 +54,7 @@ export function AppRail() {
     if (pwNew.length < 6)    { toast.error('Mínimo 6 caracteres'); return }
     setPwLoading(true)
     try {
-      const res  = await fetch('/api/auth/change-password', {
+      const res = await fetch('/api/auth/change-password', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body:    JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
@@ -84,12 +84,11 @@ export function AppRail() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      {/* ── Rail ── */}
       <div className="flex flex-col w-14 shrink-0 border-r bg-white h-screen z-20">
 
         {/* Logo */}
         <div className="flex items-center justify-center h-14 border-b shrink-0">
-          <img src="/favicon-fc.png" alt="FC" className="size-8 rounded-lg object-cover" />
+          <img src="/favicon-fc.png" alt="SP" className="size-8 rounded-lg object-cover" />
         </div>
 
         {/* Nav principal */}
@@ -118,11 +117,10 @@ export function AppRail() {
 
         {/* Config + User */}
         <div className="flex flex-col items-center gap-1 p-2 border-t shrink-0">
-          {/* Config */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => navigate('/config/aliquotas')}
+                onClick={() => navigate('/config/ambiente')}
                 className={cn(
                   'flex items-center justify-center w-10 h-10 rounded-lg transition-colors',
                   active === 'config'
@@ -136,7 +134,6 @@ export function AppRail() {
             <TooltipContent side="right" className="text-xs">Configurações</TooltipContent>
           </Tooltip>
 
-          {/* User avatar */}
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -167,18 +164,12 @@ export function AppRail() {
               )}
 
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-xs cursor-pointer"
-                onClick={() => setPwDialog(true)}
-              >
+              <DropdownMenuItem className="text-xs cursor-pointer" onClick={() => setPwDialog(true)}>
                 <KeyRound className="mr-2 h-3.5 w-3.5" />
                 Trocar senha
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-xs text-red-600 focus:text-red-600 cursor-pointer"
-                onClick={logout}
-              >
+              <DropdownMenuItem className="text-xs text-red-600 focus:text-red-600 cursor-pointer" onClick={logout}>
                 <LogOut className="mr-2 h-3.5 w-3.5" />
                 Sair
               </DropdownMenuItem>
@@ -187,7 +178,6 @@ export function AppRail() {
         </div>
       </div>
 
-      {/* Dialog trocar senha */}
       <Dialog
         open={pwDialog}
         onOpenChange={o => { setPwDialog(o); if (!o) { setPwCurrent(''); setPwNew(''); setPwConfirm('') } }}

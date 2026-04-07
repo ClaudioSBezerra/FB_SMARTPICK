@@ -1,7 +1,7 @@
 package main
 
-// FB_APU02 — Apuração Assistida + Receita Federal
-// Version: 2.0.2
+// FB_SMARTPICK — Sistema de Recalibração de Picking
+// Version: 1.0.0
 import (
 	"context"
 	"database/sql"
@@ -18,24 +18,15 @@ import (
 	"time"
 
 	"fb_smartpick/handlers"
-	"fb_smartpick/services"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
 
 const (
-	BackendVersion = "2.0.2"
-	FeatureSet     = "Apuração Assistida NF-e/CT-e, Receita Federal CBS/IBS, Créditos em Risco, Apelidos de Filiais, Malha Fina"
+	BackendVersion = "1.0.0"
+	FeatureSet     = "SmartPick WMS — Recalibração de Picking"
 )
-
-func GetVersionInfo() string {
-	return fmt.Sprintf("Backend Version: %s | Features: %s", BackendVersion, FeatureSet)
-}
-
-func PrintVersion() {
-	fmt.Println(GetVersionInfo())
-}
 
 type HealthResponse struct {
 	Status    string `json:"status"`
@@ -65,7 +56,7 @@ func initDBAsync() {
 		var err error
 		connStr := os.Getenv("DATABASE_URL")
 		if connStr == "" {
-			connStr = "postgres://postgres:postgres@localhost:5432/fiscal_db?sslmode=disable"
+			connStr = "postgres://postgres:postgres@localhost:5432/fb_smartpick?sslmode=disable"
 			fmt.Println("DATABASE_URL not set, using default local connection:", connStr)
 		}
 
@@ -184,7 +175,6 @@ func onDBConnected() {
 			_, err = database.Exec(string(migration))
 			if err != nil {
 				log.Printf("Migration %s FAILED: %v", file, err)
-				// Only record as executed if object already existed — otherwise retry on next startup.
 				if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "duplicate") {
 					_, _ = database.Exec("INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING", baseName)
 					fmt.Printf("Migration %s skipped (already exists).\n", file)
@@ -198,44 +188,21 @@ func onDBConnected() {
 			}
 		}
 	}
-
-}
-
-func DBMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		database := getDB()
-		if database == nil {
-			dbMutex.RLock()
-			err := dbErr
-			dbMutex.RUnlock()
-			errMsg := "Database not initialized yet"
-			if err != nil {
-				errMsg += ": " + err.Error()
-			}
-			http.Error(w, errMsg, http.StatusServiceUnavailable)
-			return
-		}
-		next(w, r)
-	}
 }
 
 func main() {
 	_ = godotenv.Load()
-	PrintVersion()
+	fmt.Printf("FB_SMARTPICK Backend v%s\n", BackendVersion)
 
 	handlers.ValidateJWTSecret()
 	initDBAsync()
-	go services.StartRFBScheduler(getDB)
-
-	if os.Getenv("ENCRYPTION_KEY") == "" && os.Getenv("DATABASE_URL") != "" {
-		log.Println("WARNING: ENCRYPTION_KEY not set — RFB credentials use JWT_SECRET as fallback. Set ENCRYPTION_KEY for proper secret separation.")
-	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8081"
+		port = "8082"
 	}
 
+	// ── Health ────────────────────────────────────────────────────────────────
 	http.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
@@ -251,7 +218,8 @@ func main() {
 			} else {
 				dbStatus = "connected"
 			}
-			dbStats = fmt.Sprintf("Open: %d, InUse: %d, Idle: %d, Wait: %v", stats.OpenConnections, stats.InUse, stats.Idle, stats.WaitDuration)
+			dbStats = fmt.Sprintf("Open: %d, InUse: %d, Idle: %d, Wait: %v",
+				stats.OpenConnections, stats.InUse, stats.Idle, stats.WaitDuration)
 		} else {
 			dbMutex.RLock()
 			if dbErr != nil {
@@ -261,16 +229,15 @@ func main() {
 			dbMutex.RUnlock()
 		}
 
-		response := HealthResponse{
+		json.NewEncoder(w).Encode(HealthResponse{
 			Status:    "running",
 			Timestamp: time.Now().Format(time.RFC3339),
-			Service:   "FB_APU02 Apuração Assistida",
+			Service:   "FB_SMARTPICK Recalibração de Picking",
 			Version:   BackendVersion,
 			Features:  FeatureSet,
 			Database:  fmt.Sprintf("%s (%s)", dbStatus, dbStats),
 			DBError:   lastErr,
-		}
-		json.NewEncoder(w).Encode(response)
+		})
 	})
 
 	withDB := func(handlerFactory func(*sql.DB) http.HandlerFunc) http.HandlerFunc {
@@ -291,66 +258,33 @@ func main() {
 				http.Error(w, "Database initializing...", http.StatusServiceUnavailable)
 				return
 			}
-			h := handlerFactory(database)
-			handlers.AuthMiddleware(h, role)(w, r)
+			handlers.AuthMiddleware(handlerFactory(database), role)(w, r)
 		}
 	}
 
-	// Filiais Endpoint (global branch selector)
-	http.HandleFunc("/api/filiais", withAuth(handlers.GetFiliaisHandler, ""))
-
-	// Auth Routes
-	http.HandleFunc("/api/auth/register", withDB(handlers.RegisterHandler))
-	http.HandleFunc("/api/auth/login", withDB(handlers.LoginHandler))
-	http.HandleFunc("/api/auth/me", withAuth(handlers.GetMeHandler, ""))
+	// ── Auth ──────────────────────────────────────────────────────────────────
+	http.HandleFunc("/api/auth/register",        withDB(handlers.RegisterHandler))
+	http.HandleFunc("/api/auth/login",           withDB(handlers.LoginHandler))
+	http.HandleFunc("/api/auth/me",              withAuth(handlers.GetMeHandler, ""))
 	http.HandleFunc("/api/auth/forgot-password", withDB(handlers.ForgotPasswordHandler))
-	http.HandleFunc("/api/auth/reset-password", withDB(handlers.ResetPasswordHandler))
+	http.HandleFunc("/api/auth/reset-password",  withDB(handlers.ResetPasswordHandler))
 	http.HandleFunc("/api/auth/change-password", withAuth(handlers.ChangePasswordHandler, ""))
-	http.HandleFunc("/api/auth/refresh", withDB(handlers.RefreshHandler))
-	http.HandleFunc("/api/auth/logout", withDB(handlers.LogoutHandler))
-	http.HandleFunc("/api/user/hierarchy", withAuth(handlers.GetUserHierarchyHandler, ""))
-	http.HandleFunc("/api/user/companies", withAuth(handlers.GetUserCompaniesHandler, ""))
-	http.HandleFunc("/api/user/preferred-company", withAuth(handlers.UpdatePreferredCompanyHandler, ""))
+	http.HandleFunc("/api/auth/refresh",         withDB(handlers.RefreshHandler))
+	http.HandleFunc("/api/auth/logout",          withDB(handlers.LogoutHandler))
 
-	// Admin Endpoints
-	http.HandleFunc("/api/admin/reset-db", withAuth(handlers.ResetDatabaseHandler, "admin"))
-	http.HandleFunc("/api/admin/limpar-apuracao", withAuth(handlers.LimparDadosApuracaoHandler, "admin"))
-	http.HandleFunc("/api/company/reset-data", withAuth(handlers.ResetCompanyDataHandler, ""))
-	http.HandleFunc("/api/admin/refresh-views", withAuth(handlers.RefreshViewsHandler, ""))
-	http.HandleFunc("/api/admin/users", withAuth(handlers.ListUsersHandler, "admin"))
-	http.HandleFunc("/api/admin/users/create", withAuth(handlers.CreateUserHandler, "admin"))
+	// ── Hierarchy (tenant/grupo/empresa) ──────────────────────────────────────
+	http.HandleFunc("/api/user/hierarchy",          withAuth(handlers.GetUserHierarchyHandler, ""))
+	http.HandleFunc("/api/user/companies",          withAuth(handlers.GetUserCompaniesHandler, ""))
+	http.HandleFunc("/api/user/preferred-company",  withAuth(handlers.UpdatePreferredCompanyHandler, ""))
+
+	// ── Admin — Usuários ─────────────────────────────────────────────────────
+	http.HandleFunc("/api/admin/users",         withAuth(handlers.ListUsersHandler, "admin"))
+	http.HandleFunc("/api/admin/users/create",  withAuth(handlers.CreateUserHandler, "admin"))
 	http.HandleFunc("/api/admin/users/promote", withAuth(handlers.PromoteUserHandler, "admin"))
-	http.HandleFunc("/api/admin/users/delete", withAuth(handlers.DeleteUserHandler, "admin"))
+	http.HandleFunc("/api/admin/users/delete",  withAuth(handlers.DeleteUserHandler, "admin"))
 	http.HandleFunc("/api/admin/users/reassign", withAuth(handlers.ReassignUserHandler, "admin"))
 
-	// Configuration Endpoints
-	http.HandleFunc("/api/config/aliquotas", withAuth(handlers.GetTaxRatesHandler, ""))
-	http.HandleFunc("/api/config/cfop", withAuth(handlers.ListCFOPsHandler, ""))
-	http.HandleFunc("/api/config/cfop/import", withAuth(handlers.ImportCFOPsHandler, ""))
-
-	http.HandleFunc("/api/config/forn-simples", func(w http.ResponseWriter, r *http.Request) {
-		database := getDB()
-		if database == nil {
-			http.Error(w, "Database initializing...", http.StatusServiceUnavailable)
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			handlers.AuthMiddleware(handlers.ListFornSimplesHandler(database), "")(w, r)
-		case http.MethodPost:
-			handlers.AuthMiddleware(handlers.CreateFornSimplesHandler(database), "")(w, r)
-		case http.MethodDelete:
-			handlers.AuthMiddleware(handlers.DeleteFornSimplesHandler(database), "")(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-	http.HandleFunc("/api/config/forn-simples/import", withAuth(handlers.ImportFornSimplesHandler, ""))
-
-	http.HandleFunc("/api/config/filial-apelidos", withAuth(handlers.FilialApelidosHandler, ""))
-	http.HandleFunc("/api/config/filial-apelidos/import", withAuth(handlers.ImportFilialApelidosHandler, ""))
-
-	// Environment & Groups Endpoints
+	// ── Config — Ambientes / Grupos / Empresas ────────────────────────────────
 	http.HandleFunc("/api/config/environments", withAuth(func(db *sql.DB) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
@@ -398,121 +332,10 @@ func main() {
 		}
 	}, ""))
 
-	// ── Apuração Assistida + Receita Federal ──
+	// ── Filiais (selector global) ─────────────────────────────────────────────
+	http.HandleFunc("/api/filiais", withAuth(handlers.GetFiliaisHandler, ""))
 
-	// RFB Credentials
-	http.HandleFunc("/api/rfb/credentials", func(w http.ResponseWriter, r *http.Request) {
-		database := getDB()
-		if database == nil {
-			http.Error(w, "Database initializing...", http.StatusServiceUnavailable)
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			handlers.AuthMiddleware(handlers.GetRFBCredentialHandler(database), "")(w, r)
-		case http.MethodPost:
-			handlers.AuthMiddleware(handlers.SaveRFBCredentialHandler(database), "")(w, r)
-		case http.MethodDelete:
-			handlers.AuthMiddleware(handlers.DeleteRFBCredentialHandler(database), "")(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-	http.HandleFunc("/api/rfb/credentials/agendamento", func(w http.ResponseWriter, r *http.Request) {
-		database := getDB()
-		if database == nil {
-			http.Error(w, "Database initializing...", http.StatusServiceUnavailable)
-			return
-		}
-		handlers.AuthMiddleware(handlers.UpdateRFBScheduleHandler(database), "")(w, r)
-	})
-
-	// RFB Apuração
-	http.HandleFunc("/api/rfb/apuracao/solicitar", withAuth(handlers.SolicitarApuracaoHandler, ""))
-	http.HandleFunc("/api/rfb/apuracao/download", withAuth(handlers.DownloadManualHandler, ""))
-	http.HandleFunc("/api/rfb/apuracao/reprocess", withAuth(handlers.ReprocessHandler, ""))
-	http.HandleFunc("/api/rfb/apuracao/clear-errors", withAuth(handlers.ClearErrorsHandler, ""))
-	http.HandleFunc("/api/rfb/apuracao/status", withAuth(handlers.StatusApuracaoHandler, ""))
-	http.HandleFunc("/api/rfb/apuracao/", withAuth(handlers.DetalheApuracaoHandler, ""))
-
-	// RFB Webhook (PUBLIC - no JWT auth)
-	http.HandleFunc("/api/rfb/webhook", withDB(handlers.RFBWebhookHandler))
-
-	// NF-e Saídas
-	http.HandleFunc("/api/nfe-saidas/filiais",      withAuth(handlers.NfeSaidasFiliaisHandler, ""))
-	http.HandleFunc("/api/nfe-saidas/competencias", withAuth(handlers.NfeSaidasCompetenciasHandler, ""))
-	http.HandleFunc("/api/nfe-saidas",              withAuth(handlers.NfeSaidasListHandler, ""))
-
-	// NF-e Entradas
-	http.HandleFunc("/api/nfe-entradas/filiais",      withAuth(handlers.NfeEntradasFiliaisHandler, ""))
-	http.HandleFunc("/api/nfe-entradas/competencias", withAuth(handlers.NfeEntradasCompetenciasHandler, ""))
-	http.HandleFunc("/api/nfe-entradas",              withAuth(handlers.NfeEntradasListHandler, ""))
-
-	// CT-e Entradas
-	http.HandleFunc("/api/cte-entradas/filiais",      withAuth(handlers.CteEntradasFiliaisHandler, ""))
-	http.HandleFunc("/api/cte-entradas/competencias", withAuth(handlers.CteEntradasCompetenciasHandler, ""))
-	http.HandleFunc("/api/cte-entradas",              withAuth(handlers.CteEntradasListHandler, ""))
-
-	// Créditos em Risco
-	http.HandleFunc("/api/apuracao/creditos-perdidos/notas", withAuth(handlers.CreditosPerdidosNotasHandler, ""))
-	http.HandleFunc("/api/apuracao/creditos-perdidos",       withAuth(handlers.CreditosPerdidosHandler, ""))
-
-	// Painel Apuração IBS/CBS
-	http.HandleFunc("/api/apuracao/painel", withAuth(handlers.ApuracaoPainelHandler, ""))
-
-	// Managers (Gestores para relatórios)
-	http.HandleFunc("/api/managers", withAuth(handlers.ListManagersHandler, ""))
-	http.HandleFunc("/api/managers/create", withAuth(handlers.CreateManagerHandler, ""))
-	http.HandleFunc("/api/managers/", func(w http.ResponseWriter, r *http.Request) {
-		database := getDB()
-		if database == nil {
-			http.Error(w, "Database initializing...", http.StatusServiceUnavailable)
-			return
-		}
-		switch r.Method {
-		case http.MethodPut, http.MethodPatch:
-			handlers.AuthMiddleware(handlers.UpdateManagerHandler(database), "")(w, r)
-		case http.MethodDelete:
-			handlers.AuthMiddleware(handlers.DeleteManagerHandler(database), "")(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	// Malha Fina — documentos na RFB não importados
-	http.HandleFunc("/api/malha-fina/nfe-entradas", withAuth(handlers.MalhaFinaNFeEntradasHandler, ""))
-	http.HandleFunc("/api/malha-fina/nfe-saidas", withAuth(handlers.MalhaFinaNFeSaidasHandler, ""))
-	http.HandleFunc("/api/malha-fina/cte", withAuth(handlers.MalhaFinaCTeHandler, ""))
-	http.HandleFunc("/api/malha-fina/nfe-entradas/resumo", withAuth(handlers.MalhaFinaNFeEntradasResumoHandler, ""))
-	http.HandleFunc("/api/malha-fina/nfe-saidas/resumo", withAuth(handlers.MalhaFinaNFeSaidasResumoHandler, ""))
-	http.HandleFunc("/api/malha-fina/cte/resumo", withAuth(handlers.MalhaFinaCTeResumoHandler, ""))
-
-	// ERP Bridge — agendamento e histórico de execuções
-	http.HandleFunc("/api/erp-bridge/config",      withAuth(handlers.ERPBridgeConfigHandler, ""))
-	http.HandleFunc("/api/erp-bridge/servidores",             withAuth(handlers.ERPBridgeServidoresHandler, ""))
-	http.HandleFunc("/api/erp-bridge/servidores/registrar",   withAuth(handlers.ERPBridgeRegistrarServidoresHandler, ""))
-	http.HandleFunc("/api/erp-bridge/config/generate-api-key", withAuth(handlers.ERPBridgeGenerateAPIKeyHandler, ""))
-	http.HandleFunc("/api/erp-bridge/credentials",            func(w http.ResponseWriter, r *http.Request) {
-		database := getDB()
-		if database == nil {
-			http.Error(w, "Database initializing...", http.StatusServiceUnavailable)
-			return
-		}
-		handlers.ERPBridgeCredentialsHandler(database).ServeHTTP(w, r)
-	})
-	http.HandleFunc("/api/erp-bridge/trigger",     withAuth(handlers.ERPBridgeTriggerHandler, ""))
-	http.HandleFunc("/api/erp-bridge/pending",     withAuth(handlers.ERPBridgePendingHandler, ""))
-	http.HandleFunc("/api/erp-bridge/runs",        withAuth(handlers.ERPBridgeRunsHandler, ""))
-	http.HandleFunc("/api/erp-bridge/runs/",       withAuth(handlers.ERPBridgeRunHandler, ""))
-
-	// ERP Bridge — importação batch SAP S4/HANA, parceiros e heartbeat (auth via X-API-Key, sem JWT)
-	http.HandleFunc("/api/erp-bridge/import/batch",   withDB(handlers.ERPBridgeBatchImportHandler))
-	http.HandleFunc("/api/erp-bridge/parceiros/sync", withDB(handlers.ERPBridgeParceirosSyncHandler))
-	http.Handle("/api/erp-bridge/heartbeat", handlers.ERPBridgeHeartbeatHandler(db))
-
-	// Serve frontend static files (SPA — React Router)
-	// index.html: no-cache para que o browser sempre busque a versão atual após deploy.
-	// Assets com hash (JS/CSS): cache longo — o hash muda a cada build automaticamente.
+	// ── Frontend estático (SPA React) ─────────────────────────────────────────
 	staticDir := "./static"
 	if _, err := os.Stat(staticDir); err == nil {
 		fs := http.FileServer(http.Dir(staticDir))
@@ -523,14 +346,12 @@ func main() {
 			}
 			filePath := filepath.Join(staticDir, filepath.Clean(r.URL.Path))
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				// SPA fallback → index.html nunca cacheado
 				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 				w.Header().Set("Pragma", "no-cache")
 				w.Header().Set("Expires", "0")
 				http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
 				return
 			}
-			// index.html direto também não deve ser cacheado
 			if r.URL.Path == "/" || r.URL.Path == "/index.html" {
 				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 				w.Header().Set("Pragma", "no-cache")
@@ -541,10 +362,7 @@ func main() {
 		fmt.Println("Serving frontend from ./static")
 	}
 
-	fmt.Printf("FB_APU02 Apuração Assistida (Go) starting on port %s...\n", port)
-	fmt.Println("==================================================")
-	fmt.Printf("   FB_APU02 BACKEND - %s\n", BackendVersion)
-	fmt.Println("==================================================")
+	fmt.Printf("FB_SMARTPICK starting on port %s...\n", port)
 
 	allowedOrigins := handlers.GetAllowedOrigins()
 	server := &http.Server{
@@ -568,8 +386,7 @@ func main() {
 			log.Printf("HTTP server shutdown error: %v", err)
 		}
 
-		database := getDB()
-		if database != nil {
+		if database := getDB(); database != nil {
 			log.Println("Closing database connections...")
 			database.Close()
 		}

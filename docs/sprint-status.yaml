@@ -46,10 +46,10 @@ development_status:
   # Clone FB_APU02 → renomear módulo Go → banco fb_smartpick →
   # schema smartpick → infra smartpick.fbtax.cloud
   # ─────────────────────────────────────────────────────────────
-  epic-1: backlog
-  1-1-setup-do-clone-e-renomeacao-do-projeto: backlog
-  1-2-criacao-do-banco-de-dados-e-schema-smartpick: backlog
-  1-3-remocao-dos-modulos-de-dominio-do-apu02: backlog
+  epic-1: in-progress
+  1-1-setup-do-clone-e-renomeacao-do-projeto: done
+  1-2-criacao-do-banco-de-dados-e-schema-smartpick: done
+  1-3-remocao-dos-modulos-de-dominio-do-apu02: done
   epic-1-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────
