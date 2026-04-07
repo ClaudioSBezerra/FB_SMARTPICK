@@ -5,6 +5,7 @@ import GestaoAmbiente from './pages/GestaoAmbiente'
 import AdminUsers from './pages/AdminUsers'
 import SpUsuarios from './pages/SpUsuarios'
 import SpAmbiente from './pages/SpAmbiente'
+import SpUploadCSV from './pages/SpUploadCSV'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -130,8 +131,8 @@ function AppLayout() {
               <Route path="/dashboard/urgencia/espaco" element={<ComingSoon title="Dashboard — Urgência de Espaço" />} />
 
               {/* Upload CSV (Epic 4) */}
-              <Route path="/upload/csv" element={<ComingSoon title="Upload de CSV" />} />
-              <Route path="/upload/log" element={<ComingSoon title="Log de Processamento" />} />
+              <Route path="/upload/csv" element={<ProtectedRoute><SpUploadCSV /></ProtectedRoute>} />
+              <Route path="/upload/log" element={<ProtectedRoute><SpUploadCSV /></ProtectedRoute>} />
 
               {/* Histórico (Epic 7) */}
               <Route path="/historico"            element={<ComingSoon title="Histórico de Calibragem" />} />

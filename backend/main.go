@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"fb_smartpick/handlers"
+	"fb_smartpick/services"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -196,6 +197,7 @@ func main() {
 
 	handlers.ValidateJWTSecret()
 	initDBAsync()
+	go services.StartCSVWorker(getDB)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -384,6 +386,12 @@ func main() {
 		}
 	}, "gestor_filial"))
 	http.HandleFunc("/api/sp/plano", withSP(handlers.SpPlanoHandler, "gestor_filial"))
+
+	// ── SmartPick — CSV Upload e Motor ────────────────────────────────────
+	http.HandleFunc("/api/sp/csv/upload",    withSP(handlers.SpCSVUploadHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/csv/jobs",      withSP(handlers.SpCSVJobsHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/csv/jobs/",     withSP(handlers.SpCSVJobStatusHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/motor/calibrar", withSP(handlers.SpMotorCalibrarHandler, "gestor_geral"))
 
 	http.HandleFunc("/api/sp/usuarios/", withSP(func(db *sql.DB) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

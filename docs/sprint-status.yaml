@@ -85,13 +85,13 @@ development_status:
   #   4.1 → 4.4 → 4.2 → 4.3 → 4.5 → 4.6
   # (migration sp_propostas antes do worker e do motor)
   # ─────────────────────────────────────────────────────────────
-  epic-4: backlog
-  4-1-migrations-de-enderecos-jobs-csv-e-audit-log: backlog
-  4-2-worker-assincrono-de-csv: backlog
-  4-3-upload-de-csv-e-enfileiramento: backlog
-  4-4-migrations-de-propostas: backlog
-  4-5-motor-de-calibragem: backlog
-  4-6-pagina-de-upload-csv-e-log-de-processamento-frontend: backlog
+  epic-4: done
+  4-1-migrations-de-enderecos-jobs-csv-e-audit-log: done
+  4-2-worker-assincrono-de-csv: done
+  4-3-upload-de-csv-e-enfileiramento: done
+  4-4-migrations-de-propostas: done
+  4-5-motor-de-calibragem: done
+  4-6-pagina-de-upload-csv-e-log-de-processamento-frontend: done
   epic-4-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────
