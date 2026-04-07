@@ -122,7 +122,7 @@ export default function SpAmbiente() {
     },
   })
 
-  const { data: plano } = useQuery<SpPlano>({
+  const { data: plano, isLoading: loadingPlano, isError: erroPlano } = useQuery<SpPlano>({
     queryKey: ['sp-plano'],
     queryFn: async () => {
       const r = await fetch('/api/sp/plano', { headers })
@@ -312,6 +312,8 @@ export default function SpAmbiente() {
 
         {/* ── Aba: Plano ─────────────────────────────────────────────────── */}
         <TabsContent value="plano">
+          {loadingPlano && <p className="text-sm text-muted-foreground py-4">Carregando plano...</p>}
+          {erroPlano && <p className="text-sm text-destructive py-4">Erro ao carregar informações do plano.</p>}
           {plano && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">

@@ -354,6 +354,8 @@ func main() {
 			switch r.Method {
 			case http.MethodGet:
 				handlers.SpListUsuariosHandler(db)(w, r)
+			case http.MethodPost:
+				handlers.SpCriarUsuarioHandler(db)(w, r)
 			default:
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}

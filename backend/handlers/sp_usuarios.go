@@ -173,6 +173,121 @@ func SpUpdateRoleHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// SpCriarUsuarioRequest — payload para POST /api/sp/usuarios
+type SpCriarUsuarioRequest struct {
+	FullName    string `json:"full_name"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	SpRole      string `json:"sp_role"`       // gestor_geral | gestor_filial | somente_leitura
+	TrialDias   int    `json:"trial_dias"`    // 0 = 365 dias padrão
+	AllFiliais  bool   `json:"all_filiais"`
+	FilialIDs   []int  `json:"filial_ids"`
+}
+
+// SpCriarUsuarioHandler cria um novo usuário vinculado à empresa ativa (admin_fbtax only).
+// POST /api/sp/usuarios
+func SpCriarUsuarioHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil || !spCtx.IsAdminFbtax() {
+			http.Error(w, "Forbidden: apenas admin_fbtax pode criar usuários", http.StatusForbidden)
+			return
+		}
+
+		var req SpCriarUsuarioRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		if req.FullName == "" || req.Email == "" || req.Password == "" {
+			http.Error(w, "full_name, email e password são obrigatórios", http.StatusBadRequest)
+			return
+		}
+
+		validRoles := map[string]bool{
+			"gestor_geral": true, "gestor_filial": true, "somente_leitura": true,
+		}
+		if req.SpRole == "" {
+			req.SpRole = "somente_leitura"
+		}
+		if !validRoles[req.SpRole] {
+			http.Error(w, "sp_role inválido", http.StatusBadRequest)
+			return
+		}
+
+		dias := req.TrialDias
+		if dias <= 0 {
+			dias = 365
+		}
+		trialEndsAt := time.Now().Add(time.Duration(dias) * 24 * time.Hour)
+
+		hash, err := HashPassword(req.Password)
+		if err != nil {
+			http.Error(w, "Erro ao processar senha", http.StatusInternalServerError)
+			return
+		}
+
+		// Cria usuário na tabela pública
+		var userID string
+		err = db.QueryRow(`
+			INSERT INTO users (email, password_hash, full_name, trial_ends_at, is_verified, role, sp_role)
+			VALUES ($1, $2, $3, $4, TRUE, 'user', $5)
+			RETURNING id
+		`, req.Email, hash, req.FullName, trialEndsAt, req.SpRole).Scan(&userID)
+		if err != nil {
+			if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
+				http.Error(w, "E-mail já cadastrado", http.StatusConflict)
+				return
+			}
+			log.Printf("SpCriarUsuario: insert user error: %v", err)
+			http.Error(w, "Erro ao criar usuário", http.StatusInternalServerError)
+			return
+		}
+
+		// Vincula ao environment da empresa ativa
+		var envID string
+		err = db.QueryRow(`
+			SELECT eg.environment_id
+			FROM companies c
+			JOIN enterprise_groups eg ON eg.id = c.group_id
+			WHERE c.id = $1
+			LIMIT 1
+		`, spCtx.EmpresaID).Scan(&envID)
+		if err == nil && envID != "" {
+			_, _ = db.Exec(
+				"INSERT INTO user_environments (user_id, environment_id, role) VALUES ($1, $2, 'user') ON CONFLICT DO NOTHING",
+				userID, envID,
+			)
+		}
+
+		// Vincula filiais no SmartPick
+		if req.AllFiliais {
+			_, _ = db.Exec(`
+				INSERT INTO smartpick.sp_user_filiais (user_id, empresa_id, filial_id, all_filiais)
+				VALUES ($1, $2, NULL, TRUE) ON CONFLICT DO NOTHING
+			`, userID, spCtx.EmpresaID)
+		} else {
+			for _, fid := range req.FilialIDs {
+				_, _ = db.Exec(`
+					INSERT INTO smartpick.sp_user_filiais (user_id, empresa_id, filial_id, all_filiais)
+					VALUES ($1, $2, $3, FALSE) ON CONFLICT DO NOTHING
+				`, userID, spCtx.EmpresaID, fid)
+			}
+		}
+
+		log.Printf("SpCriarUsuario: criado user %s (%s) sp_role=%s empresa=%s por %s",
+			userID, req.Email, req.SpRole, spCtx.EmpresaID, spCtx.UserID)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]string{"id": userID, "message": "Usuário criado com sucesso"})
+	}
+}
+
 // SpVincularFiliaisHandler define (replace) as filiais acessíveis para um usuário.
 func SpVincularFiliaisHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

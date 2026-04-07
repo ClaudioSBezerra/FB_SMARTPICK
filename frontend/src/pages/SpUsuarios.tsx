@@ -5,6 +5,7 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -12,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { ShieldCheck, Building2 } from 'lucide-react'
+import { ShieldCheck, Building2, UserPlus } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -68,10 +69,20 @@ export default function SpUsuarios() {
   // ── State ────────────────────────────────────────────────────────────────────
   const [roleDialog,    setRoleDialog]    = useState(false)
   const [filiaisDialog, setFiliaisDialog] = useState(false)
+  const [novoDialog,    setNovoDialog]    = useState(false)
   const [selected,      setSelected]      = useState<SpUsuario | null>(null)
   const [newRole,       setNewRole]       = useState('')
   const [allFiliais,    setAllFiliais]    = useState(false)
   const [chosenFiliais, setChosenFiliais] = useState<number[]>([])
+
+  // Campos do novo usuário
+  const [novoNome,      setNovoNome]      = useState('')
+  const [novoEmail,     setNovoEmail]     = useState('')
+  const [novaSenha,     setNovaSenha]     = useState('')
+  const [novoSpRole,    setNovoSpRole]    = useState('somente_leitura')
+  const [novoTrialDias, setNovoTrialDias] = useState('365')
+  const [novoAllFiliais, setNovoAllFiliais] = useState(false)
+  const [novoFiliais,   setNovoFiliais]   = useState<number[]>([])
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: usuarios = [], isLoading } = useQuery<SpUsuario[]>({
@@ -114,6 +125,37 @@ export default function SpUsuarios() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const criarUsuario = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/sp/usuarios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          full_name: novoNome,
+          email: novoEmail,
+          password: novaSenha,
+          sp_role: novoSpRole,
+          trial_dias: parseInt(novoTrialDias) || 365,
+          all_filiais: novoAllFiliais,
+          filial_ids: novoAllFiliais ? [] : novoFiliais,
+        }),
+      })
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(txt || 'Erro ao criar usuário')
+      }
+    },
+    onSuccess: () => {
+      toast.success('Usuário criado com sucesso')
+      qc.invalidateQueries({ queryKey: ['sp-usuarios'] })
+      setNovoDialog(false)
+      setNovoNome(''); setNovoEmail(''); setNovaSenha('')
+      setNovoSpRole('somente_leitura'); setNovoTrialDias('365')
+      setNovoAllFiliais(false); setNovoFiliais([])
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const updateFiliais = useMutation({
     mutationFn: async ({ id, all_filiais, filial_ids }: { id: string; all_filiais: boolean; filial_ids: number[] }) => {
       const res = await fetch(`/api/sp/usuarios/${id}/filiais`, {
@@ -151,11 +193,18 @@ export default function SpUsuarios() {
     )
   }
 
+  function toggleNovoFilial(id: number) {
+    setNovoFiliais(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Usuários SmartPick</h2>
+        <Button size="sm" onClick={() => setNovoDialog(true)}>
+          <UserPlus className="h-4 w-4 mr-1" /> Novo Usuário
+        </Button>
       </div>
 
       {isLoading ? (
@@ -209,6 +258,72 @@ export default function SpUsuarios() {
           </TableBody>
         </Table>
       )}
+
+      {/* ── Dialog: novo usuário ──────────────────────────────────────────── */}
+      <Dialog open={novoDialog} onOpenChange={setNovoDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Usuário SmartPick</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid gap-1.5">
+              <Label>Nome completo</Label>
+              <Input value={novoNome} onChange={e => setNovoNome(e.target.value)} placeholder="João Silva" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>E-mail</Label>
+              <Input type="email" value={novoEmail} onChange={e => setNovoEmail(e.target.value)} placeholder="joao@empresa.com" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Senha inicial</Label>
+              <Input type="password" value={novaSenha} onChange={e => setNovaSenha(e.target.value)} placeholder="Mínimo 6 caracteres" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Perfil SmartPick</Label>
+              <Select value={novoSpRole} onValueChange={setNovoSpRole}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gestor_geral">Gestor Geral</SelectItem>
+                  <SelectItem value="gestor_filial">Gestor de Filial</SelectItem>
+                  <SelectItem value="somente_leitura">Somente Leitura</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Validade (dias)</Label>
+              <Input type="number" value={novoTrialDias} onChange={e => setNovoTrialDias(e.target.value)} placeholder="365" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Checkbox id="novo-all" checked={novoAllFiliais} onCheckedChange={v => setNovoAllFiliais(!!v)} />
+                <Label htmlFor="novo-all">Acesso a todas as filiais</Label>
+              </div>
+              {!novoAllFiliais && (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto border rounded p-2">
+                  {filiais.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma filial cadastrada.</p>}
+                  {filiais.map(f => (
+                    <div key={f.id} className="flex items-center gap-2">
+                      <Checkbox id={`nf-${f.id}`} checked={novoFiliais.includes(f.id)} onCheckedChange={() => toggleNovoFilial(f.id)} />
+                      <Label htmlFor={`nf-${f.id}`} className="text-sm cursor-pointer">
+                        {f.nome} <span className="text-muted-foreground">({f.cod_filial})</span>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNovoDialog(false)}>Cancelar</Button>
+            <Button
+              disabled={criarUsuario.isPending || !novoNome || !novoEmail || !novaSenha}
+              onClick={() => criarUsuario.mutate()}
+            >
+              {criarUsuario.isPending ? 'Criando...' : 'Criar Usuário'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog: alterar perfil ─────────────────────────────────────────── */}
       <Dialog open={roleDialog} onOpenChange={setRoleDialog}>
