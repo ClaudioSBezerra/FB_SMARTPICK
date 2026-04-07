@@ -98,35 +98,42 @@ func processNextJob(db *sql.DB) {
 }
 
 // Mapeamento de colunas do CSV (posição 0-based conforme Calibragem_WMS_v2.csv)
+// Estrutura real do WMS exportado (27 colunas, índices 0-26):
+//   0:CODFILIAL  1:CODEPTO  2:DEPARTAMENTO  3:CODSEC  4:SECAO  5:CODPROD
+//   6:PRODUTO  7:EMBALAGEM  8:QTUNITCX  9:FORALINHA  10:RUA  11:PREDIO
+//   12:APTO  13:CAPACIDADE  14:NORMA_PALETE  15:PONTOREPOSICAO
+//   16:CLASSEVENDA  17:CLASSEVENDA_DIAS  18:QTGIRODIA_SISTEMA
+//   19:QTACESSO_PICKING_PERIODO_90  20:QT_DIAS  21:QT_PROD  22:QT_PROD_CX
+//   23:MED_VENDA_DIAS_CX  24:MED_VENDA_DIAS  25:MED_DIAS_ESTOQUE
+//   26:MED_VENDA_DIAS_CX_ANOANT_MESSEG
 const (
-	colCodFilial   = 0
-	colCodEpto     = 1
+	colCodFilial    = 0
+	colCodEpto      = 1
 	colDepartamento = 2
-	colCodSec      = 3
-	colSecao       = 4
-	colCodProd     = 5
-	colProduto     = 6
-	colEmbalagem   = 7
-	colForaLinha   = 8
-	colRua         = 9
-	colPredio      = 10
-	colApto        = 11
-	colCapacidade  = 12
-	colNormaPalete = 13
-	colPontoRep    = 14
-	colClasseVenda = 15
-	colClasseDias  = 16
-	colGiroDia     = 17
-	colAcesso90    = 18
-	colQtDias      = 19
-	colQtProd      = 20
-	colQtProdCx    = 21
-	colMedVendaCx  = 22
-	colMedVendaDias = 23
-	colMedDiasEst  = 24
-	colMedVendaCxAA = 25
-	colUnidMaster  = 26
-	// coluna 27 = SUGESTÃO CALIBRAGEM — ignorada (gerada pelo motor)
+	colCodSec       = 3
+	colSecao        = 4
+	colCodProd      = 5
+	colProduto      = 6
+	colEmbalagem    = 7
+	colQtUnitCx     = 8  // QTUNITCX — armazenado em unidade_master
+	colForaLinha    = 9
+	colRua          = 10
+	colPredio       = 11
+	colApto         = 12
+	colCapacidade   = 13
+	colNormaPalete  = 14
+	colPontoRep     = 15
+	colClasseVenda  = 16
+	colClasseDias   = 17
+	colGiroDia      = 18
+	colAcesso90     = 19
+	colQtDias       = 20
+	colQtProd       = 21
+	colQtProdCx     = 22
+	colMedVendaCx   = 23
+	colMedVendaDias = 24
+	colMedDiasEst   = 25
+	colMedVendaCxAA = 26
 )
 
 func parseAndInsertCSV(db *sql.DB, jobID, filePath, empresaID string, filialID int) (ok, erros int, err error) {
@@ -296,7 +303,7 @@ func rowToArgs(jobID string, filialID int, row []string) []interface{} {
 		parseFloat(get(colMedVendaDias)), // $26 med_venda_dias
 		parseFloat(get(colMedDiasEst)), // $27 med_dias_estoque
 		parseFloat(get(colMedVendaCxAA)), // $28 med_venda_cx_aa
-		parseInt(get(colUnidMaster)),   // $29 unidade_master
+		parseInt(get(colQtUnitCx)),     // $29 unidade_master (= QTUNITCX)
 	}
 }
 

@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Plus, Copy, Settings2, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Copy, Settings2, Trash2, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -99,6 +99,7 @@ export default function SpAmbiente() {
   const [newCDDesc,      setNewCDDesc]      = useState('')
   const [dupNome,        setDupNome]        = useState('')
   const [editParams,     setEditParams]     = useState<Partial<SpMotorParams>>({})
+  const [limparDialog,   setLimparDialog]   = useState(false)
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const headers = { Authorization: `Bearer ${token}` }
@@ -217,6 +218,22 @@ export default function SpAmbiente() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const limparCalibragem = useMutation({
+    mutationFn: async () => {
+      const r = await fetch('/api/sp/admin/limpar-calibragem', {
+        method: 'DELETE', headers,
+      })
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    },
+    onSuccess: (data: Record<string, unknown>) => {
+      toast.success(`Limpeza concluída: ${data.sp_propostas ?? 0} propostas, ${data.sp_enderecos ?? 0} endereços, ${data.sp_csv_jobs ?? 0} jobs removidos`)
+      qc.invalidateQueries({ queryKey: ['sp-plano'] })
+      setLimparDialog(false)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   function openParams(cd: SpCD) {
     setParamsCD(cd.id)
     fetch(`/api/sp/cds/${cd.id}/params`, { headers })
@@ -232,6 +249,7 @@ export default function SpAmbiente() {
         <TabsList>
           <TabsTrigger value="filiais">Filiais e CDs</TabsTrigger>
           <TabsTrigger value="plano">Plano e Limites</TabsTrigger>
+          <TabsTrigger value="manutencao">Manutenção</TabsTrigger>
         </TabsList>
 
         {/* ── Aba: Filiais e CDs ─────────────────────────────────────────── */}
@@ -355,7 +373,58 @@ export default function SpAmbiente() {
             </div>
           )}
         </TabsContent>
+
+        {/* ── Aba: Manutenção ─────────────────────────────────────────────── */}
+        <TabsContent value="manutencao">
+          <div className="space-y-4 max-w-lg">
+            <div className="border rounded-md p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Limpar Dados de Calibragem</p>
+                  <p className="text-xs text-muted-foreground">
+                    Remove todos os imports de CSV, endereços, propostas e histórico de calibragem.
+                    <strong> Preserva</strong> filiais, CDs, parâmetros do motor e usuários.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setLimparDialog(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                Limpar dados de calibragem
+              </Button>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
+
+      {/* ── Dialog: Confirmar limpeza ───────────────────────────────────────── */}
+      <Dialog open={limparDialog} onOpenChange={setLimparDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Confirmar limpeza
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            Esta ação irá remover <strong>todos</strong> os imports, endereços, propostas e histórico de calibragem da empresa. Os cadastros (filiais, CDs e parâmetros) serão mantidos.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLimparDialog(false)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={limparCalibragem.isPending}
+              onClick={() => limparCalibragem.mutate()}
+            >
+              {limparCalibragem.isPending ? 'Limpando...' : 'Confirmar limpeza'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog: Nova Filial ─────────────────────────────────────────────── */}
       <Dialog open={filialDialog} onOpenChange={setFilialDialog}>
