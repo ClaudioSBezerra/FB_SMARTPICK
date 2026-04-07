@@ -97,46 +97,64 @@ func processNextJob(db *sql.DB) {
 	log.Printf("[CSVWorker] job %s concluído: %d ok / %d erros", jobID, linhasOk, linhasErro)
 }
 
-// Mapeamento de colunas do CSV (posição 0-based conforme Calibragem_WMS_v2.csv)
-// Estrutura real do WMS exportado (27 colunas, índices 0-26):
-//   0:CODFILIAL  1:CODEPTO  2:DEPARTAMENTO  3:CODSEC  4:SECAO  5:CODPROD
-//   6:PRODUTO  7:EMBALAGEM  8:QTUNITCX  9:FORALINHA  10:RUA  11:PREDIO
-//   12:APTO  13:CAPACIDADE  14:NORMA_PALETE  15:PONTOREPOSICAO
-//   16:CLASSEVENDA  17:CLASSEVENDA_DIAS  18:QTGIRODIA_SISTEMA
-//   19:QTACESSO_PICKING_PERIODO_90  20:QT_DIAS  21:QT_PROD  22:QT_PROD_CX
-//   23:MED_VENDA_DIAS_CX  24:MED_VENDA_DIAS  25:MED_DIAS_ESTOQUE
-//   26:MED_VENDA_DIAS_CX_ANOANT_MESSEG
-const (
-	colCodFilial    = 0
-	colCodEpto      = 1
-	colDepartamento = 2
-	colCodSec       = 3
-	colSecao        = 4
-	colCodProd      = 5
-	colProduto      = 6
-	colEmbalagem    = 7
-	colQtUnitCx     = 8  // QTUNITCX — armazenado em unidade_master
-	colForaLinha    = 9
-	colRua          = 10
-	colPredio       = 11
-	colApto         = 12
-	colCapacidade   = 13
-	colNormaPalete  = 14
-	colPontoRep     = 15
-	colClasseVenda  = 16
-	colClasseDias   = 17
-	colGiroDia      = 18
-	colAcesso90     = 19
-	colQtDias       = 20
-	colQtProd       = 21
-	colQtProdCx     = 22
-	colMedVendaCx   = 23
-	colMedVendaDias = 24
-	colMedDiasEst   = 25
-	colMedVendaCxAA = 26
-)
+// csvCols agrupa os índices de colunas detectados pelo cabeçalho do CSV.
+// Suporta múltiplos formatos WMS (com ou sem QTUNITCX).
+type csvCols struct {
+	codFilial, codEpto, departamento, codSec, secao int
+	codProd, produto, embalagem, qtUnitCx, foraLinha int
+	rua, predio, apto                               int
+	capacidade, normaPalete, pontoRep               int
+	classeVenda, classeDias                         int
+	giroDia, acesso90                               int
+	qtDias, qtProd, qtProdCx                        int
+	medVendaCx, medVendaDias, medDiasEst, medVendaCxAA int
+}
 
-func parseAndInsertCSV(db *sql.DB, jobID, filePath, empresaID string, filialID int) (ok, erros int, err error) {
+// detectCols mapeia o cabeçalho CSV (case-insensitive) para índices de coluna.
+// Colunas ausentes ficam com valor -1.
+func detectCols(header []string) csvCols {
+	idx := map[string]int{}
+	for i, h := range header {
+		idx[strings.ToUpper(strings.TrimSpace(h))] = i
+	}
+	get := func(name string) int {
+		if i, ok := idx[name]; ok {
+			return i
+		}
+		return -1
+	}
+	return csvCols{
+		codFilial:    get("CODFILIAL"),
+		codEpto:      get("CODEPTO"),
+		departamento: get("DEPARTAMENTO"),
+		codSec:       get("CODSEC"),
+		secao:        get("SECAO"),
+		codProd:      get("CODPROD"),
+		produto:      get("PRODUTO"),
+		embalagem:    get("EMBALAGEM"),
+		qtUnitCx:     get("QTUNITCX"),   // opcional: ausente em alguns exports
+		foraLinha:    get("FORALINHA"),
+		rua:          get("RUA"),
+		predio:       get("PREDIO"),
+		apto:         get("APTO"),
+		capacidade:   get("CAPACIDADE"),
+		normaPalete:  get("NORMA_PALETE"),
+		pontoRep:     get("PONTOREPOSICAO"),
+		classeVenda:  get("CLASSEVENDA"),
+		classeDias:   get("CLASSEVENDA_DIAS"),
+		giroDia:      get("QTGIRODIA_SISTEMA"),
+		acesso90:     get("QTACESSO_PICKING_PERIODO_90"),
+		qtDias:       get("QT_DIAS"),
+		qtProd:       get("QT_PROD"),
+		qtProdCx:     get("QT_PROD_CX"),
+		medVendaCx:   get("MED_VENDA_DIAS_CX"),
+		medVendaDias: get("MED_VENDA_DIAS"),
+		medDiasEst:   get("MED_DIAS_ESTOQUE"),
+		medVendaCxAA: get("MED_VENDA_DIAS_CX_ANOANT_MESSEG"),
+	}
+}
+
+func parseAndInsertCSV(db *sql.DB, jobID, filePath, _ string, filialID int) (ok, erros int, err error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return 0, 0, fmt.Errorf("arquivo não encontrado: %w", err)
@@ -156,6 +174,12 @@ func parseAndInsertCSV(db *sql.DB, jobID, filePath, empresaID string, filialID i
 	// Remove BOM da primeira coluna do cabeçalho se presente
 	if len(header) > 0 {
 		header[0] = strings.TrimPrefix(header[0], "\xef\xbb\xbf")
+	}
+
+	// Detecta índices das colunas pelo nome (suporta qualquer ordem/formato WMS)
+	cols := detectCols(header)
+	if cols.codProd < 0 || cols.rua < 0 {
+		return 0, 0, fmt.Errorf("cabeçalho inválido: colunas obrigatórias (CODPROD, RUA) não encontradas")
 	}
 
 	// Processa em batch de 500 linhas por transação
@@ -190,11 +214,11 @@ func parseAndInsertCSV(db *sql.DB, jobID, filePath, empresaID string, filialID i
 		defer stmt.Close()
 
 		for _, row := range batch {
-			if len(row) < 27 {
+			if len(row) < 10 {
 				erros++
 				continue
 			}
-			args := rowToArgs(jobID, filialID, row)
+			args := rowToArgs(jobID, filialID, row, cols)
 			if _, execErr := stmt.Exec(args...); execErr != nil {
 				log.Printf("[CSVWorker] erro na linha: %v", execErr)
 				erros++
@@ -232,15 +256,16 @@ func parseAndInsertCSV(db *sql.DB, jobID, filePath, empresaID string, filialID i
 }
 
 // rowToArgs converte uma linha CSV nos argumentos do prepared statement.
-func rowToArgs(jobID string, filialID int, row []string) []interface{} {
+// cols contém os índices detectados dinamicamente pelo cabeçalho.
+func rowToArgs(jobID string, filialID int, row []string, cols csvCols) []any {
 	get := func(i int) string {
-		if i < len(row) {
+		if i >= 0 && i < len(row) {
 			return strings.TrimSpace(row[i])
 		}
 		return ""
 	}
-	parseInt := func(s string) *int {
-		s = strings.TrimSpace(s)
+	parseInt := func(i int) *int {
+		s := strings.TrimSpace(get(i))
 		if s == "" {
 			return nil
 		}
@@ -250,8 +275,8 @@ func rowToArgs(jobID string, filialID int, row []string) []interface{} {
 		}
 		return &v
 	}
-	parseFloat := func(s string) *float64 {
-		s = strings.TrimSpace(strings.ReplaceAll(s, ",", "."))
+	parseFloat := func(i int) *float64 {
+		s := strings.TrimSpace(strings.ReplaceAll(get(i), ",", "."))
 		if s == "" {
 			return nil
 		}
@@ -262,52 +287,51 @@ func rowToArgs(jobID string, filialID int, row []string) []interface{} {
 		return &v
 	}
 
-	codFilial := parseInt(get(colCodFilial))
 	codFilialVal := filialID
-	if codFilial != nil {
-		codFilialVal = *codFilial
+	if cf := parseInt(cols.codFilial); cf != nil {
+		codFilialVal = *cf
 	}
 
-	foraLinha := strings.EqualFold(get(colForaLinha), "S")
-	classeVenda := get(colClasseVenda)
+	foraLinha := strings.EqualFold(get(cols.foraLinha), "S")
+	classeVenda := get(cols.classeVenda)
 	if len(classeVenda) > 1 {
 		classeVenda = classeVenda[:1]
 	}
 
-	return []interface{}{
-		jobID,                          // $1  job_id
-		filialID,                       // $2  filial_id
-		codFilialVal,                   // $3  cod_filial
-		parseInt(get(colCodEpto)),      // $4  codepto
-		get(colDepartamento),           // $5  departamento
-		parseInt(get(colCodSec)),       // $6  codsec
-		get(colSecao),                  // $7  secao
-		parseInt(get(colCodProd)),      // $8  codprod
-		get(colProduto),                // $9  produto
-		get(colEmbalagem),              // $10 embalagem
-		foraLinha,                      // $11 fora_linha
-		parseInt(get(colRua)),          // $12 rua
-		parseInt(get(colPredio)),       // $13 predio
-		parseInt(get(colApto)),         // $14 apto
-		parseInt(get(colCapacidade)),   // $15 capacidade
-		parseInt(get(colNormaPalete)),  // $16 norma_palete
-		parseInt(get(colPontoRep)),     // $17 ponto_reposicao
-		nilIfEmpty(classeVenda),        // $18 classe_venda
-		parseInt(get(colClasseDias)),   // $19 classe_venda_dias
-		parseFloat(get(colGiroDia)),    // $20 qt_giro_dia
-		parseInt(get(colAcesso90)),     // $21 qt_acesso_90
-		parseInt(get(colQtDias)),       // $22 qt_dias
-		parseInt(get(colQtProd)),       // $23 qt_prod
-		parseInt(get(colQtProdCx)),     // $24 qt_prod_cx
-		parseFloat(get(colMedVendaCx)), // $25 med_venda_cx
-		parseFloat(get(colMedVendaDias)), // $26 med_venda_dias
-		parseFloat(get(colMedDiasEst)), // $27 med_dias_estoque
-		parseFloat(get(colMedVendaCxAA)), // $28 med_venda_cx_aa
-		parseInt(get(colQtUnitCx)),     // $29 unidade_master (= QTUNITCX)
+	return []any{
+		jobID,                      // $1  job_id
+		filialID,                   // $2  filial_id
+		codFilialVal,               // $3  cod_filial
+		parseInt(cols.codEpto),     // $4  codepto
+		get(cols.departamento),     // $5  departamento
+		parseInt(cols.codSec),      // $6  codsec
+		get(cols.secao),            // $7  secao
+		parseInt(cols.codProd),     // $8  codprod
+		get(cols.produto),          // $9  produto
+		get(cols.embalagem),        // $10 embalagem
+		foraLinha,                  // $11 fora_linha
+		parseInt(cols.rua),         // $12 rua
+		parseInt(cols.predio),      // $13 predio
+		parseInt(cols.apto),        // $14 apto
+		parseInt(cols.capacidade),  // $15 capacidade
+		parseInt(cols.normaPalete), // $16 norma_palete
+		parseInt(cols.pontoRep),    // $17 ponto_reposicao
+		nilIfEmpty(classeVenda),    // $18 classe_venda
+		parseInt(cols.classeDias),  // $19 classe_venda_dias
+		parseFloat(cols.giroDia),   // $20 qt_giro_dia
+		parseInt(cols.acesso90),    // $21 qt_acesso_90
+		parseInt(cols.qtDias),      // $22 qt_dias
+		parseInt(cols.qtProd),      // $23 qt_prod
+		parseInt(cols.qtProdCx),    // $24 qt_prod_cx
+		parseFloat(cols.medVendaCx),  // $25 med_venda_cx
+		parseFloat(cols.medVendaDias), // $26 med_venda_dias
+		parseFloat(cols.medDiasEst),  // $27 med_dias_estoque
+		parseFloat(cols.medVendaCxAA), // $28 med_venda_cx_aa
+		parseInt(cols.qtUnitCx),    // $29 unidade_master (QTUNITCX; nil quando ausente)
 	}
 }
 
-func nilIfEmpty(s string) interface{} {
+func nilIfEmpty(s string) any {
 	if s == "" {
 		return nil
 	}

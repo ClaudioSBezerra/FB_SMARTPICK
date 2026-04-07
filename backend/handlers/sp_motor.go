@@ -49,6 +49,7 @@ type enderecoDB struct {
 	Predio          *int
 	Apto            *int
 	ClasseVenda     string
+	ClasseVendaDias *int     // CLASSEVENDA_DIAS do CSV — usado diretamente na fórmula
 	Capacidade      *int
 	MedVendaCx      *float64
 	MedVendaDias    *float64
@@ -160,7 +161,7 @@ func loadMotorParams(db *sql.DB, cdID int) (*motorParams, error) {
 func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params *motorParams) (gerado, erros int) {
 	rows, err := db.Query(`
 		SELECT id, cod_filial, codprod, COALESCE(produto,''), rua, predio, apto,
-		       COALESCE(classe_venda,''), capacidade,
+		       COALESCE(classe_venda,''), classe_venda_dias, capacidade,
 		       med_venda_cx, med_venda_dias, med_dias_estoque, med_venda_cx_aa, unidade_master
 		FROM smartpick.sp_enderecos
 		WHERE job_id = $1
@@ -234,7 +235,8 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 		if err := rows.Scan(
 			&e.ID, &e.CodFilial, &e.CodProd, &e.Produto,
 			&e.Rua, &e.Predio, &e.Apto, &e.ClasseVenda,
-			&e.Capacidade, &e.MedVendaCx, &e.MedVendaDias,
+			&e.ClasseVendaDias, &e.Capacidade,
+			&e.MedVendaCx, &e.MedVendaDias,
 			&e.MedDiasEstoque, &e.MedVendaCxAA, &e.UnidadeMaster,
 		); err != nil {
 			erros++
@@ -264,50 +266,69 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 	return
 }
 
-// calcularSugestao aplica a lógica ABC do motor e retorna (sugestão, justificativa).
+// calcularSugestao aplica a fórmula WMS de calibragem e retorna (sugestão, justificativa).
+//
+// Fórmula: sugestão = ceil(giroDia / unidadeMaster) × diasClasse
+//
+//   giroDia      = MED_VENDA_DIAS (unidades/dia) — preferido
+//                  fallback: MED_VENDA_DIAS_CX × unidadeMaster (se só caixas disponível)
+//                  fallback: MED_VENDA_DIAS_CX_ANOANT_MESSEG × unidadeMaster
+//   unidadeMaster = QTUNITCX do CSV (unidades por caixa); padrão 1 se ausente
+//   diasClasse   = CLASSEVENDA_DIAS do CSV; fallback: parâmetros do motor por curva
 func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
-	// Determina dias máximo de estoque pela curva
-	var diasMax int
 	curva := strings.ToUpper(e.ClasseVenda)
-	switch curva {
-	case "A":
-		diasMax = p.CurvaAMaxEst
-	case "B":
-		diasMax = p.CurvaBMaxEst
-	default: // C ou sem classificação
-		diasMax = p.CurvaCMaxEst
+
+	// ── 1. Giro diário em UNIDADES ──────────────────────────────────────────
+	var giroDia float64
+	var fonteGiro string
+
+	unidadeMaster := 1
+	if e.UnidadeMaster != nil && *e.UnidadeMaster > 1 {
+		unidadeMaster = *e.UnidadeMaster
 	}
 
-	// Escolhe a melhor média disponível
-	// Preferência: med_venda_cx (caixas/dia) → med_venda_dias → med_venda_cx_aa (ano anterior)
-	var medVenda float64
-	var fonteMedia string
-	if e.MedVendaCx != nil && *e.MedVendaCx > 0 {
-		medVenda = *e.MedVendaCx
-		fonteMedia = "méd.cx"
-	} else if e.MedVendaDias != nil && *e.MedVendaDias > 0 {
-		// Converte unidades → caixas se unidade_master disponível
-		med := *e.MedVendaDias
-		if e.UnidadeMaster != nil && *e.UnidadeMaster > 1 {
-			med = med / float64(*e.UnidadeMaster)
+	switch {
+	case e.MedVendaDias != nil && *e.MedVendaDias > 0:
+		giroDia = *e.MedVendaDias
+		fonteGiro = "MED_VENDA_DIAS"
+	case e.MedVendaCx != nil && *e.MedVendaCx > 0:
+		giroDia = *e.MedVendaCx * float64(unidadeMaster)
+		fonteGiro = "MED_VENDA_DIAS_CX×master"
+	case e.MedVendaCxAA != nil && *e.MedVendaCxAA > 0:
+		giroDia = *e.MedVendaCxAA * float64(unidadeMaster)
+		fonteGiro = "MED_VENDA_CX_AA×master"
+	}
+
+	// ── 2. Dias da classe de venda ──────────────────────────────────────────
+	var diasClasse int
+	var fonteDias string
+
+	if e.ClasseVendaDias != nil && *e.ClasseVendaDias > 0 {
+		diasClasse = *e.ClasseVendaDias
+		fonteDias = "CSV"
+	} else {
+		// Fallback: parâmetros configurados no motor
+		switch curva {
+		case "A":
+			diasClasse = p.CurvaAMaxEst
+		case "B":
+			diasClasse = p.CurvaBMaxEst
+		default:
+			diasClasse = p.CurvaCMaxEst
 		}
-		medVenda = med
-		fonteMedia = "méd.dias"
-	} else if e.MedVendaCxAA != nil && *e.MedVendaCxAA > 0 {
-		medVenda = *e.MedVendaCxAA
-		fonteMedia = "méd.cx.aa"
+		fonteDias = "params"
 	}
 
-	// Sugestão bruta: vendas diárias × dias máximos × fator de segurança
-	sugestaoFloat := medVenda * float64(diasMax) * p.FatorSeguranca
-	sugestao := int(math.Ceil(sugestaoFloat))
+	// ── 3. Fórmula: ceil(giroDia / unidadeMaster) × diasClasse ─────────────
+	caixasGiro := int(math.Ceil(giroDia / float64(unidadeMaster)))
+	sugestao := caixasGiro * diasClasse
 
-	// Garante mínimo absoluto
+	// ── 4. Mínimo absoluto ──────────────────────────────────────────────────
 	if sugestao < p.MinCapacidade {
 		sugestao = p.MinCapacidade
 	}
 
-	// Regra: Curva A nunca reduz
+	// ── 5. Curva A: nunca reduz ─────────────────────────────────────────────
 	capAtual := 0
 	if e.Capacidade != nil {
 		capAtual = *e.Capacidade
@@ -318,8 +339,10 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 		regra = " [Curva A: mantida]"
 	}
 
-	justificativa := fmt.Sprintf("Curva %s: %s=%.2f × %d dias × %.2f fator = %d%s",
-		curva, fonteMedia, medVenda, diasMax, p.FatorSeguranca, sugestao, regra)
+	justificativa := fmt.Sprintf(
+		"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) = %d%s",
+		curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, sugestao, regra,
+	)
 
 	return sugestao, justificativa
 }
