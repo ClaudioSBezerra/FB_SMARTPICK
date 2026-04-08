@@ -200,7 +200,7 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 			args = append(args, jobIDStr)
 		}
 
-		query := fmt.Sprintf(`
+		query := `
 			SELECT
 				COUNT(*) FILTER (WHERE status = 'pendente')   AS total_pendente,
 				COUNT(*) FILTER (WHERE status = 'aprovada')   AS total_aprovada,
@@ -210,8 +210,7 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 				COUNT(*) FILTER (WHERE delta = 0 AND (classe_venda != 'A' OR justificativa NOT LIKE '%mantida%')) AS calibrado_total,
 			COUNT(*) FILTER (WHERE classe_venda = 'A' AND delta = 0 AND justificativa LIKE '%mantida%') AS curva_a_mantida
 			FROM smartpick.sp_propostas
-			%s
-		`, filter)
+			` + filter
 
 		var resumo PropostasResumo
 		err := db.QueryRow(query, args...).Scan(

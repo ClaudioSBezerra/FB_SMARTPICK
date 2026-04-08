@@ -230,12 +230,12 @@ export default function SpUploadCSV() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={cdID} onValueChange={setCdID}>
+          <Select value={cdID || 'all'} onValueChange={v => setCdID(v === 'all' ? '' : v)}>
             <SelectTrigger className="h-8 text-xs w-48">
               <SelectValue placeholder="Filtrar por CD" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Todos os CDs</SelectItem>
+              <SelectItem value="all">Todos os CDs</SelectItem>
               {jobs.filter((j, i, a) => a.findIndex(x => x.cd_id === j.cd_id) === i)
                 .map(j => (
                   <SelectItem key={j.cd_id} value={String(j.cd_id)}>CD {j.cd_id}</SelectItem>
