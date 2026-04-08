@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -76,13 +76,49 @@ export default function SpUsuarios() {
   const [chosenFiliais, setChosenFiliais] = useState<number[]>([])
 
   // Campos do novo usuário
-  const [novoNome,      setNovoNome]      = useState('')
-  const [novoEmail,     setNovoEmail]     = useState('')
-  const [novaSenha,     setNovaSenha]     = useState('')
-  const [novoSpRole,    setNovoSpRole]    = useState('somente_leitura')
-  const [novoTrialDias, setNovoTrialDias] = useState('365')
+  const [novoNome,       setNovoNome]       = useState('')
+  const [novoEmail,      setNovoEmail]      = useState('')
+  const [novaSenha,      setNovaSenha]      = useState('')
+  const [novoSpRole,     setNovoSpRole]     = useState('somente_leitura')
+  const [novoTrialDate,  setNovoTrialDate]  = useState('2099-12-31')
   const [novoAllFiliais, setNovoAllFiliais] = useState(false)
-  const [novoFiliais,   setNovoFiliais]   = useState<number[]>([])
+  const [novoFiliais,    setNovoFiliais]    = useState<number[]>([])
+
+  // Hierarquia do novo usuário
+  const [createEnvId,     setCreateEnvId]     = useState('')
+  const [createGroupId,   setCreateGroupId]   = useState('')
+  const [createCompanyId, setCreateCompanyId] = useState('')
+  const [environments,    setEnvironments]    = useState<{id: string; name: string}[]>([])
+  const [groups,          setGroups]          = useState<{id: string; name: string}[]>([])
+  const [companies,       setCompanies]       = useState<{id: string; name: string}[]>([])
+
+  // Campo de edição de nome (dialog de perfil)
+  const [editNome, setEditNome] = useState('')
+
+  // ── Hierarchy fetch ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!token) return
+    fetch('/api/config/environments', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setEnvironments(d || []))
+      .catch(() => setEnvironments([]))
+  }, [token])
+
+  useEffect(() => {
+    if (!createEnvId) { setGroups([]); setCreateGroupId(''); return }
+    fetch(`/api/config/groups?environment_id=${createEnvId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setGroups(d || []))
+      .catch(() => setGroups([]))
+  }, [createEnvId, token])
+
+  useEffect(() => {
+    if (!createGroupId) { setCompanies([]); setCreateCompanyId(''); return }
+    fetch(`/api/config/companies?group_id=${createGroupId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setCompanies(d || []))
+      .catch(() => setCompanies([]))
+  }, [createGroupId, token])
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: usuarios = [], isLoading } = useQuery<SpUsuario[]>({
@@ -109,11 +145,11 @@ export default function SpUsuarios() {
 
   // ── Mutations ────────────────────────────────────────────────────────────────
   const updateRole = useMutation({
-    mutationFn: async ({ id, sp_role }: { id: string; sp_role: string }) => {
+    mutationFn: async ({ id, sp_role, full_name }: { id: string; sp_role: string; full_name: string }) => {
       const res = await fetch(`/api/sp/usuarios/${id}/role`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body:    JSON.stringify({ sp_role }),
+        body:    JSON.stringify({ sp_role, full_name }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Erro ao atualizar perfil')
     },
@@ -135,9 +171,12 @@ export default function SpUsuarios() {
           email: novoEmail,
           password: novaSenha,
           sp_role: novoSpRole,
-          trial_dias: parseInt(novoTrialDias) || 365,
+          trial_ends_at: novoTrialDate,
           all_filiais: novoAllFiliais,
           filial_ids: novoAllFiliais ? [] : novoFiliais,
+          ...(createEnvId     && { environment_id: createEnvId }),
+          ...(createGroupId   && { group_id: createGroupId }),
+          ...(createCompanyId && { company_id: createCompanyId }),
         }),
       })
       if (!res.ok) {
@@ -150,8 +189,9 @@ export default function SpUsuarios() {
       qc.invalidateQueries({ queryKey: ['sp-usuarios'] })
       setNovoDialog(false)
       setNovoNome(''); setNovoEmail(''); setNovaSenha('')
-      setNovoSpRole('somente_leitura'); setNovoTrialDias('365')
+      setNovoSpRole('somente_leitura'); setNovoTrialDate('2099-12-31')
       setNovoAllFiliais(false); setNovoFiliais([])
+      setCreateEnvId(''); setCreateGroupId(''); setCreateCompanyId('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -177,6 +217,7 @@ export default function SpUsuarios() {
   function openRoleDialog(u: SpUsuario) {
     setSelected(u)
     setNewRole(u.sp_role)
+    setEditNome(u.full_name)
     setRoleDialog(true)
   }
 
@@ -290,9 +331,42 @@ export default function SpUsuarios() {
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>Validade (dias)</Label>
-              <Input type="number" value={novoTrialDias} onChange={e => setNovoTrialDias(e.target.value)} placeholder="365" />
+              <Label>Validade (data)</Label>
+              <Input type="date" value={novoTrialDate} onChange={e => setNovoTrialDate(e.target.value)} />
             </div>
+
+            {/* Hierarquia */}
+            <div className="border-t pt-3 space-y-2">
+              <Label className="text-sm font-semibold">Hierarquia</Label>
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">Ambiente</Label>
+                <Select value={createEnvId} onValueChange={v => { setCreateEnvId(v); setCreateGroupId(''); setCreateCompanyId('') }}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o ambiente..." /></SelectTrigger>
+                  <SelectContent>
+                    {environments.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">Grupo</Label>
+                <Select value={createGroupId} onValueChange={v => { setCreateGroupId(v); setCreateCompanyId('') }} disabled={!createEnvId}>
+                  <SelectTrigger><SelectValue placeholder={createEnvId ? 'Selecione o grupo...' : 'Selecione um ambiente primeiro'} /></SelectTrigger>
+                  <SelectContent>
+                    {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">Empresa</Label>
+                <Select value={createCompanyId} onValueChange={setCreateCompanyId} disabled={!createGroupId}>
+                  <SelectTrigger><SelectValue placeholder={createGroupId ? 'Selecione a empresa...' : 'Selecione um grupo primeiro'} /></SelectTrigger>
+                  <SelectContent>
+                    {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Checkbox id="novo-all" checked={novoAllFiliais} onCheckedChange={v => setNovoAllFiliais(!!v)} />
@@ -332,7 +406,10 @@ export default function SpUsuarios() {
             <DialogTitle>Alterar Perfil SmartPick</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-sm text-muted-foreground">{selected?.full_name}</p>
+            <div className="grid gap-1.5">
+              <Label>Nome completo</Label>
+              <Input value={editNome} onChange={e => setEditNome(e.target.value)} placeholder="Nome do usuário" />
+            </div>
             <Select value={newRole} onValueChange={setNewRole}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione o perfil" />
@@ -348,8 +425,8 @@ export default function SpUsuarios() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setRoleDialog(false)}>Cancelar</Button>
             <Button
-              disabled={updateRole.isPending || !newRole}
-              onClick={() => selected && updateRole.mutate({ id: selected.id, sp_role: newRole })}
+              disabled={updateRole.isPending || !newRole || !editNome}
+              onClick={() => selected && updateRole.mutate({ id: selected.id, sp_role: newRole, full_name: editNome })}
             >
               {updateRole.isPending ? 'Salvando...' : 'Salvar'}
             </Button>

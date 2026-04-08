@@ -35,7 +35,8 @@ type SpUsuarioResponse struct {
 }
 
 type SpUpdateRoleRequest struct {
-	SpRole string `json:"sp_role"` // admin_fbtax | gestor_geral | gestor_filial | somente_leitura
+	SpRole   string `json:"sp_role"`   // admin_fbtax | gestor_geral | gestor_filial | somente_leitura
+	FullName string `json:"full_name"` // opcional — atualiza nome se informado
 }
 
 type SpVincularFiliaisRequest struct {
@@ -155,8 +156,8 @@ func SpUpdateRoleHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		res, err := db.Exec(
-			"UPDATE users SET sp_role = $1 WHERE id = $2",
-			req.SpRole, targetID,
+			`UPDATE users SET sp_role = $1, full_name = CASE WHEN $2 != '' THEN $2 ELSE full_name END WHERE id = $3`,
+			req.SpRole, req.FullName, targetID,
 		)
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
@@ -175,13 +176,17 @@ func SpUpdateRoleHandler(db *sql.DB) http.HandlerFunc {
 
 // SpCriarUsuarioRequest — payload para POST /api/sp/usuarios
 type SpCriarUsuarioRequest struct {
-	FullName    string `json:"full_name"`
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	SpRole      string `json:"sp_role"`       // gestor_geral | gestor_filial | somente_leitura
-	TrialDias   int    `json:"trial_dias"`    // 0 = 365 dias padrão
-	AllFiliais  bool   `json:"all_filiais"`
-	FilialIDs   []int  `json:"filial_ids"`
+	FullName      string `json:"full_name"`
+	Email         string `json:"email"`
+	Password      string `json:"password"`
+	SpRole        string `json:"sp_role"`        // gestor_geral | gestor_filial | somente_leitura
+	TrialDias     int    `json:"trial_dias"`     // fallback: 0 = 365 dias
+	TrialEndsAt   string `json:"trial_ends_at"`  // "2006-01-02" — tem prioridade sobre trial_dias
+	AllFiliais    bool   `json:"all_filiais"`
+	FilialIDs     []int  `json:"filial_ids"`
+	EnvironmentID string `json:"environment_id"` // opcional — override do auto-detect
+	GroupID       string `json:"group_id"`       // opcional
+	CompanyID     string `json:"company_id"`     // opcional — override da empresa ativa para filiais
 }
 
 // SpCriarUsuarioHandler cria um novo usuário vinculado à empresa ativa (admin_fbtax only).
@@ -219,11 +224,19 @@ func SpCriarUsuarioHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		dias := req.TrialDias
-		if dias <= 0 {
-			dias = 365
+		var trialEndsAt time.Time
+		if req.TrialEndsAt != "" {
+			if t, err2 := time.Parse("2006-01-02", req.TrialEndsAt); err2 == nil {
+				trialEndsAt = t.UTC()
+			}
 		}
-		trialEndsAt := time.Now().Add(time.Duration(dias) * 24 * time.Hour)
+		if trialEndsAt.IsZero() {
+			dias := req.TrialDias
+			if dias <= 0 {
+				dias = 365
+			}
+			trialEndsAt = time.Now().Add(time.Duration(dias) * 24 * time.Hour)
+		}
 
 		hash, err := HashPassword(req.Password)
 		if err != nil {
@@ -248,20 +261,30 @@ func SpCriarUsuarioHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Vincula ao environment da empresa ativa
-		var envID string
-		err = db.QueryRow(`
-			SELECT eg.environment_id
-			FROM companies c
-			JOIN enterprise_groups eg ON eg.id = c.group_id
-			WHERE c.id = $1
-			LIMIT 1
-		`, spCtx.EmpresaID).Scan(&envID)
-		if err == nil && envID != "" {
+		// Vincula ao environment (usa o fornecido ou auto-detecta pela empresa ativa)
+		envIDToUse := req.EnvironmentID
+		if envIDToUse == "" {
+			var derivedEnv string
+			_ = db.QueryRow(`
+				SELECT eg.environment_id
+				FROM companies c
+				JOIN enterprise_groups eg ON eg.id = c.group_id
+				WHERE c.id = $1
+				LIMIT 1
+			`, spCtx.EmpresaID).Scan(&derivedEnv)
+			envIDToUse = derivedEnv
+		}
+		if envIDToUse != "" {
 			_, _ = db.Exec(
 				"INSERT INTO user_environments (user_id, environment_id, role) VALUES ($1, $2, 'user') ON CONFLICT DO NOTHING",
-				userID, envID,
+				userID, envIDToUse,
 			)
+		}
+
+		// Empresa para vínculo de filiais (usa company_id fornecido ou empresa ativa)
+		empresaIDToUse := spCtx.EmpresaID
+		if req.CompanyID != "" {
+			empresaIDToUse = req.CompanyID
 		}
 
 		// Vincula filiais no SmartPick
@@ -269,13 +292,13 @@ func SpCriarUsuarioHandler(db *sql.DB) http.HandlerFunc {
 			_, _ = db.Exec(`
 				INSERT INTO smartpick.sp_user_filiais (user_id, empresa_id, filial_id, all_filiais)
 				VALUES ($1, $2, NULL, TRUE) ON CONFLICT DO NOTHING
-			`, userID, spCtx.EmpresaID)
+			`, userID, empresaIDToUse)
 		} else {
 			for _, fid := range req.FilialIDs {
 				_, _ = db.Exec(`
 					INSERT INTO smartpick.sp_user_filiais (user_id, empresa_id, filial_id, all_filiais)
 					VALUES ($1, $2, $3, FALSE) ON CONFLICT DO NOTHING
-				`, userID, spCtx.EmpresaID, fid)
+				`, userID, empresaIDToUse, fid)
 			}
 		}
 
