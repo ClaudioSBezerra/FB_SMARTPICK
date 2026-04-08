@@ -50,6 +50,12 @@ export const modules: Record<string, ModuleConfig> = {
       { label: 'Gerar PDF',   path: '/pdf/gerar' },
     ],
   },
+  reincidencia: {
+    label: 'Reincidência',
+    tabs: [
+      { label: 'Reincidência de Calibragem', path: '/reincidencia' },
+    ],
+  },
 }
 
 export function getActiveModule(pathname: string): string {
@@ -59,5 +65,6 @@ export function getActiveModule(pathname: string): string {
   if (pathname.startsWith('/historico')) return 'historico'
   if (pathname.startsWith('/pdf')) return 'pdf'
   if (pathname.startsWith('/config')) return 'config'
+  if (pathname.startsWith('/reincidencia')) return 'reincidencia'
   return 'dashboard'
 }

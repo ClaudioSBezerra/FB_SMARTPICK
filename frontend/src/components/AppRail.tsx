@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, Settings, LogOut, KeyRound, History, FileDown } from 'lucide-react'
+import { LayoutDashboard, Upload, Settings, LogOut, KeyRound, History, FileDown, Repeat2 } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
@@ -34,7 +34,8 @@ const mainItems = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard de Urgência', path: '/dashboard/urgencia/falta' },
   { id: 'upload',    icon: Upload,          label: 'Importação CSV',         path: '/upload/csv' },
   { id: 'historico', icon: History,         label: 'Histórico',              path: '/historico' },
-  { id: 'pdf',       icon: FileDown,        label: 'Gerar PDF',              path: '/pdf/gerar' },
+  { id: 'pdf',          icon: FileDown,   label: 'Gerar PDF',                  path: '/pdf/gerar' },
+  { id: 'reincidencia', icon: Repeat2,    label: 'Reincidência de Calibragem', path: '/reincidencia' },
 ]
 
 export function AppRail() {

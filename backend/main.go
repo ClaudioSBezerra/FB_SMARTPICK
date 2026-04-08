@@ -400,6 +400,9 @@ func main() {
 	http.HandleFunc("/api/sp/historico/compliance", withSP(handlers.SpComplianceHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/historico/", withSP(handlers.SpHistoricoFecharHandler, "gestor_geral"))
 
+	// ── SmartPick — Reincidência (Epic 8) ────────────────────────────────────
+	http.HandleFunc("/api/sp/reincidencia", withSP(handlers.SpReincidenciaHandler, "gestor_filial"))
+
 	// ── SmartPick — Geração de PDF (Epic 6) ──────────────────────────────────
 	http.HandleFunc("/api/sp/pdf/calibracao", withSP(handlers.SpPDFCalibracaoHandler, "gestor_filial"))
 

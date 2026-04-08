@@ -9,6 +9,7 @@ import SpUploadCSV from './pages/SpUploadCSV'
 import SpDashboard from './pages/SpDashboard'
 import SpGerarPDF from './pages/SpGerarPDF'
 import SpHistorico from './pages/SpHistorico'
+import SpReincidencia from './pages/SpReincidencia'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -131,6 +132,9 @@ function AppLayout() {
               {/* Histórico (Epic 7) */}
               <Route path="/historico"            element={<ProtectedRoute><SpHistorico /></ProtectedRoute>} />
               <Route path="/historico/compliance" element={<ProtectedRoute><SpHistorico /></ProtectedRoute>} />
+
+              {/* Reincidência (Epic 8) */}
+              <Route path="/reincidencia" element={<ProtectedRoute><SpReincidencia /></ProtectedRoute>} />
 
               {/* PDF (Epic 6) */}
               <Route path="/pdf/gerar" element={<ProtectedRoute><SpGerarPDF /></ProtectedRoute>} />
