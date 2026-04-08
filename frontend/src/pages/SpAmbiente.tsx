@@ -12,7 +12,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Copy, Settings2, Trash2, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -613,82 +612,78 @@ export default function SpAmbiente() {
               ))}
             </div>
           )}
-        </TabsContent>
+      {sharedDialogs}
+    </div>
+  )
 
-        {/* ── Aba: Plano ─────────────────────────────────────────────────── */}
-        <TabsContent value="plano">
-          {loadingPlano && <p className="text-sm text-muted-foreground py-4">Carregando plano...</p>}
-          {erroPlano && <p className="text-sm text-destructive py-4">Erro ao carregar informações do plano.</p>}
-          {plano && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">Plano atual:</span>
-                <Badge className="capitalize">{plano.plano}</Badge>
-                {!plano.ativo && <Badge variant="destructive">Inativo</Badge>}
-                {plano.valido_ate && (
-                  <span className="text-xs text-muted-foreground">
-                    Válido até: {new Date(plano.valido_ate).toLocaleDateString('pt-BR')}
-                  </span>
-                )}
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Recurso</TableHead>
-                    <TableHead>Uso</TableHead>
-                    <TableHead>Limite</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>Filiais</TableCell>
-                    <TableCell><UsageBar used={plano.usado_filiais} max={plano.max_filiais} /></TableCell>
-                    <TableCell className="text-sm">{plano.max_filiais === -1 ? 'Ilimitado' : plano.max_filiais}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>CDs</TableCell>
-                    <TableCell><UsageBar used={plano.usado_cds} max={plano.max_cds} /></TableCell>
-                    <TableCell className="text-sm">{plano.max_cds === -1 ? 'Ilimitado' : plano.max_cds}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>Usuários</TableCell>
-                    <TableCell><UsageBar used={plano.usado_usuarios} max={plano.max_usuarios} /></TableCell>
-                    <TableCell className="text-sm">{plano.max_usuarios === -1 ? 'Ilimitado' : plano.max_usuarios}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* ── Aba: Manutenção ─────────────────────────────────────────────── */}
-        <TabsContent value="manutencao">
-          <div className="space-y-4 max-w-lg">
-            <div className="border rounded-md p-4 space-y-3">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">Limpar Dados de Calibragem</p>
-                  <p className="text-xs text-muted-foreground">
-                    Remove todos os imports de CSV, endereços, propostas e histórico de calibragem.
-                    <strong> Preserva</strong> filiais, CDs, parâmetros do motor e usuários.
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setLimparDialog(true)}
-              >
-                <Trash2 className="h-4 w-4 mr-1.5" />
-                Limpar dados de calibragem
-              </Button>
-            </div>
+  // ── Render: Plano e Limites ──────────────────────────────────────────────────
+  if (isPlanos) return (
+    <div className="space-y-4">
+      {loadingPlano && <p className="text-sm text-muted-foreground py-4">Carregando plano...</p>}
+      {erroPlano && <p className="text-sm text-destructive py-4">Erro ao carregar informações do plano.</p>}
+      {plano && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">Plano atual:</span>
+            <Badge className="capitalize">{plano.plano}</Badge>
+            {!plano.ativo && <Badge variant="destructive">Inativo</Badge>}
+            {plano.valido_ate && (
+              <span className="text-xs text-muted-foreground">
+                Válido até: {new Date(plano.valido_ate).toLocaleDateString('pt-BR')}
+              </span>
+            )}
           </div>
-        </TabsContent>
-      </Tabs>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Recurso</TableHead>
+                <TableHead>Uso</TableHead>
+                <TableHead>Limite</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>Filiais</TableCell>
+                <TableCell><UsageBar used={plano.usado_filiais} max={plano.max_filiais} /></TableCell>
+                <TableCell className="text-sm">{plano.max_filiais === -1 ? 'Ilimitado' : plano.max_filiais}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>CDs</TableCell>
+                <TableCell><UsageBar used={plano.usado_cds} max={plano.max_cds} /></TableCell>
+                <TableCell className="text-sm">{plano.max_cds === -1 ? 'Ilimitado' : plano.max_cds}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Usuários</TableCell>
+                <TableCell><UsageBar used={plano.usado_usuarios} max={plano.max_usuarios} /></TableCell>
+                <TableCell className="text-sm">{plano.max_usuarios === -1 ? 'Ilimitado' : plano.max_usuarios}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  )
 
-      {/* ── Dialog: Confirmar limpeza ───────────────────────────────────────── */}
+  // ── Render: Manutenção ───────────────────────────────────────────────────────
+  if (isManutencao) return (
+    <div className="space-y-4 max-w-lg">
+      <div className="border rounded-md p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Limpar Dados de Calibragem</p>
+            <p className="text-xs text-muted-foreground">
+              Remove todos os imports de CSV, endereços, propostas e histórico de calibragem.
+              <strong> Preserva</strong> filiais, CDs, parâmetros do motor e usuários.
+            </p>
+          </div>
+        </div>
+        <Button variant="destructive" size="sm" onClick={() => setLimparDialog(true)}>
+          <Trash2 className="h-4 w-4 mr-1.5" />
+          Limpar dados de calibragem
+        </Button>
+      </div>
+
       <Dialog open={limparDialog} onOpenChange={setLimparDialog}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -702,150 +697,15 @@ export default function SpAmbiente() {
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setLimparDialog(false)}>Cancelar</Button>
-            <Button
-              variant="destructive"
-              disabled={limparCalibragem.isPending}
-              onClick={() => limparCalibragem.mutate()}
-            >
+            <Button variant="destructive" disabled={limparCalibragem.isPending}
+              onClick={() => limparCalibragem.mutate()}>
               {limparCalibragem.isPending ? 'Limpando...' : 'Confirmar limpeza'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog: Nova Filial ─────────────────────────────────────────────── */}
-      <Dialog open={filialDialog} onOpenChange={setFilialDialog}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Nova Filial</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="grid gap-1.5">
-              <Label>Código WMS (CODFILIAL)</Label>
-              <Input type="number" value={newFilialCod} onChange={e => setNewFilialCod(e.target.value)} placeholder="11" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Nome</Label>
-              <Input value={newFilialNome} onChange={e => setNewFilialNome(e.target.value)} placeholder="Filial SP" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFilialDialog(false)}>Cancelar</Button>
-            <Button disabled={criarFilial.isPending || !newFilialCod || !newFilialNome}
-              onClick={() => criarFilial.mutate()}>
-              {criarFilial.isPending ? 'Criando...' : 'Criar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog: Novo CD ─────────────────────────────────────────────────── */}
-      <Dialog open={!!cdDialog} onOpenChange={() => setCdDialog(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Novo Centro de Distribuição</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="grid gap-1.5">
-              <Label>Nome do CD</Label>
-              <Input value={newCDNome} onChange={e => setNewCDNome(e.target.value)} placeholder="CD Principal" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Descrição (opcional)</Label>
-              <Textarea value={newCDDesc} onChange={e => setNewCDDesc(e.target.value)} rows={2} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCdDialog(null)}>Cancelar</Button>
-            <Button disabled={criarCD.isPending || !newCDNome} onClick={() => criarCD.mutate()}>
-              {criarCD.isPending ? 'Criando...' : 'Criar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog: Duplicar CD ─────────────────────────────────────────────── */}
-      <Dialog open={!!dupDialog} onOpenChange={() => setDupDialog(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Duplicar CD</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <p className="text-sm text-muted-foreground">Copia "{dupDialog?.nome}" com todos os parâmetros do motor.</p>
-            <div className="grid gap-1.5">
-              <Label>Nome do novo CD</Label>
-              <Input value={dupNome} onChange={e => setDupNome(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDupDialog(null)}>Cancelar</Button>
-            <Button disabled={duplicarCD.isPending || !dupNome} onClick={() => duplicarCD.mutate()}>
-              {duplicarCD.isPending ? 'Duplicando...' : 'Duplicar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog: Parâmetros do Motor ─────────────────────────────────────── */}
-      <Dialog open={!!paramsDialog} onOpenChange={() => setParamsDialog(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Parâmetros do Motor de Calibragem</DialogTitle></DialogHeader>
-          {paramsDialog && (
-            <div className="grid grid-cols-2 gap-3 py-2">
-              <div className="grid gap-1.5">
-                <Label>Dias de Análise</Label>
-                <Input type="number" value={editParams.dias_analise ?? 90}
-                  onChange={e => setEditParams(p => ({ ...p, dias_analise: +e.target.value }))} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Fator Segurança</Label>
-                <Input type="number" step="0.01" value={editParams.fator_seguranca ?? 1.10}
-                  onChange={e => setEditParams(p => ({ ...p, fator_seguranca: +e.target.value }))} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Curva A — máx. dias estoque</Label>
-                <Input type="number" value={editParams.curva_a_max_est ?? 7}
-                  onChange={e => setEditParams(p => ({ ...p, curva_a_max_est: +e.target.value }))} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Curva B — máx. dias estoque</Label>
-                <Input type="number" value={editParams.curva_b_max_est ?? 15}
-                  onChange={e => setEditParams(p => ({ ...p, curva_b_max_est: +e.target.value }))} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Curva C — máx. dias estoque</Label>
-                <Input type="number" value={editParams.curva_c_max_est ?? 30}
-                  onChange={e => setEditParams(p => ({ ...p, curva_c_max_est: +e.target.value }))} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Cap. mínima absoluta</Label>
-                <Input type="number" value={editParams.min_capacidade ?? 1}
-                  onChange={e => setEditParams(p => ({ ...p, min_capacidade: +e.target.value }))} />
-              </div>
-              <div className="col-span-2 flex items-center gap-2 pt-1">
-                <input type="checkbox" id="curva-a-nunca"
-                  checked={editParams.curva_a_nunca_reduz ?? true}
-                  onChange={e => setEditParams(p => ({ ...p, curva_a_nunca_reduz: e.target.checked }))} />
-                <Label htmlFor="curva-a-nunca" className="cursor-pointer">
-                  Curva A: nunca reduzir capacidade
-                </Label>
-              </div>
-              <div className="col-span-2 border-t pt-3 mt-1">
-                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Retenção de Dados</p>
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Retenção de importações (meses)</Label>
-                <Input type="number" min={1} max={60}
-                  value={editParams.retencao_csv_meses ?? 6}
-                  onChange={e => setEditParams(p => ({ ...p, retencao_csv_meses: +e.target.value }))} />
-                <p className="text-xs text-muted-foreground">
-                  Dados brutos de CSV (endereços) são removidos após este período. Propostas e histórico são preservados permanentemente.
-                </p>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setParamsDialog(null)}>Cancelar</Button>
-            <Button disabled={salvarParams.isPending} onClick={() => salvarParams.mutate()}>
-              {salvarParams.isPending ? 'Salvando...' : 'Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   )
+
+  return null
 }
