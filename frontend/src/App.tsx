@@ -51,6 +51,9 @@ function ModuleTabs() {
   const moduleCfg = modules[moduleId]
 
   if (!moduleCfg || moduleCfg.tabs.length === 0) return null
+  if (moduleCfg.adminOnly && !isAdmin) return null
+  // Seção gestao é para gestores (não admin); admin usa config
+  if (moduleId === 'gestao' && isAdmin) return null
 
   const visibleTabs = moduleCfg.tabs.filter(t => !t.adminOnly || isAdmin)
 
@@ -139,13 +142,20 @@ function AppLayout() {
               {/* PDF (Epic 6) */}
               <Route path="/pdf/gerar" element={<ProtectedRoute><SpGerarPDF /></ProtectedRoute>} />
 
-              {/* Configurações */}
-              <Route path="/config/ambiente"         element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
-              <Route path="/config/parametros-motor" element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
-              <Route path="/config/planos"           element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
-              <Route path="/config/gestao-ambiente"  element={<ProtectedRoute><GestaoAmbiente /></ProtectedRoute>} />
-              <Route path="/config/usuarios"         element={<AdminRoute><SpUsuarios /></AdminRoute>} />
-              <Route path="/config/usuarios-admin"   element={<AdminRoute><AdminUsers /></AdminRoute>} />
+              {/* Gestão de CD (gestor_filial+) */}
+              <Route path="/gestao/filiais" element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
+              <Route path="/gestao/regras"  element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
+
+              {/* Configurações (admin) */}
+              <Route path="/config/planos"      element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
+              <Route path="/config/manutencao"  element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
+              <Route path="/config/ambiente"    element={<ProtectedRoute><GestaoAmbiente /></ProtectedRoute>} />
+              <Route path="/config/usuarios"    element={<AdminRoute><SpUsuarios /></AdminRoute>} />
+              <Route path="/config/usuarios-admin" element={<AdminRoute><AdminUsers /></AdminRoute>} />
+
+              {/* Redirecionamentos de rotas antigas */}
+              <Route path="/config/parametros-motor" element={<Navigate to="/gestao/regras" replace />} />
+              <Route path="/config/gestao-ambiente"  element={<Navigate to="/config/ambiente" replace />} />
             </Routes>
           </div>
         </main>

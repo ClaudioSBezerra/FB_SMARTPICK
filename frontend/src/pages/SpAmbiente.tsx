@@ -12,7 +12,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Copy, Settings2, Trash2, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -86,7 +86,11 @@ export default function SpAmbiente() {
   const { token } = useAuth()
   const qc = useQueryClient()
   const location = useLocation()
-  const isRegras = location.pathname === '/config/parametros-motor'
+  const path = location.pathname
+  const isFiliais   = path === '/gestao/filiais'
+  const isRegras    = path === '/gestao/regras' || path === '/config/parametros-motor'
+  const isPlanos    = path === '/config/planos'
+  const isManutencao = path === '/config/manutencao'
 
   // ── State ────────────────────────────────────────────────────────────────────
   const [expandedFilial, setExpandedFilial] = useState<number | null>(null)
@@ -395,19 +399,149 @@ export default function SpAmbiente() {
     )
   }
 
-  // ── Render: Configurações gerais ──────────────────────────────────────────────
-  return (
-    <div className="space-y-4">
-      <Tabs defaultValue="filiais">
-        <TabsList>
-          <TabsTrigger value="filiais">Filiais e CDs</TabsTrigger>
-          <TabsTrigger value="plano">Plano e Limites</TabsTrigger>
-          <TabsTrigger value="manutencao">Manutenção</TabsTrigger>
-        </TabsList>
+  // ── Shared: dialogs (filiais, CDs, params) ──────────────────────────────────
+  const sharedDialogs = (
+    <>
+      <Dialog open={!!paramsDialog} onOpenChange={() => setParamsDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Regras de Calibragem — {todosOsCds.find(c => c.id === paramsDialog?.cd_id)?.nome ?? 'CD'}</DialogTitle>
+          </DialogHeader>
+          {paramsDialog && (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <div className="grid gap-1.5">
+                <Label>Dias de Análise</Label>
+                <Input type="number" value={editParams.dias_analise ?? 90}
+                  onChange={e => setEditParams(p => ({ ...p, dias_analise: +e.target.value }))} />
+                <p className="text-xs text-muted-foreground">Janela de vendas para o giro médio</p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Fator de Segurança</Label>
+                <Input type="number" step="0.01" value={editParams.fator_seguranca ?? 1.10}
+                  onChange={e => setEditParams(p => ({ ...p, fator_seguranca: +e.target.value }))} />
+                <p className="text-xs text-muted-foreground">1.10 = +10% sobre a média</p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Curva A — máx. dias estoque</Label>
+                <Input type="number" value={editParams.curva_a_max_est ?? 7}
+                  onChange={e => setEditParams(p => ({ ...p, curva_a_max_est: +e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Curva B — máx. dias estoque</Label>
+                <Input type="number" value={editParams.curva_b_max_est ?? 15}
+                  onChange={e => setEditParams(p => ({ ...p, curva_b_max_est: +e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Curva C — máx. dias estoque</Label>
+                <Input type="number" value={editParams.curva_c_max_est ?? 30}
+                  onChange={e => setEditParams(p => ({ ...p, curva_c_max_est: +e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Capacidade mínima absoluta</Label>
+                <Input type="number" value={editParams.min_capacidade ?? 1}
+                  onChange={e => setEditParams(p => ({ ...p, min_capacidade: +e.target.value }))} />
+              </div>
+              <div className="col-span-2 flex items-center gap-2 pt-1">
+                <input type="checkbox" id="curva-a-nunca"
+                  checked={editParams.curva_a_nunca_reduz ?? true}
+                  onChange={e => setEditParams(p => ({ ...p, curva_a_nunca_reduz: e.target.checked }))} />
+                <Label htmlFor="curva-a-nunca" className="cursor-pointer">
+                  Curva A: nunca reduzir capacidade
+                </Label>
+              </div>
+              <div className="col-span-2 border-t pt-3 mt-1">
+                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Retenção de Dados</p>
+              </div>
+              <div className="grid gap-1.5 col-span-2">
+                <Label>Retenção de importações (meses)</Label>
+                <Input type="number" min={1} max={60}
+                  value={editParams.retencao_csv_meses ?? 6}
+                  onChange={e => setEditParams(p => ({ ...p, retencao_csv_meses: +e.target.value }))} />
+                <p className="text-xs text-muted-foreground">
+                  Dados brutos de CSV removidos após este período. Propostas e histórico preservados.
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setParamsDialog(null)}>Cancelar</Button>
+            <Button disabled={salvarParams.isPending} onClick={() => salvarParams.mutate()}>
+              {salvarParams.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        {/* ── Aba: Filiais e CDs ─────────────────────────────────────────── */}
-        <TabsContent value="filiais" className="space-y-4">
-          <div className="flex justify-between items-center">
+      <Dialog open={filialDialog} onOpenChange={setFilialDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Nova Filial</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid gap-1.5">
+              <Label>Código WMS (CODFILIAL)</Label>
+              <Input type="number" value={newFilialCod} onChange={e => setNewFilialCod(e.target.value)} placeholder="11" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Nome</Label>
+              <Input value={newFilialNome} onChange={e => setNewFilialNome(e.target.value)} placeholder="Filial SP" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFilialDialog(false)}>Cancelar</Button>
+            <Button disabled={criarFilial.isPending || !newFilialCod || !newFilialNome}
+              onClick={() => criarFilial.mutate()}>
+              {criarFilial.isPending ? 'Criando...' : 'Criar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!cdDialog} onOpenChange={() => setCdDialog(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Novo Centro de Distribuição</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid gap-1.5">
+              <Label>Nome do CD</Label>
+              <Input value={newCDNome} onChange={e => setNewCDNome(e.target.value)} placeholder="CD Principal" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Descrição (opcional)</Label>
+              <Textarea value={newCDDesc} onChange={e => setNewCDDesc(e.target.value)} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCdDialog(null)}>Cancelar</Button>
+            <Button disabled={criarCD.isPending || !newCDNome} onClick={() => criarCD.mutate()}>
+              {criarCD.isPending ? 'Criando...' : 'Criar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!dupDialog} onOpenChange={() => setDupDialog(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Duplicar CD</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">Copia "{dupDialog?.nome}" com todos os parâmetros.</p>
+            <div className="grid gap-1.5">
+              <Label>Nome do novo CD</Label>
+              <Input value={dupNome} onChange={e => setDupNome(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDupDialog(null)}>Cancelar</Button>
+            <Button disabled={duplicarCD.isPending || !dupNome} onClick={() => duplicarCD.mutate()}>
+              {duplicarCD.isPending ? 'Duplicando...' : 'Duplicar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+
+  // ── Render: Filiais e CDs ────────────────────────────────────────────────────
+  if (isFiliais) return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
             <h3 className="text-sm font-semibold">Filiais cadastradas</h3>
             <Button size="sm" onClick={() => setFilialDialog(true)}>
               <Plus className="h-4 w-4 mr-1" /> Nova Filial

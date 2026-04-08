@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, Settings, LogOut, KeyRound, History, FileDown, Repeat2 } from 'lucide-react'
+import { LayoutDashboard, Upload, Settings, LogOut, KeyRound, History, FileDown, Repeat2, Building2 } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
@@ -31,17 +31,20 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 const mainItems = [
-  { id: 'dashboard', icon: LayoutDashboard, label: 'Painel de Calibragem', path: '/dashboard/urgencia/falta' },
-  { id: 'upload',    icon: Upload,          label: 'Importação CSV',         path: '/upload/csv' },
-  { id: 'historico', icon: History,         label: 'Histórico',              path: '/historico' },
-  { id: 'pdf',          icon: FileDown,   label: 'Gerar PDF',                  path: '/pdf/gerar' },
-  { id: 'reincidencia', icon: Repeat2,    label: 'Reincidência de Calibragem', path: '/reincidencia' },
-]
+  { id: 'dashboard',    icon: LayoutDashboard, label: 'Painel de Calibragem', path: '/dashboard/urgencia/falta' },
+  { id: 'upload',       icon: Upload,          label: 'Importação CSV',       path: '/upload/csv' },
+  { id: 'historico',    icon: History,         label: 'Histórico',            path: '/historico' },
+  { id: 'pdf',          icon: FileDown,        label: 'Gerar PDF',            path: '/pdf/gerar' },
+  { id: 'reincidencia', icon: Repeat2,         label: 'Reincidência',         path: '/reincidencia' },
+  // Administração: visível apenas para não-admins (gestores de CD)
+  { id: 'gestao',       icon: Building2,       label: 'Administração',        path: '/gestao/filiais', hideForAdmin: true },
+] as const
 
 export function AppRail() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, company, logout, token } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const active = getActiveModule(location.pathname)
 
   const [pwDialog,  setPwDialog]  = useState(false)
@@ -94,34 +97,37 @@ export function AppRail() {
 
         {/* Nav principal */}
         <nav className="flex flex-col items-center gap-1 p-2 flex-1 pt-3">
-          {mainItems.map(item => (
-            <Tooltip key={item.id}>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => navigate(item.path)}
-                  className={cn(
-                    'flex items-center justify-center w-10 h-10 rounded-lg transition-colors',
-                    active === item.id
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-gray-100 hover:text-foreground'
-                  )}
-                >
-                  <item.icon className="h-5 w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs">
-                {item.label}
-              </TooltipContent>
-            </Tooltip>
-          ))}
+          {mainItems
+            .filter(item => !('hideForAdmin' in item && item.hideForAdmin && isAdmin))
+            .map(item => (
+              <Tooltip key={item.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => navigate(item.path)}
+                    className={cn(
+                      'flex items-center justify-center w-10 h-10 rounded-lg transition-colors',
+                      active === item.id
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:bg-gray-100 hover:text-foreground'
+                    )}
+                  >
+                    <item.icon className="h-5 w-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="text-xs">
+                  {item.label}
+                </TooltipContent>
+              </Tooltip>
+            ))}
         </nav>
 
-        {/* Config + User */}
+        {/* Config (admin) + User */}
         <div className="flex flex-col items-center gap-1 p-2 border-t shrink-0">
+          {isAdmin && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => navigate('/config/ambiente')}
+                onClick={() => navigate('/config/planos')}
                 className={cn(
                   'flex items-center justify-center w-10 h-10 rounded-lg transition-colors',
                   active === 'config'
@@ -134,6 +140,7 @@ export function AppRail() {
             </TooltipTrigger>
             <TooltipContent side="right" className="text-xs">Configurações</TooltipContent>
           </Tooltip>
+          )}
 
           <DropdownMenu>
             <Tooltip>
