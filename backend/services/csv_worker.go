@@ -21,6 +21,7 @@ package services
 //   encoding:    UTF-8 com BOM (bytes 0xEF 0xBB 0xBF removidos)
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/csv"
 	"fmt"
@@ -30,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // StartCSVWorker inicia o worker em background. Chamado via go StartCSVWorker(getDB) em main.go.
@@ -154,14 +156,33 @@ func detectCols(header []string) csvCols {
 	}
 }
 
+// latin1ToUTF8 converte bytes Latin-1/Windows-1252 para UTF-8.
+// Bytes 0x00-0x7F são idênticos em ambas as codificações.
+// Bytes 0x80-0xFF mapeiam diretamente para U+0080..U+00FF em Latin-1,
+// que em UTF-8 codificam como 2 bytes (0xC2/0xC3 + continuação).
+func latin1ToUTF8(b []byte) []byte {
+	out := make([]byte, 0, len(b)+len(b)/4)
+	for _, c := range b {
+		if c < 0x80 {
+			out = append(out, c)
+		} else {
+			out = append(out, 0xC0|(c>>6), 0x80|(c&0x3F))
+		}
+	}
+	return out
+}
+
 func parseAndInsertCSV(db *sql.DB, jobID, filePath, _ string, filialID int) (ok, erros int, err error) {
-	f, err := os.Open(filePath)
+	rawBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		return 0, 0, fmt.Errorf("arquivo não encontrado: %w", err)
 	}
-	defer f.Close()
+	// Se não for UTF-8 válido (ex: exportação Winthor em Windows-1252), converte
+	if !utf8.Valid(rawBytes) {
+		rawBytes = latin1ToUTF8(rawBytes)
+	}
 
-	r := csv.NewReader(f)
+	r := csv.NewReader(bytes.NewReader(rawBytes))
 	r.Comma = ';'
 	r.LazyQuotes = true
 	r.TrimLeadingSpace = true
@@ -219,11 +240,17 @@ func parseAndInsertCSV(db *sql.DB, jobID, filePath, _ string, filialID int) (ok,
 				continue
 			}
 			args := rowToArgs(jobID, filialID, row, cols)
+			// Savepoint por linha: erro numa linha não aborta a transação inteira
+			if _, spErr := tx.Exec("SAVEPOINT sp_row"); spErr != nil {
+				return spErr
+			}
 			if _, execErr := stmt.Exec(args...); execErr != nil {
 				log.Printf("[CSVWorker] erro na linha: %v", execErr)
+				tx.Exec("ROLLBACK TO SAVEPOINT sp_row") //nolint
 				erros++
 				continue
 			}
+			tx.Exec("RELEASE SAVEPOINT sp_row") //nolint
 			ok++
 		}
 
