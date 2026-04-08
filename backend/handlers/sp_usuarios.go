@@ -22,21 +22,31 @@ import (
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
 type SpUsuarioResponse struct {
-	ID          string    `json:"id"`
-	Email       string    `json:"email"`
-	FullName    string    `json:"full_name"`
-	SpRole      string    `json:"sp_role"`
-	IsVerified  bool      `json:"is_verified"`
-	TrialEndsAt time.Time `json:"trial_ends_at"`
-	CreatedAt   string    `json:"created_at"`
+	ID              string    `json:"id"`
+	Email           string    `json:"email"`
+	FullName        string    `json:"full_name"`
+	SpRole          string    `json:"sp_role"`
+	IsVerified      bool      `json:"is_verified"`
+	TrialEndsAt     time.Time `json:"trial_ends_at"`
+	CreatedAt       string    `json:"created_at"`
+	// Hierarquia (user_environments)
+	EnvironmentID   string `json:"environment_id"`
+	EnvironmentName string `json:"environment_name"`
+	GroupID         string `json:"group_id"`
+	GroupName       string `json:"group_name"`
+	CompanyID       string `json:"company_id"`
+	CompanyName     string `json:"company_name"`
 	// Filiais vinculadas (preenchidas pela query de listagem)
 	AllFiliais bool  `json:"all_filiais"`
 	FilialIDs  []int `json:"filial_ids"`
 }
 
 type SpUpdateRoleRequest struct {
-	SpRole   string `json:"sp_role"`   // admin_fbtax | gestor_geral | gestor_filial | somente_leitura
-	FullName string `json:"full_name"` // opcional — atualiza nome se informado
+	SpRole        string `json:"sp_role"`        // admin_fbtax | gestor_geral | gestor_filial | somente_leitura
+	FullName      string `json:"full_name"`      // opcional — atualiza nome se informado
+	EnvironmentID string `json:"environment_id"` // opcional — reatribui hierarquia
+	GroupID       string `json:"group_id"`       // ignorado (derivado da empresa)
+	CompanyID     string `json:"company_id"`     // define preferred_company_id
 }
 
 type SpVincularFiliaisRequest struct {
@@ -60,10 +70,25 @@ func SpListUsuariosHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Lista apenas usuários com vínculo explícito nesta empresa + o próprio usuário autenticado
+		// Lista usuários com vínculo explícito nesta empresa + dados de hierarquia
 		rows, err := db.Query(`
-			SELECT DISTINCT u.id, u.email, u.full_name, u.sp_role, u.is_verified, u.trial_ends_at, u.created_at
+			SELECT u.id::text, u.email, u.full_name, u.sp_role::text, u.is_verified, u.trial_ends_at, u.created_at::text,
+			    COALESCE(ue.environment_id::text, ''),
+			    COALESCE(e.name, ''),
+			    COALESCE(ue.preferred_company_id::text, ''),
+			    COALESCE(pc.name, ''),
+			    COALESCE(eg.id::text, ''),
+			    COALESCE(eg.name, '')
 			FROM users u
+			LEFT JOIN LATERAL (
+			    SELECT environment_id, preferred_company_id
+			    FROM user_environments
+			    WHERE user_id = u.id
+			    LIMIT 1
+			) ue ON true
+			LEFT JOIN environments e ON e.id = ue.environment_id
+			LEFT JOIN companies pc ON pc.id = ue.preferred_company_id
+			LEFT JOIN enterprise_groups eg ON eg.id = pc.group_id
 			WHERE u.id = $2
 			   OR EXISTS (
 			       SELECT 1 FROM smartpick.sp_user_filiais uf
@@ -82,7 +107,10 @@ func SpListUsuariosHandler(db *sql.DB) http.HandlerFunc {
 		for rows.Next() {
 			var u SpUsuarioResponse
 			if err := rows.Scan(&u.ID, &u.Email, &u.FullName, &u.SpRole,
-				&u.IsVerified, &u.TrialEndsAt, &u.CreatedAt); err != nil {
+				&u.IsVerified, &u.TrialEndsAt, &u.CreatedAt,
+				&u.EnvironmentID, &u.EnvironmentName,
+				&u.CompanyID, &u.CompanyName,
+				&u.GroupID, &u.GroupName); err != nil {
 				continue
 			}
 			// Carrega filiais vinculadas para este usuário nessa empresa
@@ -166,6 +194,33 @@ func SpUpdateRoleHandler(db *sql.DB) http.HandlerFunc {
 		if n, _ := res.RowsAffected(); n == 0 {
 			http.Error(w, "User not found", http.StatusNotFound)
 			return
+		}
+
+		// Reatribuição de hierarquia (ambiente + empresa preferida)
+		if req.EnvironmentID != "" {
+			tx, txErr := db.Begin()
+			if txErr == nil {
+				_, _ = tx.Exec("DELETE FROM user_environments WHERE user_id = $1", targetID)
+				if req.CompanyID != "" {
+					_, txErr = tx.Exec(`
+						INSERT INTO user_environments (user_id, environment_id, role, preferred_company_id)
+						VALUES ($1, $2, 'user', $3)
+					`, targetID, req.EnvironmentID, req.CompanyID)
+				} else {
+					_, txErr = tx.Exec(
+						"INSERT INTO user_environments (user_id, environment_id, role) VALUES ($1, $2, 'user')",
+						targetID, req.EnvironmentID,
+					)
+				}
+				if txErr == nil {
+					tx.Commit()
+					log.Printf("SpUpdateRole: user %s reatribuído env=%s empresa=%s (by %s)",
+						targetID, req.EnvironmentID, req.CompanyID, spCtx.UserID)
+				} else {
+					tx.Rollback()
+					log.Printf("SpUpdateRole: falha ao reatribuir hierarquia: %v", txErr)
+				}
+			}
 		}
 
 		log.Printf("SpUpdateRole: user %s → sp_role=%s (by %s)", targetID, req.SpRole, spCtx.UserID)

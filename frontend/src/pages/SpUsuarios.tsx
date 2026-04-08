@@ -26,6 +26,12 @@ interface SpUsuario {
   is_verified: boolean
   trial_ends_at: string
   created_at: string
+  environment_id: string
+  environment_name: string
+  group_id: string
+  group_name: string
+  company_id: string
+  company_name: string
   all_filiais: boolean
   filial_ids: number[]
 }
@@ -95,6 +101,14 @@ export default function SpUsuarios() {
   // Campo de edição de nome (dialog de perfil)
   const [editNome, setEditNome] = useState('')
 
+  // Reatribuição de hierarquia no dialog de Perfil
+  const [showReassign,       setShowReassign]       = useState(false)
+  const [reassignEnvId,      setReassignEnvId]      = useState('')
+  const [reassignGroupId,    setReassignGroupId]    = useState('')
+  const [reassignCompanyId,  setReassignCompanyId]  = useState('')
+  const [reassignGroups,     setReassignGroups]     = useState<{id: string; name: string}[]>([])
+  const [reassignCompanies,  setReassignCompanies]  = useState<{id: string; name: string}[]>([])
+
   // ── Estado do dialog multi-empresa ───────────────────────────────────────────
   interface VinculoState { all: boolean; filiais: number[] }
   const [vinculosDialog,      setVinculosDialog]      = useState(false)
@@ -129,6 +143,23 @@ export default function SpUsuarios() {
       .catch(() => setCompanies([]))
   }, [createGroupId, token])
 
+  // Hierarquia do reassign (dialog Perfil)
+  useEffect(() => {
+    if (!reassignEnvId) { setReassignGroups([]); setReassignGroupId(''); return }
+    fetch(`/api/config/groups?environment_id=${reassignEnvId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setReassignGroups(d || []))
+      .catch(() => setReassignGroups([]))
+  }, [reassignEnvId, token])
+
+  useEffect(() => {
+    if (!reassignGroupId) { setReassignCompanies([]); setReassignCompanyId(''); return }
+    fetch(`/api/config/companies?group_id=${reassignGroupId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setReassignCompanies(d || []))
+      .catch(() => setReassignCompanies([]))
+  }, [reassignGroupId, token])
+
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: usuarios = [], isLoading } = useQuery<SpUsuario[]>({
     queryKey: ['sp-usuarios'],
@@ -154,11 +185,12 @@ export default function SpUsuarios() {
 
   // ── Mutations ────────────────────────────────────────────────────────────────
   const updateRole = useMutation({
-    mutationFn: async ({ id, sp_role, full_name }: { id: string; sp_role: string; full_name: string }) => {
+    mutationFn: async ({ id, sp_role, full_name, environment_id, group_id, company_id }:
+      { id: string; sp_role: string; full_name: string; environment_id?: string; group_id?: string; company_id?: string }) => {
       const res = await fetch(`/api/sp/usuarios/${id}/role`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body:    JSON.stringify({ sp_role, full_name }),
+        body:    JSON.stringify({ sp_role, full_name, environment_id, group_id, company_id }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Erro ao atualizar perfil')
     },
@@ -250,6 +282,10 @@ export default function SpUsuarios() {
     setSelected(u)
     setNewRole(u.sp_role)
     setEditNome(u.full_name)
+    setShowReassign(false)
+    setReassignEnvId('')
+    setReassignGroupId('')
+    setReassignCompanyId('')
     setRoleDialog(true)
   }
 
@@ -478,32 +514,93 @@ export default function SpUsuarios() {
 
       {/* ── Dialog: alterar perfil ─────────────────────────────────────────── */}
       <Dialog open={roleDialog} onOpenChange={setRoleDialog}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Alterar Perfil SmartPick</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-1">
             <div className="grid gap-1.5">
               <Label>Nome completo</Label>
               <Input value={editNome} onChange={e => setEditNome(e.target.value)} placeholder="Nome do usuário" />
             </div>
-            <Select value={newRole} onValueChange={setNewRole}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o perfil" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="admin_fbtax">Admin FbTax</SelectItem>
-                <SelectItem value="gestor_geral">Gestor Geral</SelectItem>
-                <SelectItem value="gestor_filial">Gestor de Filial</SelectItem>
-                <SelectItem value="somente_leitura">Somente Leitura</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="grid gap-1.5">
+              <Label>Perfil SmartPick</Label>
+              <Select value={newRole} onValueChange={setNewRole}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o perfil" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin_fbtax">Admin FbTax</SelectItem>
+                  <SelectItem value="gestor_geral">Gestor Geral</SelectItem>
+                  <SelectItem value="gestor_filial">Gestor de Filial</SelectItem>
+                  <SelectItem value="somente_leitura">Somente Leitura</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Hierarquia atual */}
+            <div className="border-t pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Hierarquia</Label>
+                <Button variant="outline" size="sm" className="h-7 text-xs"
+                  onClick={() => { setShowReassign(!showReassign); setReassignEnvId(''); setReassignGroupId(''); setReassignCompanyId('') }}>
+                  {showReassign ? 'Cancelar' : 'Alterar Hierarquia'}
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-0.5 bg-muted/30 rounded p-2">
+                <div>Ambiente: <strong>{selected?.environment_name || '—'}</strong></div>
+                <div className="ml-2">Grupo: <strong>{selected?.group_name || '—'}</strong></div>
+                <div className="ml-4">Empresa: <strong>{selected?.company_name || '—'}</strong></div>
+              </div>
+
+              {showReassign && (
+                <div className="space-y-2 border rounded p-3 bg-muted/10">
+                  <Label className="text-xs font-medium">Nova Hierarquia</Label>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs text-muted-foreground">Ambiente</Label>
+                    <Select value={reassignEnvId} onValueChange={v => { setReassignEnvId(v); setReassignGroupId(''); setReassignCompanyId('') }}>
+                      <SelectTrigger><SelectValue placeholder="Selecione o ambiente..." /></SelectTrigger>
+                      <SelectContent>
+                        {environments.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs text-muted-foreground">Grupo</Label>
+                    <Select value={reassignGroupId} onValueChange={v => { setReassignGroupId(v); setReassignCompanyId('') }} disabled={!reassignEnvId}>
+                      <SelectTrigger><SelectValue placeholder={reassignEnvId ? 'Selecione o grupo...' : 'Selecione um ambiente primeiro'} /></SelectTrigger>
+                      <SelectContent>
+                        {reassignGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs text-muted-foreground">Empresa</Label>
+                    <Select value={reassignCompanyId} onValueChange={setReassignCompanyId} disabled={!reassignGroupId}>
+                      <SelectTrigger><SelectValue placeholder={reassignGroupId ? 'Selecione a empresa...' : 'Selecione um grupo primeiro'} /></SelectTrigger>
+                      <SelectContent>
+                        {reassignCompanies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRoleDialog(false)}>Cancelar</Button>
             <Button
               disabled={updateRole.isPending || !newRole || !editNome}
-              onClick={() => selected && updateRole.mutate({ id: selected.id, sp_role: newRole, full_name: editNome })}
+              onClick={() => selected && updateRole.mutate({
+                id: selected.id,
+                sp_role: newRole,
+                full_name: editNome,
+                ...(showReassign && reassignEnvId ? {
+                  environment_id: reassignEnvId,
+                  group_id: reassignGroupId,
+                  company_id: reassignCompanyId,
+                } : {}),
+              })}
             >
               {updateRole.isPending ? 'Salvando...' : 'Salvar'}
             </Button>
