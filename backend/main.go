@@ -427,7 +427,8 @@ func main() {
 	}, "admin_fbtax"))
 
 	// ── SmartPick — Admin / Manutenção ───────────────────────────────────────
-	http.HandleFunc("/api/sp/admin/limpar-calibragem", withSP(handlers.SpLimparCalibragemHandler, "admin_fbtax"))
+	http.HandleFunc("/api/sp/admin/limpar-calibragem",   withSP(handlers.SpLimparCalibragemHandler, "admin_fbtax"))
+	http.HandleFunc("/api/sp/admin/purgar-csv-antigos", withSP(handlers.SpPurgarCsvAntigosHandler, "gestor_geral"))
 
 	// ── Frontend estático (SPA React) ─────────────────────────────────────────
 	staticDir := "./static"

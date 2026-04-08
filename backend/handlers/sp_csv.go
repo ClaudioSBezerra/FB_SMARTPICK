@@ -9,7 +9,9 @@ package handlers
 // GET  /api/sp/csv/jobs/{id} → status de um job específico
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -98,6 +100,35 @@ func SpCSVUploadHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Lê arquivo em memória para calcular hash SHA-256 antes de salvar
+		fileBytes, err := io.ReadAll(file)
+		if err != nil {
+			http.Error(w, "Erro ao ler arquivo", http.StatusInternalServerError)
+			return
+		}
+		hashBytes := sha256.Sum256(fileBytes)
+		fileHash := hex.EncodeToString(hashBytes[:])
+
+		// Verifica duplicata: mesmo hash para o mesmo CD nesta empresa
+		var dupJobID, dupCreatedAt string
+		dupErr := db.QueryRow(`
+			SELECT id::text, TO_CHAR(created_at,'DD/MM/YYYY HH24:MI')
+			FROM smartpick.sp_csv_jobs
+			WHERE empresa_id = $1 AND cd_id = $2 AND file_hash = $3
+			ORDER BY created_at DESC LIMIT 1
+		`, spCtx.EmpresaID, cdID, fileHash).Scan(&dupJobID, &dupCreatedAt)
+		if dupErr == nil {
+			// Arquivo idêntico já foi importado
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error":       "duplicate_file",
+				"message":     fmt.Sprintf("Este arquivo já foi importado em %s. Para um novo ciclo, exporte uma nova carga do Winthor.", dupCreatedAt),
+				"existing_id": dupJobID,
+			})
+			return
+		}
+
 		// Salva arquivo em uploads/
 		uploadDir := "uploads"
 		if err := os.MkdirAll(uploadDir, 0755); err != nil {
@@ -109,25 +140,19 @@ func SpCSVUploadHandler(db *sql.DB) http.HandlerFunc {
 		safeFilename := fmt.Sprintf("sp_%s_%d_%s", ts, cdID, filepath.Base(header.Filename))
 		filePath := filepath.Join(uploadDir, safeFilename)
 
-		dst, err := os.Create(filePath)
-		if err != nil {
+		if err := os.WriteFile(filePath, fileBytes, 0644); err != nil {
 			http.Error(w, "Erro ao salvar arquivo", http.StatusInternalServerError)
 			return
 		}
-		defer dst.Close()
-		if _, err := io.Copy(dst, file); err != nil {
-			http.Error(w, "Erro ao gravar arquivo", http.StatusInternalServerError)
-			return
-		}
 
-		// Cria job no banco
+		// Cria job no banco com hash
 		var jobID string
 		err = db.QueryRow(`
 			INSERT INTO smartpick.sp_csv_jobs
-			  (empresa_id, filial_id, cd_id, uploaded_by, filename, file_path, status)
-			VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+			  (empresa_id, filial_id, cd_id, uploaded_by, filename, file_path, file_hash, status)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
 			RETURNING id
-		`, spCtx.EmpresaID, filialID, cdID, spCtx.UserID, header.Filename, filePath).Scan(&jobID)
+		`, spCtx.EmpresaID, filialID, cdID, spCtx.UserID, header.Filename, filePath, fileHash).Scan(&jobID)
 		if err != nil {
 			os.Remove(filePath)
 			http.Error(w, "Erro ao criar job: "+err.Error(), http.StatusInternalServerError)

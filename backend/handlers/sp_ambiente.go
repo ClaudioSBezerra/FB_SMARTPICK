@@ -58,26 +58,28 @@ type SpCDResponse struct {
 }
 
 type SpMotorParamsRequest struct {
-	DiasAnalise       int     `json:"dias_analise"`
-	CurvaAMaxEst      int     `json:"curva_a_max_est"`
-	CurvaBMaxEst      int     `json:"curva_b_max_est"`
-	CurvaCMaxEst      int     `json:"curva_c_max_est"`
-	FatorSeguranca    float64 `json:"fator_seguranca"`
-	CurvaANuncaReduz  bool    `json:"curva_a_nunca_reduz"`
-	MinCapacidade     int     `json:"min_capacidade"`
+	DiasAnalise        int     `json:"dias_analise"`
+	CurvaAMaxEst       int     `json:"curva_a_max_est"`
+	CurvaBMaxEst       int     `json:"curva_b_max_est"`
+	CurvaCMaxEst       int     `json:"curva_c_max_est"`
+	FatorSeguranca     float64 `json:"fator_seguranca"`
+	CurvaANuncaReduz   bool    `json:"curva_a_nunca_reduz"`
+	MinCapacidade      int     `json:"min_capacidade"`
+	RetencaoCsvMeses   int     `json:"retencao_csv_meses"`
 }
 
 type SpMotorParamsResponse struct {
-	ID                int     `json:"id"`
-	CDID              int     `json:"cd_id"`
-	DiasAnalise       int     `json:"dias_analise"`
-	CurvaAMaxEst      int     `json:"curva_a_max_est"`
-	CurvaBMaxEst      int     `json:"curva_b_max_est"`
-	CurvaCMaxEst      int     `json:"curva_c_max_est"`
-	FatorSeguranca    float64 `json:"fator_seguranca"`
-	CurvaANuncaReduz  bool    `json:"curva_a_nunca_reduz"`
-	MinCapacidade     int     `json:"min_capacidade"`
-	UpdatedAt         string  `json:"updated_at"`
+	ID                 int     `json:"id"`
+	CDID               int     `json:"cd_id"`
+	DiasAnalise        int     `json:"dias_analise"`
+	CurvaAMaxEst       int     `json:"curva_a_max_est"`
+	CurvaBMaxEst       int     `json:"curva_b_max_est"`
+	CurvaCMaxEst       int     `json:"curva_c_max_est"`
+	FatorSeguranca     float64 `json:"fator_seguranca"`
+	CurvaANuncaReduz   bool    `json:"curva_a_nunca_reduz"`
+	MinCapacidade      int     `json:"min_capacidade"`
+	RetencaoCsvMeses   int     `json:"retencao_csv_meses"`
+	UpdatedAt          string  `json:"updated_at"`
 }
 
 type SpPlanoResponse struct {
@@ -627,21 +629,25 @@ func SpMotorParamsHandler(db *sql.DB) http.HandlerFunc {
 			var p SpMotorParamsResponse
 			err := db.QueryRow(`
 				SELECT id, cd_id, dias_analise, curva_a_max_est, curva_b_max_est,
-				       curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade, updated_at
+				       curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade,
+				       retencao_csv_meses, updated_at
 				FROM smartpick.sp_motor_params
 				WHERE cd_id = $1
 			`, cdID).Scan(&p.ID, &p.CDID, &p.DiasAnalise, &p.CurvaAMaxEst, &p.CurvaBMaxEst,
-				&p.CurvaCMaxEst, &p.FatorSeguranca, &p.CurvaANuncaReduz, &p.MinCapacidade, &p.UpdatedAt)
+				&p.CurvaCMaxEst, &p.FatorSeguranca, &p.CurvaANuncaReduz, &p.MinCapacidade,
+				&p.RetencaoCsvMeses, &p.UpdatedAt)
 			if err == sql.ErrNoRows {
 				// Cria padrão on-demand
 				db.Exec(`INSERT INTO smartpick.sp_motor_params (cd_id, empresa_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 					cdID, spCtx.EmpresaID)
 				db.QueryRow(`
 					SELECT id, cd_id, dias_analise, curva_a_max_est, curva_b_max_est,
-					       curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade, updated_at
+					       curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade,
+					       retencao_csv_meses, updated_at
 					FROM smartpick.sp_motor_params WHERE cd_id = $1
 				`, cdID).Scan(&p.ID, &p.CDID, &p.DiasAnalise, &p.CurvaAMaxEst, &p.CurvaBMaxEst,
-					&p.CurvaCMaxEst, &p.FatorSeguranca, &p.CurvaANuncaReduz, &p.MinCapacidade, &p.UpdatedAt)
+					&p.CurvaCMaxEst, &p.FatorSeguranca, &p.CurvaANuncaReduz, &p.MinCapacidade,
+					&p.RetencaoCsvMeses, &p.UpdatedAt)
 			} else if err != nil {
 				http.Error(w, "Database error", http.StatusInternalServerError)
 				return
@@ -676,23 +682,32 @@ func SpMotorParamsHandler(db *sql.DB) http.HandlerFunc {
 			if req.MinCapacidade == 0 {
 				req.MinCapacidade = 1
 			}
+			if req.RetencaoCsvMeses == 0 {
+				req.RetencaoCsvMeses = 6
+			}
+			if req.RetencaoCsvMeses > 60 {
+				req.RetencaoCsvMeses = 60
+			}
 			_, err := db.Exec(`
 				INSERT INTO smartpick.sp_motor_params
 				  (cd_id, empresa_id, dias_analise, curva_a_max_est, curva_b_max_est,
-				   curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade, updated_by)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				   curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade,
+				   retencao_csv_meses, updated_by)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 				ON CONFLICT (cd_id) DO UPDATE SET
-				  dias_analise       = EXCLUDED.dias_analise,
-				  curva_a_max_est    = EXCLUDED.curva_a_max_est,
-				  curva_b_max_est    = EXCLUDED.curva_b_max_est,
-				  curva_c_max_est    = EXCLUDED.curva_c_max_est,
-				  fator_seguranca    = EXCLUDED.fator_seguranca,
+				  dias_analise        = EXCLUDED.dias_analise,
+				  curva_a_max_est     = EXCLUDED.curva_a_max_est,
+				  curva_b_max_est     = EXCLUDED.curva_b_max_est,
+				  curva_c_max_est     = EXCLUDED.curva_c_max_est,
+				  fator_seguranca     = EXCLUDED.fator_seguranca,
 				  curva_a_nunca_reduz = EXCLUDED.curva_a_nunca_reduz,
-				  min_capacidade     = EXCLUDED.min_capacidade,
-				  updated_by         = EXCLUDED.updated_by,
-				  updated_at         = now()
+				  min_capacidade      = EXCLUDED.min_capacidade,
+				  retencao_csv_meses  = EXCLUDED.retencao_csv_meses,
+				  updated_by          = EXCLUDED.updated_by,
+				  updated_at          = now()
 			`, cdID, spCtx.EmpresaID, req.DiasAnalise, req.CurvaAMaxEst, req.CurvaBMaxEst,
-				req.CurvaCMaxEst, req.FatorSeguranca, req.CurvaANuncaReduz, req.MinCapacidade, spCtx.UserID)
+				req.CurvaCMaxEst, req.FatorSeguranca, req.CurvaANuncaReduz, req.MinCapacidade,
+				req.RetencaoCsvMeses, spCtx.UserID)
 			if err != nil {
 				http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 				return

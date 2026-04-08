@@ -121,7 +121,11 @@ export default function SpUploadCSV() {
         body: form,
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Erro no upload')
+      if (res.status === 409 && data.error === 'duplicate_file') {
+        toast.warning(data.message ?? 'Arquivo duplicado', { duration: 8000 })
+        return
+      }
+      if (!res.ok) throw new Error(data.error ?? data.message ?? 'Erro no upload')
       toast.success(`Arquivo enviado. Job: ${data.job_id.slice(0, 8)}...`)
       qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
       if (fileRef.current) fileRef.current.value = ''

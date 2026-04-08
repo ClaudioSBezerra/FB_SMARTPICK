@@ -47,6 +47,7 @@ interface SpMotorParams {
   fator_seguranca: number
   curva_a_nunca_reduz: boolean
   min_capacidade: number
+  retencao_csv_meses: number
   updated_at: string
 }
 
@@ -536,6 +537,18 @@ export default function SpAmbiente() {
                 <Label htmlFor="curva-a-nunca" className="cursor-pointer">
                   Curva A: nunca reduzir capacidade
                 </Label>
+              </div>
+              <div className="col-span-2 border-t pt-3 mt-1">
+                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Retenção de Dados</p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Retenção de importações (meses)</Label>
+                <Input type="number" min={1} max={60}
+                  value={editParams.retencao_csv_meses ?? 6}
+                  onChange={e => setEditParams(p => ({ ...p, retencao_csv_meses: +e.target.value }))} />
+                <p className="text-xs text-muted-foreground">
+                  Dados brutos de CSV (endereços) são removidos após este período. Propostas e histórico são preservados permanentemente.
+                </p>
               </div>
             </div>
           )}

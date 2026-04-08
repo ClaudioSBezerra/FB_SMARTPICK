@@ -2,8 +2,8 @@ package handlers
 
 // sp_reincidencia.go — Dashboard de Reincidência de Calibragem
 //
-// Story 8.1 — Produtos que foram sugeridos para recalibração em múltiplos ciclos
-//             porém nunca foram ajustados no Winthor (mesma CAPACIDADE em todas as cargas).
+// Story 8.1 — Produtos sugeridos para recalibração em múltiplos ciclos
+//             porém nunca ajustados no Winthor (mesma CAPACIDADE em todas as cargas).
 //
 // GET /api/sp/reincidencia?cd_id=X&min_ciclos=2
 
@@ -27,18 +27,26 @@ type ReincidenciaItem struct {
 	Predio          *int    `json:"predio"`
 	Apto            *int    `json:"apto"`
 	ClasseVenda     *string `json:"classe_venda"`
-	Capacidade      *int    `json:"capacidade"`           // capacidade atual (nunca mudou)
-	UltimaSugestao  *int    `json:"ultima_sugestao"`      // última sugestão do motor
-	UltimoDelta     *int    `json:"ultimo_delta"`         // último delta calculado
-	CiclosRepetidos int     `json:"ciclos_repetidos"`     // quantas cargas com mesma cap
-	PrimeiroCiclo   string  `json:"primeiro_ciclo"`       // data da primeira carga
-	UltimoCiclo     string  `json:"ultimo_ciclo"`         // data da última carga
+	Capacidade      *int    `json:"capacidade"`       // capacidade atual (nunca mudou)
+	UltimaSugestao  *int    `json:"ultima_sugestao"`  // última sugestão do motor
+	UltimoDelta     *int    `json:"ultimo_delta"`     // último delta calculado
+	CiclosRepetidos int     `json:"ciclos_repetidos"` // quantas cargas com mesma cap
+	PrimeiroCiclo   string  `json:"primeiro_ciclo"`   // data da primeira carga
+	UltimoCiclo     string  `json:"ultimo_ciclo"`     // data da última carga
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 // SpReincidenciaHandler lista produtos com sugestão repetida mas sem ajuste no Winthor.
 // GET /api/sp/reincidencia?cd_id=X&min_ciclos=2
+//
+// Lógica: agrupa endereços por (cd_id, codprod, rua, predio, apto, capacidade).
+// Se o mesmo endereço aparece em ≥ min_ciclos importações concluídas com a mesma
+// capacidade, e houve ao menos uma proposta com delta != 0, é uma reincidência.
+//
+// Nota: produto e classe_venda são excluídos do GROUP BY pois podem variar
+// levemente entre importações (encoding, espaços, reclassificação). Usamos MAX()
+// para pegar o valor mais recente.
 func SpReincidenciaHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -51,7 +59,7 @@ func SpReincidenciaHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		cdIDFilter  := r.URL.Query().Get("cd_id")
+		cdIDFilter   := r.URL.Query().Get("cd_id")
 		minCiclosStr := r.URL.Query().Get("min_ciclos")
 		minCiclos := 2
 		if minCiclosStr != "" {
@@ -61,48 +69,43 @@ func SpReincidenciaHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// Encontra endereços onde:
-		// - O produto apareceu em ≥ min_ciclos importações concluídas
-		// - A CAPACIDADE é a mesma em todas essas cargas (nunca foi ajustada no Winthor)
-		// - Houve proposta com delta != 0 em pelo menos um ciclo (ou seja, motor sugeriu mudança)
 		query := `
 			WITH enderecos_agrupados AS (
 				SELECT
 					j.cd_id,
 					e.codprod,
-					e.produto,
+					MAX(e.produto)      AS produto,
 					e.rua,
 					e.predio,
 					e.apto,
-					e.classe_venda,
+					MAX(e.classe_venda) AS classe_venda,
 					e.capacidade,
-					COUNT(DISTINCT j.id)                                    AS ciclos_repetidos,
-					MIN(j.created_at)                                       AS primeiro_ciclo,
-					MAX(j.created_at)                                       AS ultimo_ciclo
+					COUNT(DISTINCT j.id) AS ciclos_repetidos,
+					MIN(j.created_at)    AS primeiro_ciclo,
+					MAX(j.created_at)    AS ultimo_ciclo
 				FROM smartpick.sp_enderecos e
 				JOIN smartpick.sp_csv_jobs j
 					ON j.id = e.job_id
 					AND j.empresa_id = $1
 					AND j.status = 'done'
 				WHERE e.capacidade IS NOT NULL
-				GROUP BY j.cd_id, e.codprod, e.produto, e.rua, e.predio, e.apto, e.classe_venda, e.capacidade
+				GROUP BY j.cd_id, e.codprod, e.rua, e.predio, e.apto, e.capacidade
 				HAVING COUNT(DISTINCT j.id) >= $2
 			),
 			com_propostas AS (
 				SELECT
 					ea.*,
-					-- última sugestão do motor para este endereço (qualquer ciclo)
 					(
 						SELECT p.sugestao_calibragem
 						FROM smartpick.sp_propostas p
 						JOIN smartpick.sp_csv_jobs jj ON jj.id = p.job_id
-						WHERE p.codprod      = ea.codprod
-						  AND p.cd_id        = ea.cd_id
-						  AND p.empresa_id   = $1
-						  AND p.rua          IS NOT DISTINCT FROM ea.rua
-						  AND p.predio       IS NOT DISTINCT FROM ea.predio
-						  AND p.apto         IS NOT DISTINCT FROM ea.apto
-						  AND p.delta        != 0
+						WHERE p.codprod    = ea.codprod
+						  AND p.cd_id      = ea.cd_id
+						  AND p.empresa_id = $1
+						  AND p.rua        IS NOT DISTINCT FROM ea.rua
+						  AND p.predio     IS NOT DISTINCT FROM ea.predio
+						  AND p.apto       IS NOT DISTINCT FROM ea.apto
+						  AND p.delta     != 0
 						ORDER BY jj.created_at DESC
 						LIMIT 1
 					) AS ultima_sugestao,
@@ -110,13 +113,13 @@ func SpReincidenciaHandler(db *sql.DB) http.HandlerFunc {
 						SELECT p.delta
 						FROM smartpick.sp_propostas p
 						JOIN smartpick.sp_csv_jobs jj ON jj.id = p.job_id
-						WHERE p.codprod      = ea.codprod
-						  AND p.cd_id        = ea.cd_id
-						  AND p.empresa_id   = $1
-						  AND p.rua          IS NOT DISTINCT FROM ea.rua
-						  AND p.predio       IS NOT DISTINCT FROM ea.predio
-						  AND p.apto         IS NOT DISTINCT FROM ea.apto
-						  AND p.delta        != 0
+						WHERE p.codprod    = ea.codprod
+						  AND p.cd_id      = ea.cd_id
+						  AND p.empresa_id = $1
+						  AND p.rua        IS NOT DISTINCT FROM ea.rua
+						  AND p.predio     IS NOT DISTINCT FROM ea.predio
+						  AND p.apto       IS NOT DISTINCT FROM ea.apto
+						  AND p.delta     != 0
 						ORDER BY jj.created_at DESC
 						LIMIT 1
 					) AS ultimo_delta

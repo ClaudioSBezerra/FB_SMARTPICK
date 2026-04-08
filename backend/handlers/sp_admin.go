@@ -1,14 +1,20 @@
 package handlers
 
-// sp_admin.go — Operações administrativas SmartPick (apenas admin_fbtax)
+// sp_admin.go — Operações administrativas SmartPick
 //
-// DELETE /api/sp/admin/limpar-calibragem
-//   Apaga dados de calibragem (jobs, endereços, propostas, histórico) da empresa ativa.
+// DELETE /api/sp/admin/limpar-calibragem   (admin_fbtax)
+//   Apaga TODOS os dados de calibragem da empresa ativa.
 //   Preserva: filiais, CDs, parâmetros do motor, plano, usuários.
+//
+// POST /api/sp/admin/purgar-csv-antigos   (gestor_geral)
+//   Remove importações CSV (sp_csv_jobs + sp_enderecos cascata) mais antigas que
+//   retencao_csv_meses meses, conforme configurado nos parâmetros do motor do CD.
+//   sp_propostas e sp_historico são preservados.
 
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -106,12 +112,119 @@ func SpLimparCalibragemHandler(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"message":          "Dados de calibragem removidos com sucesso",
-			"sp_csv_jobs":      totais["sp_csv_jobs"],
-			"sp_enderecos":     totais["sp_enderecos"],
-			"sp_propostas":     totais["sp_propostas"],
-			"sp_historico":     totais["sp_historico"],
+			"message":            "Dados de calibragem removidos com sucesso",
+			"sp_csv_jobs":        totais["sp_csv_jobs"],
+			"sp_enderecos":       totais["sp_enderecos"],
+			"sp_propostas":       totais["sp_propostas"],
+			"sp_historico":       totais["sp_historico"],
 			"arquivos_removidos": removidos,
+		})
+	}
+}
+
+// ─── Purga de importações antigas ────────────────────────────────────────────
+
+// SpPurgarCsvAntigosHandler remove jobs CSV (e endereços via cascade) mais antigos
+// que retencao_csv_meses meses, conforme o parâmetro de cada CD.
+// sp_propostas e sp_historico são preservados (auditoria permanente).
+// POST /api/sp/admin/purgar-csv-antigos
+// Body (opcional): { "cd_id": 123 }  — sem cd_id purga todos os CDs da empresa
+func SpPurgarCsvAntigosHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil || !spCtx.CanApprove() {
+			http.Error(w, "Forbidden: gestor_geral+ necessário", http.StatusForbidden)
+			return
+		}
+
+		var body struct {
+			CdID *int `json:"cd_id"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+
+		// Identifica CDs e seus respectivos limites de retenção
+		cdFilter := ""
+		args := []any{spCtx.EmpresaID}
+		if body.CdID != nil {
+			cdFilter = " AND cd.id = $2"
+			args = append(args, *body.CdID)
+		}
+
+		rows, err := db.Query(fmt.Sprintf(`
+			SELECT cd.id, COALESCE(mp.retencao_csv_meses, 6)
+			FROM smartpick.sp_centros_dist cd
+			LEFT JOIN smartpick.sp_motor_params mp ON mp.cd_id = cd.id
+			WHERE cd.empresa_id = $1%s AND cd.ativo = true
+		`, cdFilter), args...)
+		if err != nil {
+			http.Error(w, "Erro ao carregar CDs: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type cdRetencao struct {
+			cdID   int
+			meses  int
+		}
+		var cds []cdRetencao
+		for rows.Next() {
+			var c cdRetencao
+			if rows.Scan(&c.cdID, &c.meses) == nil {
+				cds = append(cds, c)
+			}
+		}
+		rows.Close()
+
+		totalJobs := int64(0)
+		totalArquivos := 0
+
+		for _, c := range cds {
+			// Coleta file_paths dos jobs a remover
+			fpRows, err := db.Query(`
+				SELECT file_path FROM smartpick.sp_csv_jobs
+				WHERE empresa_id = $1 AND cd_id = $2
+				  AND status = 'done'
+				  AND created_at < now() - ($3 || ' months')::interval
+				  AND file_path IS NOT NULL
+			`, spCtx.EmpresaID, c.cdID, c.meses)
+			if err == nil {
+				for fpRows.Next() {
+					var fp string
+					if fpRows.Scan(&fp) == nil && fp != "" {
+						clean := filepath.Clean(fp)
+						if os.Remove(clean) == nil {
+							totalArquivos++
+						}
+					}
+				}
+				fpRows.Close()
+			}
+
+			// Remove os jobs (sp_enderecos cascata via FK ON DELETE CASCADE)
+			res, err := db.Exec(`
+				DELETE FROM smartpick.sp_csv_jobs
+				WHERE empresa_id = $1 AND cd_id = $2
+				  AND status = 'done'
+				  AND created_at < now() - ($3 || ' months')::interval
+			`, spCtx.EmpresaID, c.cdID, c.meses)
+			if err == nil {
+				n, _ := res.RowsAffected()
+				totalJobs += n
+			}
+		}
+
+		log.Printf("SpPurgarCsvAntigos: empresa=%s jobs_removidos=%d arquivos_removidos=%d (by %s)",
+			spCtx.EmpresaID, totalJobs, totalArquivos, spCtx.UserID)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"message":            "Purga concluída",
+			"jobs_removidos":     totalJobs,
+			"arquivos_removidos": totalArquivos,
 		})
 	}
 }
