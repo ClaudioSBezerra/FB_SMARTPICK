@@ -31,7 +31,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 const mainItems = [
-  { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard de Urgência', path: '/dashboard/urgencia/falta' },
+  { id: 'dashboard', icon: LayoutDashboard, label: 'Painel de Calibragem', path: '/dashboard/urgencia/falta' },
   { id: 'upload',    icon: Upload,          label: 'Importação CSV',         path: '/upload/csv' },
   { id: 'historico', icon: History,         label: 'Histórico',              path: '/historico' },
   { id: 'pdf',          icon: FileDown,   label: 'Gerar PDF',                  path: '/pdf/gerar' },

@@ -14,7 +14,7 @@ export interface ModuleConfig {
 // ─── SmartPick — Módulos e abas ───────────────────────────────────────────────
 export const modules: Record<string, ModuleConfig> = {
   dashboard: {
-    label: 'Dashboard',
+    label: 'Painel de Calibragem',
     tabs: [
       { label: 'Urgência — Falta',   path: '/dashboard/urgencia/falta' },
       { label: 'Urgência — Espaço',  path: '/dashboard/urgencia/espaco' },
@@ -23,8 +23,8 @@ export const modules: Record<string, ModuleConfig> = {
   upload: {
     label: 'Importação CSV',
     tabs: [
-      { label: 'Upload CSV',          path: '/upload/csv' },
-      { label: 'Log de Processamento', path: '/upload/log' },
+      { label: 'Upload CSV',       path: '/upload/csv' },
+      { label: 'Log de Importação', path: '/upload/log' },
     ],
   },
   config: {
