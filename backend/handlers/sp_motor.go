@@ -70,6 +70,8 @@ func nilIfEmptyStr(s string) interface{} {
 // SpMotorCalibrarHandler executa o motor de calibragem para um job.
 // POST /api/sp/motor/calibrar
 // Body: { "job_id": "uuid" }
+//
+// Fórmula aplicada (corrigida): sugestão = ceil( ceil(giroDia/unidadeMaster) × diasClasse × fatorSeguranca )
 func SpMotorCalibrarHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -319,9 +321,9 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 		fonteDias = "params"
 	}
 
-	// ── 3. Fórmula: ceil(giroDia / unidadeMaster) × diasClasse ─────────────
+	// ── 3. Fórmula: ceil( ceil(giroDia / unidadeMaster) × diasClasse × fatorSeguranca ) ──
 	caixasGiro := int(math.Ceil(giroDia / float64(unidadeMaster)))
-	sugestao := caixasGiro * diasClasse
+	sugestao := int(math.Ceil(float64(caixasGiro*diasClasse) * p.FatorSeguranca))
 
 	// ── 4. Mínimo absoluto ──────────────────────────────────────────────────
 	if sugestao < p.MinCapacidade {
@@ -337,17 +339,17 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 		sugestao = capAtual
 	}
 
-	formulaResult := caixasGiro * diasClasse
+	formulaResult := int(math.Ceil(float64(caixasGiro*diasClasse) * p.FatorSeguranca))
 	var justificativa string
 	if curva == "A" && p.CurvaANuncaReduz && sugestao == capAtual && formulaResult < capAtual {
 		justificativa = fmt.Sprintf(
-			"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) = %d cx → mantida em %d cx [Curva A nunca reduz]",
-			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, formulaResult, sugestao,
+			"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) × %.2f(seg) = %d cx → mantida em %d cx [Curva A nunca reduz]",
+			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaResult, sugestao,
 		)
 	} else {
 		justificativa = fmt.Sprintf(
-			"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) = %d cx",
-			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, sugestao,
+			"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) × %.2f(seg) = %d cx",
+			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, sugestao,
 		)
 	}
 

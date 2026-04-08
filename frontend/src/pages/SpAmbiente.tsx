@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { Plus, Copy, Settings2, Trash2, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
+import { Plus, Copy, Settings2, Trash2, ChevronDown, ChevronRight, AlertTriangle, HelpCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -107,6 +107,25 @@ export default function SpAmbiente() {
   const [dupNome,        setDupNome]        = useState('')
   const [editParams,     setEditParams]     = useState<Partial<SpMotorParams>>({})
   const [limparDialog,   setLimparDialog]   = useState(false)
+
+  // ── Simulador da fórmula ─────────────────────────────────────────────────────
+  const [showHelp,      setShowHelp]      = useState(true)
+  const [simGiro,       setSimGiro]       = useState(25)
+  const [simMaster,     setSimMaster]     = useState(6)
+  const [simCurva,      setSimCurva]      = useState<'A' | 'B' | 'C'>('B')
+  const [simDias,       setSimDias]       = useState(15)
+  const [simFator,      setSimFator]      = useState(1.10)
+  const [simCapAtual,   setSimCapAtual]   = useState(60)
+  const [simMinCap,     setSimMinCap]     = useState(1)
+  const [simNuncaReduz, setSimNuncaReduz] = useState(true)
+
+  // resultados do simulador (derivados — sem useMemo para manter simples)
+  const simCaixasGiro   = Math.ceil(simGiro / Math.max(simMaster, 1))
+  const simSugestaoRaw  = Math.ceil(simCaixasGiro * simDias * simFator)
+  const simSugestaoMin  = Math.max(simSugestaoRaw, simMinCap)
+  const simCurvaALifted = simCurva === 'A' && simNuncaReduz && simSugestaoMin < simCapAtual
+  const simSugestaoFinal = simCurvaALifted ? simCapAtual : simSugestaoMin
+  const simDelta         = simSugestaoFinal - simCapAtual
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const headers = { Authorization: `Bearer ${token}` }
@@ -325,6 +344,199 @@ export default function SpAmbiente() {
             ))}
           </TableBody>
         </Table>
+
+        {/* ── Painel de Ajuda: Fórmula + Simulador ───────────────────────────── */}
+        <div className="border rounded-lg overflow-hidden">
+          <button
+            className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors text-left"
+            onClick={() => setShowHelp(h => !h)}
+          >
+            <div className="flex items-center gap-2">
+              <HelpCircle className="h-4 w-4 text-blue-600" />
+              <span className="text-sm font-medium text-blue-900">Como funciona a fórmula de calibragem</span>
+            </div>
+            {showHelp
+              ? <ChevronDown className="h-4 w-4 text-blue-600" />
+              : <ChevronRight className="h-4 w-4 text-blue-600" />}
+          </button>
+
+          {showHelp && (
+            <div className="p-4 space-y-6 bg-white">
+
+              {/* ── Fórmula ────────────────────────────────────────────────────── */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fórmula</p>
+                <div className="bg-slate-900 text-green-400 rounded-md px-4 py-3 font-mono text-sm text-center">
+                  Sugestão = ⌈ ⌈ Giro_dia ÷ Unid/cx ⌉ × Dias_curva × Fator_seg ⌉
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-start gap-2 text-xs">
+                    <span className="font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded shrink-0">Giro_dia</span>
+                    <span className="text-muted-foreground">Média de vendas diárias em unidades — vem pré-calculado do CSV (MED_VENDA_DIAS)</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-xs">
+                    <span className="font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded shrink-0">Unid/cx</span>
+                    <span className="text-muted-foreground">Unidades por caixa (QTUNITCX do CSV)</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-xs">
+                    <span className="font-mono bg-green-100 text-green-800 px-1.5 py-0.5 rounded shrink-0">Dias_curva</span>
+                    <span className="text-muted-foreground">Dias máx. de estoque: vem de CLASSEVENDA_DIAS do CSV; fallback = parâmetros A/B/C abaixo</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-xs">
+                    <span className="font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded shrink-0">Fator_seg</span>
+                    <span className="text-muted-foreground">Margem de segurança configurada neste CD (ex: 1.10 = +10% sobre a média)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Simulador ──────────────────────────────────────────────────── */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Simulador interativo</p>
+
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Giro/dia (unid.)</label>
+                    <input type="number" value={simGiro} min={0}
+                      onChange={e => setSimGiro(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Unid. por cx</label>
+                    <input type="number" value={simMaster} min={1}
+                      onChange={e => setSimMaster(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Curva</label>
+                    <select value={simCurva}
+                      onChange={e => setSimCurva(e.target.value as 'A' | 'B' | 'C')}
+                      className="w-full h-8 border rounded px-2 text-sm bg-white">
+                      <option value="A">A — alto giro</option>
+                      <option value="B">B — médio</option>
+                      <option value="C">C — baixo giro</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Dias da curva</label>
+                    <input type="number" value={simDias} min={1}
+                      onChange={e => setSimDias(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Fator segurança</label>
+                    <input type="number" step="0.01" value={simFator} min={1}
+                      onChange={e => setSimFator(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Cap. atual (cx)</label>
+                    <input type="number" value={simCapAtual} min={0}
+                      onChange={e => setSimCapAtual(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Cap. mínima (cx)</label>
+                    <input type="number" value={simMinCap} min={1}
+                      onChange={e => setSimMinCap(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm" />
+                  </div>
+                  <div className="flex items-end pb-1.5">
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                      <input type="checkbox" checked={simNuncaReduz}
+                        onChange={e => setSimNuncaReduz(e.target.checked)} />
+                      Curva A nunca reduz
+                    </label>
+                  </div>
+                </div>
+
+                {/* Resultado passo a passo */}
+                <div className="bg-slate-50 border rounded-md p-3 font-mono text-xs space-y-1.5">
+                  <div className="flex gap-2">
+                    <span className="text-slate-400 w-4 shrink-0">1.</span>
+                    <span>
+                      caixas_giro = ⌈{simGiro} ÷ {simMaster}⌉ ={' '}
+                      <strong className="text-amber-700">{simCaixasGiro} cx/dia</strong>
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-slate-400 w-4 shrink-0">2.</span>
+                    <span>
+                      dias_curva = <strong className="text-green-700">{simDias} dias</strong>{' '}
+                      <span className="text-slate-400">(Curva {simCurva})</span>
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-slate-400 w-4 shrink-0">3.</span>
+                    <span>
+                      sugestão = ⌈{simCaixasGiro} × {simDias} × {simFator.toFixed(2)}⌉ ={' '}
+                      ⌈{(simCaixasGiro * simDias * simFator).toFixed(2)}⌉ ={' '}
+                      <strong className="text-blue-700">{simSugestaoRaw} cx</strong>
+                    </span>
+                  </div>
+                  {simSugestaoMin > simSugestaoRaw && (
+                    <div className="flex gap-2 text-amber-700">
+                      <span className="text-slate-400 w-4 shrink-0">4.</span>
+                      <span>
+                        cap. mínima aplicada: {simSugestaoRaw} →{' '}
+                        <strong>{simSugestaoMin} cx</strong>
+                      </span>
+                    </div>
+                  )}
+                  {simCurvaALifted && (
+                    <div className="flex gap-2 text-amber-700">
+                      <span className="text-slate-400 w-4 shrink-0">{simSugestaoMin > simSugestaoRaw ? '5.' : '4.'}</span>
+                      <span>
+                        Curva A nunca reduz: {simSugestaoMin} →{' '}
+                        <strong>{simSugestaoFinal} cx</strong>
+                      </span>
+                    </div>
+                  )}
+                  <div className="border-t pt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="text-slate-500">Sugestão final:</span>
+                    <strong className="text-base">{simSugestaoFinal} cx</strong>
+                    <span className="text-slate-400">|</span>
+                    <span className="text-slate-500">Cap. atual:</span>
+                    <strong>{simCapAtual} cx</strong>
+                    <span className="text-slate-400">|</span>
+                    <span className="text-slate-500">Delta:</span>
+                    <strong className={
+                      simDelta > 0 ? 'text-red-600'
+                      : simDelta < 0 ? 'text-amber-600'
+                      : 'text-green-600'
+                    }>
+                      {simDelta > 0 ? '+' : ''}{simDelta} cx
+                      {' — '}
+                      {simDelta > 0 ? 'FALTA (ampliar slot)' : simDelta < 0 ? 'Excesso (reduzir slot)' : 'OK'}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Prioridade das fontes ───────────────────────────────────────── */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prioridade das fontes de dados (CSV)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Giro diário (unid/dia)</p>
+                    <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside">
+                      <li>MED_VENDA_DIAS <span className="text-green-600 font-medium">(preferido)</span></li>
+                      <li>MED_VENDA_DIAS_CX × Unid/cx</li>
+                      <li>MED_VENDA_CX_ANOANT × Unid/cx</li>
+                    </ol>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Dias da curva</p>
+                    <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside">
+                      <li>CLASSEVENDA_DIAS do CSV <span className="text-green-600 font-medium">(WMS decide)</span></li>
+                      <li>Parâmetros A/B/C configurados acima</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          )}
+        </div>
 
         {/* Reutiliza o dialog de parâmetros existente */}
         <Dialog open={!!paramsDialog} onOpenChange={() => setParamsDialog(null)}>
