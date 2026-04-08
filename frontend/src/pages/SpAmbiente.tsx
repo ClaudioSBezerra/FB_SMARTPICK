@@ -158,20 +158,29 @@ export default function SpAmbiente() {
     },
   })
 
-  // Todos os CDs da empresa (usado na view de Regras de Calibragem)
-  const { data: todosOsCds = [] } = useQuery<(SpCD & { filial_nome: string; cod_filial: number })[]>({
+  type CdRow = SpCD & { filial_nome: string; cod_filial: number; params?: SpMotorParams }
+
+  // Todos os CDs da empresa + params do motor (usado na view de Regras de Calibragem)
+  const { data: todosOsCds = [] } = useQuery<CdRow[]>({
     queryKey: ['sp-todos-cds'],
     enabled: isRegras,
     queryFn: async () => {
       const filiaisR = await fetch('/api/sp/filiais', { headers })
       if (!filiaisR.ok) throw new Error()
       const filiaisData: SpFilial[] = await filiaisR.json()
-      const results: (SpCD & { filial_nome: string; cod_filial: number })[] = []
+      const results: CdRow[] = []
       await Promise.all(filiaisData.map(async f => {
         const r = await fetch(`/api/sp/filiais/${f.id}/cds`, { headers })
         if (!r.ok) return
         const cdsData: SpCD[] = await r.json()
-        cdsData.forEach(cd => results.push({ ...cd, filial_nome: f.nome, cod_filial: f.cod_filial }))
+        await Promise.all(cdsData.map(async cd => {
+          let params: SpMotorParams | undefined
+          try {
+            const pr = await fetch(`/api/sp/cds/${cd.id}/params`, { headers })
+            if (pr.ok) params = await pr.json()
+          } catch { /* sem params ainda */ }
+          results.push({ ...cd, filial_nome: f.nome, cod_filial: f.cod_filial, params })
+        }))
       }))
       return results.sort((a, b) => a.filial_nome.localeCompare(b.filial_nome) || a.nome.localeCompare(b.nome))
     },
@@ -244,6 +253,7 @@ export default function SpAmbiente() {
     onSuccess: () => {
       toast.success('Parâmetros atualizados')
       qc.invalidateQueries({ queryKey: ['sp-params', paramsCD] })
+      qc.invalidateQueries({ queryKey: ['sp-todos-cds'] })
       setParamsDialog(null)
     },
     onError: (e: Error) => toast.error(e.message),
@@ -327,13 +337,13 @@ export default function SpAmbiente() {
               <TableRow key={cd.id}>
                 <TableCell className="text-xs text-muted-foreground">{cd.filial_nome}</TableCell>
                 <TableCell className="text-sm font-medium">{cd.nome}</TableCell>
-                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
-                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
-                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
-                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
-                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
-                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
-                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
+                <TableCell className="text-xs text-right">{cd.params?.dias_analise ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-xs text-right">{cd.params?.curva_a_max_est ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-xs text-right">{cd.params?.curva_b_max_est ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-xs text-right">{cd.params?.curva_c_max_est ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-xs text-right">{cd.params ? cd.params.fator_seguranca.toFixed(2) : <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-xs text-right">{cd.params?.min_capacidade ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-xs text-right">{cd.params?.retencao_csv_meses ?? <span className="text-muted-foreground">—</span>}</TableCell>
                 <TableCell>
                   <Button size="sm" variant="outline" className="h-7 text-xs"
                     onClick={() => openParams(cd)}>
