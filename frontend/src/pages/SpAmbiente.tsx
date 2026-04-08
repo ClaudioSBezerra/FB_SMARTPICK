@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -84,6 +85,8 @@ function UsageBar({ used, max }: { used: number; max: number }) {
 export default function SpAmbiente() {
   const { token } = useAuth()
   const qc = useQueryClient()
+  const location = useLocation()
+  const isRegras = location.pathname === '/config/parametros-motor'
 
   // ── State ────────────────────────────────────────────────────────────────────
   const [expandedFilial, setExpandedFilial] = useState<number | null>(null)
@@ -130,6 +133,25 @@ export default function SpAmbiente() {
       const r = await fetch('/api/sp/plano', { headers })
       if (!r.ok) throw new Error('Erro ao carregar plano')
       return r.json()
+    },
+  })
+
+  // Todos os CDs da empresa (usado na view de Regras de Calibragem)
+  const { data: todosOsCds = [] } = useQuery<(SpCD & { filial_nome: string; cod_filial: number })[]>({
+    queryKey: ['sp-todos-cds'],
+    enabled: isRegras,
+    queryFn: async () => {
+      const filiaisR = await fetch('/api/sp/filiais', { headers })
+      if (!filiaisR.ok) throw new Error()
+      const filiaisData: SpFilial[] = await filiaisR.json()
+      const results: (SpCD & { filial_nome: string; cod_filial: number })[] = []
+      await Promise.all(filiaisData.map(async f => {
+        const r = await fetch(`/api/sp/filiais/${f.id}/cds`, { headers })
+        if (!r.ok) return
+        const cdsData: SpCD[] = await r.json()
+        cdsData.forEach(cd => results.push({ ...cd, filial_nome: f.nome, cod_filial: f.cod_filial }))
+      }))
+      return results.sort((a, b) => a.filial_nome.localeCompare(b.filial_nome) || a.nome.localeCompare(b.nome))
     },
   })
 
@@ -243,7 +265,137 @@ export default function SpAmbiente() {
       .catch(() => toast.error('Erro ao carregar parâmetros'))
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // ── Render: Regras de Calibragem ─────────────────────────────────────────────
+  if (isRegras) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold">Regras de Calibragem</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Defina por CD como o algoritmo calcula a sugestão de capacidade:
+            quantos dias de venda analisar, limite de estoque por curva (A/B/C),
+            fator de segurança e regras especiais.
+          </p>
+        </div>
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Filial</TableHead>
+              <TableHead>CD</TableHead>
+              <TableHead className="text-right">Dias Análise</TableHead>
+              <TableHead className="text-right">A (dias)</TableHead>
+              <TableHead className="text-right">B (dias)</TableHead>
+              <TableHead className="text-right">C (dias)</TableHead>
+              <TableHead className="text-right">Fat. Seg.</TableHead>
+              <TableHead className="text-right">Cap. Mín.</TableHead>
+              <TableHead className="text-right">Retenção</TableHead>
+              <TableHead className="w-24"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {todosOsCds.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-8">
+                  Nenhum CD cadastrado.
+                </TableCell>
+              </TableRow>
+            )}
+            {todosOsCds.map(cd => (
+              <TableRow key={cd.id}>
+                <TableCell className="text-xs text-muted-foreground">{cd.filial_nome}</TableCell>
+                <TableCell className="text-sm font-medium">{cd.nome}</TableCell>
+                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
+                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
+                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
+                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
+                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
+                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
+                <TableCell className="text-xs text-right text-muted-foreground">—</TableCell>
+                <TableCell>
+                  <Button size="sm" variant="outline" className="h-7 text-xs"
+                    onClick={() => openParams(cd)}>
+                    <Settings2 className="h-3.5 w-3.5 mr-1" /> Editar
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+
+        {/* Reutiliza o dialog de parâmetros existente */}
+        <Dialog open={!!paramsDialog} onOpenChange={() => setParamsDialog(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader><DialogTitle>Regras de Calibragem — {todosOsCds.find(c => c.id === paramsDialog?.cd_id)?.nome}</DialogTitle></DialogHeader>
+            {paramsDialog && (
+              <div className="grid grid-cols-2 gap-3 py-2">
+                <div className="grid gap-1.5">
+                  <Label>Dias de Análise</Label>
+                  <Input type="number" value={editParams.dias_analise ?? 90}
+                    onChange={e => setEditParams(p => ({ ...p, dias_analise: +e.target.value }))} />
+                  <p className="text-xs text-muted-foreground">Janela de vendas para calcular o giro médio</p>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Fator de Segurança</Label>
+                  <Input type="number" step="0.01" value={editParams.fator_seguranca ?? 1.10}
+                    onChange={e => setEditParams(p => ({ ...p, fator_seguranca: +e.target.value }))} />
+                  <p className="text-xs text-muted-foreground">Ex: 1.10 = +10% sobre a média de vendas</p>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Curva A — máx. dias estoque</Label>
+                  <Input type="number" value={editParams.curva_a_max_est ?? 7}
+                    onChange={e => setEditParams(p => ({ ...p, curva_a_max_est: +e.target.value }))} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Curva B — máx. dias estoque</Label>
+                  <Input type="number" value={editParams.curva_b_max_est ?? 15}
+                    onChange={e => setEditParams(p => ({ ...p, curva_b_max_est: +e.target.value }))} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Curva C — máx. dias estoque</Label>
+                  <Input type="number" value={editParams.curva_c_max_est ?? 30}
+                    onChange={e => setEditParams(p => ({ ...p, curva_c_max_est: +e.target.value }))} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Capacidade mínima absoluta</Label>
+                  <Input type="number" value={editParams.min_capacidade ?? 1}
+                    onChange={e => setEditParams(p => ({ ...p, min_capacidade: +e.target.value }))} />
+                </div>
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <input type="checkbox" id="curva-a-nunca-r"
+                    checked={editParams.curva_a_nunca_reduz ?? true}
+                    onChange={e => setEditParams(p => ({ ...p, curva_a_nunca_reduz: e.target.checked }))} />
+                  <Label htmlFor="curva-a-nunca-r" className="cursor-pointer">
+                    Curva A: nunca reduzir capacidade
+                  </Label>
+                </div>
+                <div className="col-span-2 border-t pt-3 mt-1">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Retenção de Dados</p>
+                </div>
+                <div className="grid gap-1.5 col-span-2">
+                  <Label>Retenção de importações (meses)</Label>
+                  <Input type="number" min={1} max={60}
+                    value={editParams.retencao_csv_meses ?? 6}
+                    onChange={e => setEditParams(p => ({ ...p, retencao_csv_meses: +e.target.value }))} />
+                  <p className="text-xs text-muted-foreground">
+                    Dados brutos de CSV são removidos após este período. Propostas e histórico são preservados.
+                  </p>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setParamsDialog(null)}>Cancelar</Button>
+              <Button disabled={salvarParams.isPending} onClick={() => salvarParams.mutate()}>
+                {salvarParams.isPending ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
+
+  // ── Render: Configurações gerais ──────────────────────────────────────────────
   return (
     <div className="space-y-4">
       <Tabs defaultValue="filiais">

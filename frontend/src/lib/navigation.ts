@@ -31,7 +31,7 @@ export const modules: Record<string, ModuleConfig> = {
     label: 'Configurações',
     tabs: [
       { label: 'Filiais e CDs',        path: '/config/ambiente' },
-      { label: 'Parâmetros Motor',     path: '/config/parametros-motor' },
+      { label: 'Regras de Calibragem',  path: '/config/parametros-motor' },
       { label: 'Planos e Limites',     path: '/config/planos' },
       { label: 'Ambiente',             path: '/config/gestao-ambiente' },
       { label: 'Usuários',             path: '/config/usuarios', adminOnly: true },

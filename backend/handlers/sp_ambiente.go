@@ -627,30 +627,41 @@ func SpMotorParamsHandler(db *sql.DB) http.HandlerFunc {
 		switch r.Method {
 		case http.MethodGet:
 			var p SpMotorParamsResponse
-			err := db.QueryRow(`
+			// Tenta query com retencao_csv_meses (pós-migration 108).
+			// Se a coluna ainda não existir no banco, faz fallback com default 6.
+			scanParams := func(q string) error {
+				return db.QueryRow(q, cdID).Scan(
+					&p.ID, &p.CDID, &p.DiasAnalise, &p.CurvaAMaxEst, &p.CurvaBMaxEst,
+					&p.CurvaCMaxEst, &p.FatorSeguranca, &p.CurvaANuncaReduz, &p.MinCapacidade,
+					&p.RetencaoCsvMeses, &p.UpdatedAt,
+				)
+			}
+			const qFull = `
 				SELECT id, cd_id, dias_analise, curva_a_max_est, curva_b_max_est,
 				       curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade,
-				       retencao_csv_meses, updated_at
-				FROM smartpick.sp_motor_params
-				WHERE cd_id = $1
-			`, cdID).Scan(&p.ID, &p.CDID, &p.DiasAnalise, &p.CurvaAMaxEst, &p.CurvaBMaxEst,
-				&p.CurvaCMaxEst, &p.FatorSeguranca, &p.CurvaANuncaReduz, &p.MinCapacidade,
-				&p.RetencaoCsvMeses, &p.UpdatedAt)
+				       COALESCE(retencao_csv_meses, 6), updated_at
+				FROM smartpick.sp_motor_params WHERE cd_id = $1
+			`
+			const qLegacy = `
+				SELECT id, cd_id, dias_analise, curva_a_max_est, curva_b_max_est,
+				       curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade,
+				       6, updated_at
+				FROM smartpick.sp_motor_params WHERE cd_id = $1
+			`
+			err := scanParams(qFull)
 			if err == sql.ErrNoRows {
 				// Cria padrão on-demand
 				db.Exec(`INSERT INTO smartpick.sp_motor_params (cd_id, empresa_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 					cdID, spCtx.EmpresaID)
-				db.QueryRow(`
-					SELECT id, cd_id, dias_analise, curva_a_max_est, curva_b_max_est,
-					       curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade,
-					       retencao_csv_meses, updated_at
-					FROM smartpick.sp_motor_params WHERE cd_id = $1
-				`, cdID).Scan(&p.ID, &p.CDID, &p.DiasAnalise, &p.CurvaAMaxEst, &p.CurvaBMaxEst,
-					&p.CurvaCMaxEst, &p.FatorSeguranca, &p.CurvaANuncaReduz, &p.MinCapacidade,
-					&p.RetencaoCsvMeses, &p.UpdatedAt)
-			} else if err != nil {
-				http.Error(w, "Database error", http.StatusInternalServerError)
-				return
+				err = scanParams(qFull)
+			}
+			if err != nil {
+				// Fallback: coluna retencao_csv_meses ainda não existe (migration pendente)
+				p.RetencaoCsvMeses = 6
+				if ferr := scanParams(qLegacy); ferr != nil {
+					http.Error(w, "Database error", http.StatusInternalServerError)
+					return
+				}
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(p)
@@ -688,6 +699,7 @@ func SpMotorParamsHandler(db *sql.DB) http.HandlerFunc {
 			if req.RetencaoCsvMeses > 60 {
 				req.RetencaoCsvMeses = 60
 			}
+			// Tenta salvar com retencao_csv_meses; se a coluna não existir (migration pendente), salva sem ela
 			_, err := db.Exec(`
 				INSERT INTO smartpick.sp_motor_params
 				  (cd_id, empresa_id, dias_analise, curva_a_max_est, curva_b_max_est,
@@ -708,6 +720,26 @@ func SpMotorParamsHandler(db *sql.DB) http.HandlerFunc {
 			`, cdID, spCtx.EmpresaID, req.DiasAnalise, req.CurvaAMaxEst, req.CurvaBMaxEst,
 				req.CurvaCMaxEst, req.FatorSeguranca, req.CurvaANuncaReduz, req.MinCapacidade,
 				req.RetencaoCsvMeses, spCtx.UserID)
+			if err != nil {
+				// Fallback: coluna retencao_csv_meses ainda não existe
+				_, err = db.Exec(`
+					INSERT INTO smartpick.sp_motor_params
+					  (cd_id, empresa_id, dias_analise, curva_a_max_est, curva_b_max_est,
+					   curva_c_max_est, fator_seguranca, curva_a_nunca_reduz, min_capacidade, updated_by)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+					ON CONFLICT (cd_id) DO UPDATE SET
+					  dias_analise        = EXCLUDED.dias_analise,
+					  curva_a_max_est     = EXCLUDED.curva_a_max_est,
+					  curva_b_max_est     = EXCLUDED.curva_b_max_est,
+					  curva_c_max_est     = EXCLUDED.curva_c_max_est,
+					  fator_seguranca     = EXCLUDED.fator_seguranca,
+					  curva_a_nunca_reduz = EXCLUDED.curva_a_nunca_reduz,
+					  min_capacidade      = EXCLUDED.min_capacidade,
+					  updated_by          = EXCLUDED.updated_by,
+					  updated_at          = now()
+				`, cdID, spCtx.EmpresaID, req.DiasAnalise, req.CurvaAMaxEst, req.CurvaBMaxEst,
+					req.CurvaCMaxEst, req.FatorSeguranca, req.CurvaANuncaReduz, req.MinCapacidade, spCtx.UserID)
+			}
 			if err != nil {
 				http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 				return
