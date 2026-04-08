@@ -52,8 +52,6 @@ function ModuleTabs() {
 
   if (!moduleCfg || moduleCfg.tabs.length === 0) return null
   if (moduleCfg.adminOnly && !isAdmin) return null
-  // Seção gestao é para gestores (não admin); admin usa config
-  if (moduleId === 'gestao' && isAdmin) return null
 
   const visibleTabs = moduleCfg.tabs.filter(t => !t.adminOnly || isAdmin)
 

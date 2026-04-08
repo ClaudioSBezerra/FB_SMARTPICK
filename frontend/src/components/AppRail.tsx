@@ -36,8 +36,8 @@ const mainItems = [
   { id: 'historico',    icon: History,         label: 'Histórico',            path: '/historico' },
   { id: 'pdf',          icon: FileDown,        label: 'Gerar PDF',            path: '/pdf/gerar' },
   { id: 'reincidencia', icon: Repeat2,         label: 'Reincidência',         path: '/reincidencia' },
-  // Administração: visível apenas para não-admins (gestores de CD)
-  { id: 'gestao',       icon: Building2,       label: 'Administração',        path: '/gestao/filiais', hideForAdmin: true },
+  // Administração: visível para todos (admin + gestores)
+  { id: 'gestao',       icon: Building2,       label: 'Administração',        path: '/gestao/filiais' },
 ] as const
 
 export function AppRail() {
@@ -97,9 +97,7 @@ export function AppRail() {
 
         {/* Nav principal */}
         <nav className="flex flex-col items-center gap-1 p-2 flex-1 pt-3">
-          {mainItems
-            .filter(item => !('hideForAdmin' in item && item.hideForAdmin && isAdmin))
-            .map(item => (
+          {mainItems.map(item => (
               <Tooltip key={item.id}>
                 <TooltipTrigger asChild>
                   <button
