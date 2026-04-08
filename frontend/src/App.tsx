@@ -102,7 +102,7 @@ function AppHeader() {
         {moduleCfg?.label ?? 'SmartPick'}
       </span>
       <div className="flex items-center gap-2">
-        <FilialSelector />
+        {moduleId !== 'gestao' && moduleId !== 'config' && <FilialSelector />}
         <CompanySwitcher compact />
       </div>
     </header>
