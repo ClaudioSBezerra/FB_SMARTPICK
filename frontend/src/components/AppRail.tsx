@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/contexts/AuthContext'
 import { getActiveModule } from '@/lib/navigation'
+import { CompanySwitcher } from '@/components/CompanySwitcher'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -174,6 +175,10 @@ export function AppRail() {
                 <KeyRound className="mr-2 h-3.5 w-3.5" />
                 Trocar senha
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <div className="px-1 py-0.5">
+                <CompanySwitcher compact />
+              </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-xs text-red-600 focus:text-red-600 cursor-pointer" onClick={logout}>
                 <LogOut className="mr-2 h-3.5 w-3.5" />

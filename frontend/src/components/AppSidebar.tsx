@@ -228,8 +228,8 @@ export function AppSidebar() {
       <SidebarHeader className="border-b pb-2">
         <div className="flex items-center gap-2.5 px-3 py-2">
           <img
-            src="/favicon-fc.png"
-            alt="Ferreira Costa"
+            src="/logo-fb.png"
+            alt="Fortes Bezerra"
             className="size-8 rounded-lg shrink-0 object-cover"
           />
           <div className="grid flex-1 text-left leading-tight">

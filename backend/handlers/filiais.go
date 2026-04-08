@@ -63,3 +63,46 @@ func GetFiliaisHandler(db *sql.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(filiais)
 	}
 }
+
+// SpFiliaisByEmpresaHandler retorna filiais de uma empresa específica (admin_fbtax).
+// GET /api/sp/filiais-empresa?empresa_id=xxx
+func SpFiliaisByEmpresaHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		spCtx := GetSpContext(r)
+		if spCtx == nil || !spCtx.IsAdminFbtax() {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		empresaID := r.URL.Query().Get("empresa_id")
+		if empresaID == "" {
+			http.Error(w, "empresa_id required", http.StatusBadRequest)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT id, cod_filial, nome, ativo
+			FROM smartpick.sp_filiais
+			WHERE empresa_id = $1 AND ativo = TRUE
+			ORDER BY nome ASC, cod_filial ASC
+		`, empresaID)
+		if err != nil {
+			http.Error(w, "Error querying filiais: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		filiais := make([]FilialInfo, 0)
+		for rows.Next() {
+			var f FilialInfo
+			if err := rows.Scan(&f.ID, &f.CodFilial, &f.Nome, &f.Ativo); err != nil {
+				continue
+			}
+			filiais = append(filiais, f)
+		}
+
+		json.NewEncoder(w).Encode(filiais)
+	}
+}

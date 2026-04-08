@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { ShieldCheck, Building2, UserPlus } from 'lucide-react'
+import { ShieldCheck, Building2, UserPlus, Layers } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -94,6 +94,15 @@ export default function SpUsuarios() {
 
   // Campo de edição de nome (dialog de perfil)
   const [editNome, setEditNome] = useState('')
+
+  // ── Estado do dialog multi-empresa ───────────────────────────────────────────
+  interface VinculoState { all: boolean; filiais: number[] }
+  const [vinculosDialog,      setVinculosDialog]      = useState(false)
+  const [selectedForVinculos, setSelectedForVinculos] = useState<SpUsuario | null>(null)
+  const [vinculoMap,          setVinculoMap]          = useState<Record<string, VinculoState>>({})
+  const [availableComps,      setAvailableComps]      = useState<{id: string; name: string; cnpj: string}[]>([])
+  const [companyFiliais,      setCompanyFiliais]      = useState<Record<string, Filial[]>>({})
+  const [loadingVinculos,     setLoadingVinculos]     = useState(false)
 
   // ── Hierarchy fetch ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -213,12 +222,76 @@ export default function SpUsuarios() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const saveVinculos = useMutation({
+    mutationFn: async () => {
+      if (!selectedForVinculos) return
+      const payload = availableComps.map(c => {
+        const v = vinculoMap[c.id]
+        if (!v) return { empresa_id: c.id, all_filiais: false, filial_ids: [] }
+        return { empresa_id: c.id, all_filiais: v.all, filial_ids: v.all ? [] : v.filiais }
+      })
+      const res = await fetch(`/api/sp/usuarios/${selectedForVinculos.id}/vinculos`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Erro ao salvar vínculos')
+    },
+    onSuccess: () => {
+      toast.success('Vínculos atualizados')
+      qc.invalidateQueries({ queryKey: ['sp-usuarios'] })
+      setVinculosDialog(false)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   // ── Handlers ─────────────────────────────────────────────────────────────────
   function openRoleDialog(u: SpUsuario) {
     setSelected(u)
     setNewRole(u.sp_role)
     setEditNome(u.full_name)
     setRoleDialog(true)
+  }
+
+  async function openVinculosDialog(u: SpUsuario) {
+    setSelectedForVinculos(u)
+    setVinculoMap({})
+    setAvailableComps([])
+    setCompanyFiliais({})
+    setVinculosDialog(true)
+    setLoadingVinculos(true)
+    try {
+      const [compsRes, vinRes] = await Promise.all([
+        fetch('/api/user/companies', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/sp/usuarios/${u.id}/vinculos`, { headers: { Authorization: `Bearer ${token}` } }),
+      ])
+      const comps: {id: string; name: string; cnpj: string}[] = await compsRes.json()
+      const vinculos: {empresa_id: string; all_filiais: boolean; filial_ids: number[]}[] = await vinRes.json()
+      setAvailableComps(comps || [])
+      const map: Record<string, VinculoState> = {}
+      for (const v of (vinculos || [])) {
+        map[v.empresa_id] = { all: v.all_filiais, filiais: v.filial_ids || [] }
+      }
+      setVinculoMap(map)
+    } catch {
+      toast.error('Erro ao carregar empresas')
+    } finally {
+      setLoadingVinculos(false)
+    }
+  }
+
+  async function loadCompanyFiliais(empresaId: string) {
+    if (companyFiliais[empresaId] !== undefined) return
+    setCompanyFiliais(prev => ({ ...prev, [empresaId]: [] })) // mark as loading
+    try {
+      const res = await fetch(`/api/sp/filiais-empresa?empresa_id=${empresaId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data: Filial[] = await res.json()
+      setCompanyFiliais(prev => ({ ...prev, [empresaId]: data || [] }))
+    } catch {
+      setCompanyFiliais(prev => ({ ...prev, [empresaId]: [] }))
+    }
   }
 
   function openFiliaisDialog(u: SpUsuario) {
@@ -284,6 +357,10 @@ export default function SpUsuarios() {
                     <Button size="sm" variant="outline" onClick={() => openFiliaisDialog(u)}>
                       <Building2 className="h-3.5 w-3.5 mr-1" />
                       Filiais
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => openVinculosDialog(u)}>
+                      <Layers className="h-3.5 w-3.5 mr-1" />
+                      Empresas
                     </Button>
                   </div>
                 </TableCell>
@@ -429,6 +506,97 @@ export default function SpUsuarios() {
               onClick={() => selected && updateRole.mutate({ id: selected.id, sp_role: newRole, full_name: editNome })}
             >
               {updateRole.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: vínculos multi-empresa ────────────────────────────────── */}
+      <Dialog open={vinculosDialog} onOpenChange={setVinculosDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Empresas — {selectedForVinculos?.full_name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2 max-h-[55vh] overflow-y-auto pr-1">
+            {loadingVinculos ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : availableComps.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma empresa disponível.</p>
+            ) : (
+              availableComps.map(comp => {
+                const v = vinculoMap[comp.id]
+                const isActive = !!v
+                return (
+                  <div key={comp.id} className="border rounded p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`comp-${comp.id}`}
+                        checked={isActive}
+                        onCheckedChange={checked => {
+                          if (checked) {
+                            setVinculoMap(prev => ({ ...prev, [comp.id]: { all: true, filiais: [] } }))
+                          } else {
+                            setVinculoMap(prev => { const n = { ...prev }; delete n[comp.id]; return n })
+                          }
+                        }}
+                      />
+                      <Label htmlFor={`comp-${comp.id}`} className="font-medium text-sm cursor-pointer">{comp.name}</Label>
+                    </div>
+                    {isActive && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`all-${comp.id}`}
+                            checked={v.all}
+                            onCheckedChange={checked => {
+                              setVinculoMap(prev => ({ ...prev, [comp.id]: { ...prev[comp.id], all: !!checked } }))
+                              if (!checked) loadCompanyFiliais(comp.id)
+                            }}
+                          />
+                          <Label htmlFor={`all-${comp.id}`} className="text-sm cursor-pointer">Todas as filiais</Label>
+                        </div>
+                        {!v.all && (
+                          <div className="space-y-1 max-h-36 overflow-y-auto border rounded p-2">
+                            {companyFiliais[comp.id] === undefined ? (
+                              <p className="text-xs text-muted-foreground">Carregando filiais...</p>
+                            ) : companyFiliais[comp.id].length === 0 ? (
+                              <p className="text-xs text-muted-foreground">Nenhuma filial cadastrada.</p>
+                            ) : (
+                              companyFiliais[comp.id].map(f => (
+                                <div key={f.id} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`vf-${comp.id}-${f.id}`}
+                                    checked={v.filiais.includes(f.id)}
+                                    onCheckedChange={() =>
+                                      setVinculoMap(prev => {
+                                        const cur = prev[comp.id].filiais
+                                        const next = cur.includes(f.id) ? cur.filter(x => x !== f.id) : [...cur, f.id]
+                                        return { ...prev, [comp.id]: { ...prev[comp.id], filiais: next } }
+                                      })
+                                    }
+                                  />
+                                  <Label htmlFor={`vf-${comp.id}-${f.id}`} className="text-xs cursor-pointer">
+                                    {f.nome} <span className="text-muted-foreground">({f.cod_filial})</span>
+                                  </Label>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVinculosDialog(false)}>Cancelar</Button>
+            <Button
+              disabled={saveVinculos.isPending || loadingVinculos}
+              onClick={() => saveVinculos.mutate()}
+            >
+              {saveVinculos.isPending ? 'Salvando...' : 'Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>

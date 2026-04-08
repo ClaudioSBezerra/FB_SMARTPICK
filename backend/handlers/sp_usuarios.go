@@ -390,3 +390,162 @@ func SpVincularFiliaisHandler(db *sql.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"message": "Filiais vinculadas com sucesso"})
 	}
 }
+
+// ─── Vínculos multi-empresa ───────────────────────────────────────────────────
+
+type SpVinculoResponse struct {
+	EmpresaID   string `json:"empresa_id"`
+	EmpresaNome string `json:"empresa_nome"`
+	AllFiliais  bool   `json:"all_filiais"`
+	FilialIDs   []int  `json:"filial_ids"`
+}
+
+type SpSaveVinculoItem struct {
+	EmpresaID  string `json:"empresa_id"`
+	AllFiliais bool   `json:"all_filiais"`
+	FilialIDs  []int  `json:"filial_ids"`
+}
+
+// SpGetVinculosHandler retorna todas as associações empresa→filiais de um usuário.
+// GET /api/sp/usuarios/{id}/vinculos
+func SpGetVinculosHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil || !spCtx.IsAdminFbtax() {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		path := strings.TrimPrefix(r.URL.Path, "/api/sp/usuarios/")
+		targetID := strings.TrimSuffix(path, "/vinculos")
+		if targetID == "" || targetID == path {
+			http.Error(w, "User ID required", http.StatusBadRequest)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT uf.empresa_id, COALESCE(c.name, ''), uf.all_filiais, uf.filial_id
+			FROM smartpick.sp_user_filiais uf
+			LEFT JOIN companies c ON c.id = uf.empresa_id
+			WHERE uf.user_id = $1
+			ORDER BY c.name, uf.filial_id
+		`, targetID)
+		if err != nil {
+			log.Printf("SpGetVinculos: %v", err)
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		vinculoMap := map[string]*SpVinculoResponse{}
+		var order []string
+		for rows.Next() {
+			var empID, empNome string
+			var allFiliais bool
+			var filialID *int
+			if err := rows.Scan(&empID, &empNome, &allFiliais, &filialID); err != nil {
+				continue
+			}
+			if _, ok := vinculoMap[empID]; !ok {
+				vinculoMap[empID] = &SpVinculoResponse{
+					EmpresaID: empID, EmpresaNome: empNome, FilialIDs: []int{},
+				}
+				order = append(order, empID)
+			}
+			v := vinculoMap[empID]
+			if allFiliais {
+				v.AllFiliais = true
+			} else if filialID != nil {
+				v.FilialIDs = append(v.FilialIDs, *filialID)
+			}
+		}
+
+		result := make([]SpVinculoResponse, 0, len(order))
+		for _, id := range order {
+			result = append(result, *vinculoMap[id])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+	}
+}
+
+// SpSaveVinculosHandler substitui associações empresa→filiais de um usuário (multi-empresa).
+// PUT /api/sp/usuarios/{id}/vinculos
+// Body: [{empresa_id, all_filiais, filial_ids}] — empresas sem entradas ficam sem acesso.
+func SpSaveVinculosHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil || !spCtx.IsAdminFbtax() {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		path := strings.TrimPrefix(r.URL.Path, "/api/sp/usuarios/")
+		targetID := strings.TrimSuffix(path, "/vinculos")
+		if targetID == "" || targetID == path {
+			http.Error(w, "User ID required", http.StatusBadRequest)
+			return
+		}
+
+		var vinculos []SpSaveVinculoItem
+		if err := json.NewDecoder(r.Body).Decode(&vinculos); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		for _, v := range vinculos {
+			if _, err = tx.Exec(
+				"DELETE FROM smartpick.sp_user_filiais WHERE user_id = $1 AND empresa_id = $2",
+				targetID, v.EmpresaID,
+			); err != nil {
+				http.Error(w, "Database error", http.StatusInternalServerError)
+				return
+			}
+			if v.AllFiliais {
+				_, err = tx.Exec(`
+					INSERT INTO smartpick.sp_user_filiais (user_id, empresa_id, filial_id, all_filiais)
+					VALUES ($1, $2, NULL, TRUE)
+				`, targetID, v.EmpresaID)
+			} else {
+				for _, fid := range v.FilialIDs {
+					_, err = tx.Exec(`
+						INSERT INTO smartpick.sp_user_filiais (user_id, empresa_id, filial_id, all_filiais)
+						VALUES ($1, $2, $3, FALSE)
+					`, targetID, v.EmpresaID, fid)
+					if err != nil {
+						break
+					}
+				}
+			}
+			if err != nil {
+				http.Error(w, "Database error ao vincular filiais", http.StatusInternalServerError)
+				return
+			}
+		}
+
+		if err = tx.Commit(); err != nil {
+			http.Error(w, "Commit error", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("SpSaveVinculos: user %s atualizado com %d empresas por %s", targetID, len(vinculos), spCtx.UserID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "Vínculos atualizados com sucesso"})
+	}
+}
