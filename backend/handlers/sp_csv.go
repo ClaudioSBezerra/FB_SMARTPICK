@@ -110,16 +110,17 @@ func SpCSVUploadHandler(db *sql.DB) http.HandlerFunc {
 		hashBytes := sha256.Sum256(fileBytes)
 		fileHash := hex.EncodeToString(hashBytes[:])
 
-		// Verifica duplicata: mesmo hash para o mesmo CD nesta empresa
+		// Verifica duplicata: mesmo hash para o mesmo CD nesta empresa (ignora jobs com falha)
 		var dupJobID, dupCreatedAt string
 		dupErr := db.QueryRow(`
 			SELECT id::text, TO_CHAR(created_at,'DD/MM/YYYY HH24:MI')
 			FROM smartpick.sp_csv_jobs
 			WHERE empresa_id = $1 AND cd_id = $2 AND file_hash = $3
+			  AND status != 'failed'
 			ORDER BY created_at DESC LIMIT 1
 		`, spCtx.EmpresaID, cdID, fileHash).Scan(&dupJobID, &dupCreatedAt)
 		if dupErr == nil {
-			// Arquivo idêntico já foi importado
+			// Arquivo idêntico já foi importado com sucesso ou ainda está em processamento
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(map[string]string{
