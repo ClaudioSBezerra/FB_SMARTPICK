@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import {
@@ -235,7 +236,12 @@ function PropostasTable({
 export default function SpDashboard() {
   const { token } = useAuth()
   const qc = useQueryClient()
+  const location = useLocation()
+  const navigate = useNavigate()
   const headers = { Authorization: `Bearer ${token}` }
+
+  // Aba ativa derivada da URL: /urgencia/falta → 'falta', /urgencia/espaco → 'espaco'
+  const activeTab = location.pathname.endsWith('/espaco') ? 'espaco' : 'falta'
 
   const [filialID, setFilialID] = useState<string>('')
   const [cdID,     setCdID]     = useState<string>('')
@@ -289,7 +295,7 @@ export default function SpDashboard() {
   })
 
   // ── Propostas ─────────────────────────────────────────────────────────────
-  function buildPropostasUrl(tipo: 'falta' | 'espaco' | 'calibrado', status?: string) {
+  function buildPropostasUrl(tipo: 'falta' | 'espaco' | 'calibrado' | 'curva_a_mantida', status?: string) {
     const p = new URLSearchParams({ tipo, limit: '500' })
     if (status) p.set('status', status)
     if (cdID)   p.set('cd_id', cdID)
@@ -501,7 +507,9 @@ export default function SpDashboard() {
       )}
 
       {hasFilters && (
-        <Tabs defaultValue="falta">
+        <Tabs value={activeTab} onValueChange={v => {
+          if (v === 'falta' || v === 'espaco') navigate(`/dashboard/urgencia/${v}`)
+        }}>
           <div className="flex items-center justify-between">
             <TabsList>
               <TabsTrigger value="falta">
