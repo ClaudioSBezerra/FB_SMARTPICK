@@ -95,8 +95,9 @@ func SpCSVUploadHandler(db *sql.DB) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		if !strings.HasSuffix(strings.ToLower(header.Filename), ".csv") {
-			http.Error(w, "Apenas arquivos .csv são aceitos", http.StatusBadRequest)
+		lower := strings.ToLower(header.Filename)
+		if !strings.HasSuffix(lower, ".csv") && !strings.HasSuffix(lower, ".txt") {
+			http.Error(w, "Apenas arquivos .csv ou .txt são aceitos", http.StatusBadRequest)
 			return
 		}
 

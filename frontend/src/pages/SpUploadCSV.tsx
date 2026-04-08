@@ -200,11 +200,11 @@ export default function SpUploadCSV() {
             </div>
 
             <div>
-              <label className="text-xs font-medium mb-1 block">Arquivo CSV</label>
+              <label className="text-xs font-medium mb-1 block">Arquivo CSV / TXT</label>
               <input
                 ref={fileRef}
                 type="file"
-                accept=".csv"
+                accept=".csv,.txt"
                 className="block w-full text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
               />
             </div>
