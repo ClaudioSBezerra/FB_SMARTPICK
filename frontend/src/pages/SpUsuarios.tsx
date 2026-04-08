@@ -456,7 +456,7 @@ export default function SpUsuarios() {
                 <Select value={createEnvId} onValueChange={v => { setCreateEnvId(v); setCreateGroupId(''); setCreateCompanyId('') }}>
                   <SelectTrigger><SelectValue placeholder="Selecione o ambiente..." /></SelectTrigger>
                   <SelectContent>
-                    {environments.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                    {environments.filter(e => e.id).map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -465,7 +465,7 @@ export default function SpUsuarios() {
                 <Select value={createGroupId} onValueChange={v => { setCreateGroupId(v); setCreateCompanyId('') }} disabled={!createEnvId}>
                   <SelectTrigger><SelectValue placeholder={createEnvId ? 'Selecione o grupo...' : 'Selecione um ambiente primeiro'} /></SelectTrigger>
                   <SelectContent>
-                    {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                    {groups.filter(g => g.id).map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -474,7 +474,7 @@ export default function SpUsuarios() {
                 <Select value={createCompanyId} onValueChange={setCreateCompanyId} disabled={!createGroupId}>
                   <SelectTrigger><SelectValue placeholder={createGroupId ? 'Selecione a empresa...' : 'Selecione um grupo primeiro'} /></SelectTrigger>
                   <SelectContent>
-                    {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    {companies.filter(c => c.id).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -561,7 +561,7 @@ export default function SpUsuarios() {
                     <Select value={reassignEnvId} onValueChange={v => { setReassignEnvId(v); setReassignGroupId(''); setReassignCompanyId('') }}>
                       <SelectTrigger><SelectValue placeholder="Selecione o ambiente..." /></SelectTrigger>
                       <SelectContent>
-                        {environments.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                        {environments.filter(e => e.id).map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -570,7 +570,7 @@ export default function SpUsuarios() {
                     <Select value={reassignGroupId} onValueChange={v => { setReassignGroupId(v); setReassignCompanyId('') }} disabled={!reassignEnvId}>
                       <SelectTrigger><SelectValue placeholder={reassignEnvId ? 'Selecione o grupo...' : 'Selecione um ambiente primeiro'} /></SelectTrigger>
                       <SelectContent>
-                        {reassignGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                        {reassignGroups.filter(g => g.id).map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -579,7 +579,7 @@ export default function SpUsuarios() {
                     <Select value={reassignCompanyId} onValueChange={setReassignCompanyId} disabled={!reassignGroupId}>
                       <SelectTrigger><SelectValue placeholder={reassignGroupId ? 'Selecione a empresa...' : 'Selecione um grupo primeiro'} /></SelectTrigger>
                       <SelectContent>
-                        {reassignCompanies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        {reassignCompanies.filter(c => c.id).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
