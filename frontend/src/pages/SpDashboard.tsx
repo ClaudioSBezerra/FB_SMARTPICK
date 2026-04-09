@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -240,8 +240,12 @@ export default function SpDashboard() {
   const navigate = useNavigate()
   const headers = { Authorization: `Bearer ${token}` }
 
-  // Aba ativa derivada da URL: /urgencia/falta → 'falta', /urgencia/espaco → 'espaco'
-  const activeTab = location.pathname.endsWith('/espaco') ? 'espaco' : 'falta'
+  // Aba ativa: falta/espaco são derivadas da URL; calibrado/curva_a_mantida são locais
+  const urlTab = location.pathname.endsWith('/espaco') ? 'espaco' : 'falta'
+  const [activeTab, setActiveTab] = useState<string>(urlTab)
+
+  // Sincroniza quando o usuário navega via sidebar
+  useEffect(() => { setActiveTab(urlTab) }, [urlTab])
 
   const [filialID, setFilialID] = useState<string>('')
   const [cdID,     setCdID]     = useState<string>('')
@@ -508,6 +512,7 @@ export default function SpDashboard() {
 
       {hasFilters && (
         <Tabs value={activeTab} onValueChange={v => {
+          setActiveTab(v)
           if (v === 'falta' || v === 'espaco') navigate(`/dashboard/urgencia/${v}`)
         }}>
           <div className="flex items-center justify-between">
