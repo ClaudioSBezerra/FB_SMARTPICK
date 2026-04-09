@@ -126,3 +126,23 @@ development_status:
   7-3-api-de-historico-e-compliance: done
   7-4-pagina-de-historico-e-compliance-frontend: done
   epic-7-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Epic 8: Dashboard de Reincidência
+  # Detecção de produtos que nunca foram ajustados no Winthor
+  # mesmo após sugestões repetidas (mesma capacidade N ciclos)
+  # ─────────────────────────────────────────────────────────────
+  epic-8: done
+  8-1-api-de-reincidencia: done
+  8-2-pagina-de-reincidencia-frontend: done
+  epic-8-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Epic 9: Painel de Resultados Contratuais
+  # KPIs contratuais Grupo JC: calibração, ofensores A/B,
+  # caixas ociosas, reposições emergenciais e acessos picking
+  # Spec: _bmad-output/implementation-artifacts/tech-spec-painel-de-resultados.md
+  # ─────────────────────────────────────────────────────────────
+  epic-9: done
+  9-1-painel-de-resultados-backend-e-frontend: done
+  epic-9-retrospective: optional

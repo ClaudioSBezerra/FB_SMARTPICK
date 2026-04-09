@@ -404,6 +404,12 @@ func main() {
 	// ── SmartPick — Reincidência (Epic 8) ────────────────────────────────────
 	http.HandleFunc("/api/sp/reincidencia", withSP(handlers.SpReincidenciaHandler, "gestor_filial"))
 
+	// ── SmartPick — Perfil SmartPick (sp_role do usuário autenticado) ────────────
+	http.HandleFunc("/api/sp/me", withSP(handlers.SpMeHandler, ""))
+
+	// ── SmartPick — Painel de Resultados (Epic 9) ─────────────────────────────
+	http.HandleFunc("/api/sp/resultados", withSP(handlers.SpResultadosHandler, "gestor_filial"))
+
 	// ── SmartPick — Geração de PDF (Epic 6) ──────────────────────────────────
 	http.HandleFunc("/api/sp/pdf/calibracao", withSP(handlers.SpPDFCalibracaoHandler, "gestor_filial"))
 

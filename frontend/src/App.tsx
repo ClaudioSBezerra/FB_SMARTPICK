@@ -10,6 +10,7 @@ import SpDashboard from './pages/SpDashboard'
 import SpGerarPDF from './pages/SpGerarPDF'
 import SpHistorico from './pages/SpHistorico'
 import SpReincidencia from './pages/SpReincidencia'
+import SpResultados from './pages/SpResultados'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -134,6 +135,9 @@ function AppLayout() {
 
               {/* Reincidência (Epic 8) */}
               <Route path="/reincidencia" element={<ProtectedRoute><SpReincidencia /></ProtectedRoute>} />
+
+              {/* Painel de Resultados (Epic 9) */}
+              <Route path="/resultados" element={<ProtectedRoute><SpResultados /></ProtectedRoute>} />
 
               {/* PDF (Epic 6) */}
               <Route path="/pdf/gerar" element={<ProtectedRoute><SpGerarPDF /></ProtectedRoute>} />

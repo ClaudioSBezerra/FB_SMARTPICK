@@ -16,6 +16,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 )
 
@@ -164,6 +165,30 @@ func SmartPickAuthMiddleware(db *sql.DB, next http.HandlerFunc, requiredSpRole s
 		ctx := context.WithValue(r.Context(), SpContextKey, spCtx)
 		next(w, r.WithContext(ctx))
 	}, "")
+}
+
+// ─── SpMeHandler ─────────────────────────────────────────────────────────────
+
+// SpMeHandler retorna o sp_role do usuário autenticado para a empresa ativa.
+// GET /api/sp/me  — sem perfil mínimo (qualquer usuário SmartPick autenticado)
+func SpMeHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		// Retorna apenas o sp_role; outros campos já estão no /api/auth/me
+		type spMeResponse struct {
+			SpRole string `json:"sp_role"`
+		}
+		json.NewEncoder(w).Encode(spMeResponse{SpRole: spCtx.SpRole})
+	}
 }
 
 // ─── Helpers de resposta ──────────────────────────────────────────────────────

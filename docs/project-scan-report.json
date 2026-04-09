@@ -1,0 +1,39 @@
+{
+  "workflow_version": "1.2.0",
+  "timestamps": {
+    "started": "2026-04-09T00:00:00Z",
+    "last_updated": "2026-04-09T00:00:00Z",
+    "completed": "2026-04-09T00:00:00Z"
+  },
+  "mode": "initial_scan",
+  "scan_level": "exhaustive",
+  "project_root": "/home/claudiobezerra/projetos/FB_SMARTPICK",
+  "output_folder": "/home/claudiobezerra/projetos/FB_SMARTPICK/docs",
+  "completed_steps": ["step_1", "step_2", "step_3", "step_4", "step_5"],
+  "current_step": "complete",
+  "findings": {
+    "project_type": "multi-part",
+    "parts": {
+      "backend": {"language": "go", "type": "backend", "main": "backend/main.go"},
+      "frontend": {"language": "typescript", "type": "web", "main": "frontend/src/App.tsx"}
+    },
+    "epics_implemented": [1, 2, 3, 4, 5, 6, 7, 8],
+    "migrations_applied": ["100_sp_schema", "101_sp_rbac", "102_sp_filiais_cds", "103_sp_motor_params",
+      "104_sp_subscription_limits", "105_sp_csv_jobs_audit", "106_sp_propostas", "107_sp_historico",
+      "108_sp_retencao_hash"],
+    "backend_handlers": ["sp_ambiente", "sp_csv", "sp_motor", "sp_propostas", "sp_pdf",
+      "sp_historico", "sp_reincidencia", "sp_usuarios", "sp_admin", "smartpick_auth"],
+    "frontend_pages": ["SpDashboard", "SpUploadCSV", "SpAmbiente", "SpGerarPDF",
+      "SpHistorico", "SpReincidencia", "SpUsuarios"]
+  },
+  "outputs_generated": [
+    "docs/index.md",
+    "docs/api-reference.md",
+    "docs/data-model.md",
+    "docs/workflows.md",
+    "docs/rbac-security.md",
+    "docs/frontend-pages.md",
+    "docs/project-scan-report.json"
+  ],
+  "resume_instructions": "Scan complete. All documentation generated."
+}

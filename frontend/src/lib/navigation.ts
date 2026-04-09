@@ -47,6 +47,12 @@ export const modules: Record<string, ModuleConfig> = {
       { label: 'Reincidência de Calibragem', path: '/reincidencia' },
     ],
   },
+  resultados: {
+    label: 'Painel de Resultados',
+    tabs: [
+      { label: 'Resultados Contratuais', path: '/resultados' },
+    ],
+  },
   // ── Administração (gestor_filial+ — oculto para admin) ───────────────────
   gestao: {
     label: 'Administração',
@@ -75,6 +81,7 @@ export function getActiveModule(pathname: string): string {
   if (pathname.startsWith('/historico')) return 'historico'
   if (pathname.startsWith('/pdf')) return 'pdf'
   if (pathname.startsWith('/reincidencia')) return 'reincidencia'
+  if (pathname.startsWith('/resultados')) return 'resultados'
   if (pathname.startsWith('/gestao')) return 'gestao'
   if (pathname.startsWith('/config')) return 'config'
   return 'dashboard'

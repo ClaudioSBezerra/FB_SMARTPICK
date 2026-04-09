@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, Settings, LogOut, KeyRound, History, FileDown, Repeat2, Building2 } from 'lucide-react'
+import { LayoutDashboard, Upload, Settings, LogOut, KeyRound, History, FileDown, Repeat2, Building2, TrendingUp } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
@@ -37,6 +37,7 @@ const mainItems = [
   { id: 'historico',    icon: History,         label: 'Histórico',            path: '/historico' },
   { id: 'pdf',          icon: FileDown,        label: 'Gerar PDF',            path: '/pdf/gerar' },
   { id: 'reincidencia', icon: Repeat2,         label: 'Reincidência',         path: '/reincidencia' },
+  { id: 'resultados',   icon: TrendingUp,      label: 'Painel de Resultados', path: '/resultados' },
   // Administração: visível para todos (admin + gestores)
   { id: 'gestao',       icon: Building2,       label: 'Administração',        path: '/gestao/filiais' },
 ] as const
@@ -44,9 +45,11 @@ const mainItems = [
 export function AppRail() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, company, logout, token } = useAuth()
+  const { user, company, logout, token, spRole } = useAuth()
   const isAdmin = user?.role === 'admin'
   const active = getActiveModule(location.pathname)
+  // Optimistic: mostra enquanto spRole carrega (null); esconde apenas se confirmado somente_leitura
+  const canAccessResultados = spRole !== 'somente_leitura'
 
   const [pwDialog,  setPwDialog]  = useState(false)
   const [pwCurrent, setPwCurrent] = useState('')
@@ -98,7 +101,7 @@ export function AppRail() {
 
         {/* Nav principal */}
         <nav className="flex flex-col items-center gap-1 p-2 flex-1 pt-3">
-          {mainItems.map(item => (
+          {mainItems.filter(item => item.id !== 'resultados' || canAccessResultados).map(item => (
               <Tooltip key={item.id}>
                 <TooltipTrigger asChild>
                   <button

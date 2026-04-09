@@ -16,6 +16,7 @@ interface AuthContextType {
   company: string | null;
   companyId: string | null;
   cnpj: string | null;
+  spRole: string | null;
   loading: boolean;
   login: (data: any) => void;
   logout: () => void;
@@ -33,7 +34,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [company, setCompany] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [cnpj, setCnpj] = useState<string | null>(null);
+  const [spRole, setSpRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchSpRole = (tok: string) => {
+    fetch('/api/sp/me', { headers: { Authorization: `Bearer ${tok}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.sp_role) setSpRole(d.sp_role) })
+      .catch(() => {});
+  };
 
   // Refs para o interceptor de fetch (sem stale closure)
   const tokenRef = useRef<string | null>(null);
@@ -96,6 +105,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .then(userData => {
         setUser(userData);
         localStorage.setItem('user', JSON.stringify(userData));
+        fetchSpRole(storedToken);
       })
       .catch(err => console.error("Session refresh error:", err))
       .finally(() => setLoading(false));
@@ -139,6 +149,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem('company', companyName || '');
     localStorage.setItem('companyId', companyIdVal || '');
     localStorage.setItem('cnpj', cnpjVal || '');
+    fetchSpRole(data.token);
   };
 
   const logout = () => {
@@ -160,6 +171,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setCompany(null);
     setCompanyId(null);
     setCnpj(null);
+    setSpRole(null);
     window.location.href = '/login';
   };
 
@@ -194,6 +206,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       company,
       companyId,
       cnpj,
+      spRole,
       loading,
       login,
       logout,
