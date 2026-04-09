@@ -47,7 +47,6 @@ import {
 } from "@/components/ui/dialog"
 import { useAuth } from "@/contexts/AuthContext"
 import { CompanySwitcher } from "@/components/CompanySwitcher"
-import { FilialSelector } from "@/components/FilialSelector"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -346,7 +345,6 @@ export function AppSidebar() {
                 </button>
               </div>
               <div className="mt-1 pt-1 border-t border-sidebar-border flex flex-col gap-0.5">
-                <FilialSelector />
                 <CompanySwitcher compact />
               </div>
               <Button

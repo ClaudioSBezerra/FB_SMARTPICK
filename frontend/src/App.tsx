@@ -15,7 +15,6 @@ import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import { AppRail } from '@/components/AppRail'
-import { FilialSelector } from '@/components/FilialSelector'
 import { CompanySwitcher } from '@/components/CompanySwitcher'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { FilialProvider } from './contexts/FilialContext'
@@ -102,7 +101,6 @@ function AppHeader() {
         {moduleCfg?.label ?? 'SmartPick'}
       </span>
       <div className="flex items-center gap-2">
-        {moduleId !== 'gestao' && moduleId !== 'config' && <FilialSelector />}
         <CompanySwitcher compact />
       </div>
     </header>
