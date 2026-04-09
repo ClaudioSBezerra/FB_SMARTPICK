@@ -35,6 +35,8 @@ type PropostaResponse struct {
 	CodFilial          int     `json:"cod_filial"`
 	CodProd            int     `json:"codprod"`
 	Produto            string  `json:"produto"`
+	Departamento       *string `json:"departamento,omitempty"`
+	Secao              *string `json:"secao,omitempty"`
 	Rua                *int    `json:"rua"`
 	Predio             *int    `json:"predio"`
 	Apto               *int    `json:"apto"`
@@ -93,46 +95,48 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		query := `
-			SELECT id, job_id, endereco_id, cd_id, cod_filial, codprod,
-			       COALESCE(produto,''), rua, predio, apto, classe_venda,
-			       capacidade_atual, sugestao_calibragem, delta, justificativa,
-			       status, aprovado_por::text, TO_CHAR(aprovado_em,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-			       sugestao_editada, editado_por::text,
-			       TO_CHAR(editado_em,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-			       TO_CHAR(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-			FROM smartpick.sp_propostas
-			WHERE empresa_id = $1
+			SELECT p.id, p.job_id, p.endereco_id, p.cd_id, p.cod_filial, p.codprod,
+			       COALESCE(p.produto,''), e.departamento, e.secao,
+			       p.rua, p.predio, p.apto, p.classe_venda,
+			       p.capacidade_atual, p.sugestao_calibragem, p.delta, p.justificativa,
+			       p.status, p.aprovado_por::text, TO_CHAR(p.aprovado_em,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			       p.sugestao_editada, p.editado_por::text,
+			       TO_CHAR(p.editado_em,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			       TO_CHAR(p.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+			FROM smartpick.sp_propostas p
+			LEFT JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
+			WHERE p.empresa_id = $1
 		`
 		args := []interface{}{spCtx.EmpresaID}
 		idx := 2
 
 		if cdIDStr != "" {
-			query += fmt.Sprintf(" AND cd_id = $%d", idx)
+			query += fmt.Sprintf(" AND p.cd_id = $%d", idx)
 			args = append(args, cdIDStr)
 			idx++
 		}
 		if jobIDStr != "" {
-			query += fmt.Sprintf(" AND job_id = $%d", idx)
+			query += fmt.Sprintf(" AND p.job_id = $%d", idx)
 			args = append(args, jobIDStr)
 			idx++
 		}
 		if status != "" {
-			query += fmt.Sprintf(" AND status = $%d", idx)
+			query += fmt.Sprintf(" AND p.status = $%d", idx)
 			args = append(args, status)
 			idx++
 		}
 		switch tipo {
 		case "falta":
-			query += " AND delta > 0"
+			query += " AND p.delta > 0"
 		case "espaco":
-			query += " AND delta < 0"
+			query += " AND p.delta < 0"
 		case "calibrado":
-			query += " AND delta = 0 AND (classe_venda != 'A' OR justificativa NOT LIKE '%mantida%')"
+			query += " AND p.delta = 0 AND (p.classe_venda != 'A' OR p.justificativa NOT LIKE '%mantida%')"
 		case "curva_a_mantida":
-			query += " AND classe_venda = 'A' AND delta = 0 AND justificativa LIKE '%mantida%'"
+			query += " AND p.classe_venda = 'A' AND p.delta = 0 AND p.justificativa LIKE '%mantida%'"
 		}
 
-		query += fmt.Sprintf(" ORDER BY ABS(delta) DESC LIMIT $%d", idx)
+		query += fmt.Sprintf(" ORDER BY ABS(p.delta) DESC LIMIT $%d", idx)
 		args = append(args, limit)
 
 		rows, err := db.Query(query, args...)
@@ -147,7 +151,8 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			var p PropostaResponse
 			if err := rows.Scan(
 				&p.ID, &p.JobID, &p.EnderecoID, &p.CdID, &p.CodFilial, &p.CodProd,
-				&p.Produto, &p.Rua, &p.Predio, &p.Apto, &p.ClasseVenda,
+				&p.Produto, &p.Departamento, &p.Secao,
+				&p.Rua, &p.Predio, &p.Apto, &p.ClasseVenda,
 				&p.CapacidadeAtual, &p.SugestaoCalibragem, &p.Delta, &p.Justificativa,
 				&p.Status, &p.AprovadoPor, &p.AprovadoEm,
 				&p.SugestaoEditada, &p.EditadoPor, &p.EditadoEm,

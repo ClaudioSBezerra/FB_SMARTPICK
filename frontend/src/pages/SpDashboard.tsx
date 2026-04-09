@@ -28,6 +28,8 @@ interface Proposta {
   cod_filial: number
   codprod: number
   produto: string
+  departamento?: string | null
+  secao?: string | null
   rua: number | null
   predio: number | null
   apto: number | null
@@ -164,70 +166,132 @@ function PropostasTable({
   onEditar: (id: number, valor: number) => void
   loadingId: number | null
 }) {
-  if (propostas.length === 0) {
-    return (
-      <div className="text-center text-sm text-muted-foreground py-12">
-        Nenhuma proposta encontrada.
-      </div>
-    )
-  }
+  const [filterDepto,  setFilterDepto]  = useState('')
+  const [filterSecao,  setFilterSecao]  = useState('')
+  const [filterEnder,  setFilterEnder]  = useState('')
+
+  // Opções únicas para os selects de filtro
+  const deptos = [...new Set(propostas.map(p => p.departamento).filter(Boolean))] as string[]
+  const secoes = [...new Set(
+    propostas
+      .filter(p => !filterDepto || p.departamento === filterDepto)
+      .map(p => p.secao)
+      .filter(Boolean)
+  )] as string[]
+
+  const filtered = propostas.filter(p => {
+    if (filterDepto && p.departamento !== filterDepto) return false
+    if (filterSecao && p.secao !== filterSecao) return false
+    if (filterEnder) {
+      const end = [p.rua, p.predio, p.apto].filter(v => v != null).join('-')
+      if (!end.includes(filterEnder)) return false
+    }
+    return true
+  })
+
+  const hasFilters = filterDepto || filterSecao || filterEnder
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-8">Curva</TableHead>
-          <TableHead>Produto</TableHead>
-          <TableHead>Cód.</TableHead>
-          <TableHead>Endereço</TableHead>
-          <TableHead className="text-right">Cap.Atual</TableHead>
-          <TableHead className="text-right">Sugestão</TableHead>
-          <TableHead className="text-right">Ação</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="w-32">Ações</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {propostas.map(p => (
-          <TableRow key={p.id} className={p.status !== 'pendente' ? 'opacity-60' : ''}>
-            <TableCell><ClasseBadge classe={p.classe_venda} /></TableCell>
-            <TableCell className="text-xs max-w-[180px] truncate" title={p.produto}>
-              {p.produto || '—'}
-            </TableCell>
-            <TableCell className="text-xs font-mono">{p.codprod}</TableCell>
-            <TableCell><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
-            <TableCell className="text-xs text-right">{p.capacidade_atual ?? '—'}</TableCell>
-            <TableCell className="text-right">
-              <SugestaoCell proposta={p} onSave={onEditar} />
-            </TableCell>
-            <TableCell className="text-right"><AcaoBadge delta={p.delta} /></TableCell>
-            <TableCell><StatusBadge status={p.status} /></TableCell>
-            <TableCell>
-              {p.status === 'pendente' && (
-                <div className="flex gap-1">
-                  <Button
-                    size="sm" variant="outline"
-                    className="h-6 text-[11px] text-green-700 border-green-200 hover:bg-green-50 px-2"
-                    disabled={loadingId === p.id}
-                    onClick={() => onAprovar(p.id)}
-                  >
-                    <Check className="h-3 w-3 mr-0.5" />Aprovar
-                  </Button>
-                  <Button
-                    size="sm" variant="outline"
-                    className="h-6 text-[11px] text-red-600 border-red-200 hover:bg-red-50 px-2"
-                    disabled={loadingId === p.id}
-                    onClick={() => onRejeitar(p.id)}
-                  >
-                    <ThumbsDown className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div className="space-y-2">
+      {/* ── Filtros ── */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <Select value={filterDepto || 'all'} onValueChange={v => { setFilterDepto(v === 'all' ? '' : v); setFilterSecao('') }}>
+          <SelectTrigger className="h-7 text-xs w-44"><SelectValue placeholder="Departamento" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os depto.</SelectItem>
+            {deptos.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filterSecao || 'all'} onValueChange={v => setFilterSecao(v === 'all' ? '' : v)}>
+          <SelectTrigger className="h-7 text-xs w-44"><SelectValue placeholder="Seção" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as seções</SelectItem>
+            {secoes.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Input
+          placeholder="Endereço (ex: 12-3-5)"
+          value={filterEnder}
+          onChange={e => setFilterEnder(e.target.value)}
+          className="h-7 text-xs w-36"
+        />
+        {hasFilters && (
+          <button
+            className="text-[11px] text-muted-foreground hover:text-foreground underline"
+            onClick={() => { setFilterDepto(''); setFilterSecao(''); setFilterEnder('') }}
+          >
+            limpar filtros
+          </button>
+        )}
+        <span className="text-[11px] text-muted-foreground ml-auto">{filtered.length} de {propostas.length}</span>
+      </div>
+
+      {/* ── Tabela ── */}
+      {filtered.length === 0 ? (
+        <div className="text-center text-sm text-muted-foreground py-10">
+          Nenhuma proposta encontrada{hasFilters ? ' para os filtros selecionados' : ''}.
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="text-[11px]">
+              <TableHead className="w-20 py-1.5">Depto / Seção</TableHead>
+              <TableHead className="w-7 py-1.5">Curva</TableHead>
+              <TableHead className="py-1.5">Produto</TableHead>
+              <TableHead className="py-1.5">Cód.</TableHead>
+              <TableHead className="py-1.5">Endereço</TableHead>
+              <TableHead className="text-right py-1.5">Cap.</TableHead>
+              <TableHead className="text-right py-1.5">Sugestão</TableHead>
+              <TableHead className="text-right py-1.5">Δ</TableHead>
+              <TableHead className="py-1.5">Status</TableHead>
+              <TableHead className="w-28 py-1.5">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map(p => (
+              <TableRow key={p.id} className={`text-[11px] ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
+                <TableCell className="py-1 leading-tight">
+                  <div className="text-[10px] font-medium truncate max-w-[76px]" title={p.departamento ?? ''}>{p.departamento || '—'}</div>
+                  <div className="text-[10px] text-muted-foreground truncate max-w-[76px]" title={p.secao ?? ''}>{p.secao || '—'}</div>
+                </TableCell>
+                <TableCell className="py-1"><ClasseBadge classe={p.classe_venda} /></TableCell>
+                <TableCell className="py-1 max-w-[160px] truncate" title={p.produto}>{p.produto || '—'}</TableCell>
+                <TableCell className="py-1 font-mono">{p.codprod}</TableCell>
+                <TableCell className="py-1"><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
+                <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
+                <TableCell className="py-1 text-right">
+                  <SugestaoCell proposta={p} onSave={onEditar} />
+                </TableCell>
+                <TableCell className="py-1 text-right"><AcaoBadge delta={p.delta} /></TableCell>
+                <TableCell className="py-1"><StatusBadge status={p.status} /></TableCell>
+                <TableCell className="py-1">
+                  {p.status === 'pendente' && (
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-6 text-[10px] text-green-700 border-green-200 hover:bg-green-50 px-1.5"
+                        disabled={loadingId === p.id}
+                        onClick={() => onAprovar(p.id)}
+                      >
+                        <Check className="h-3 w-3 mr-0.5" />Aprovar
+                      </Button>
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-6 text-[10px] text-red-600 border-red-200 hover:bg-red-50 px-1.5"
+                        disabled={loadingId === p.id}
+                        onClick={() => onRejeitar(p.id)}
+                      >
+                        <ThumbsDown className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
   )
 }
 
