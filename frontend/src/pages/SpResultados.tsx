@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { AreaChart, Area, ResponsiveContainer } from 'recharts'
 import { Progress } from '@/components/ui/progress'
@@ -71,7 +71,7 @@ interface KpiCardProps {
   valor: string
   unidade: string
   meta: number
-  metaLabel: string
+  metaLabel: React.ReactNode
   progresso: number          // 0-100, relativo à meta
   trend?: number[]           // valores para sparkline (ordem cronológica: mais antigo → mais recente)
   reducao?: number | null    // % de redução entre ciclo mais antigo e mais recente
@@ -308,7 +308,7 @@ export default function SpResultados() {
               valor={String(emp.ofensores_falta_ab)}
               unidade="produtos"
               meta={METAS.reducao_ofensores_ab}
-              metaLabel="Redução contratual"
+              metaLabel={<span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer hover:bg-indigo-100 transition-colors">Entender melhor</span>}
               progresso={0}
               detalhe={`de ${emp.total_enderecos} endereços no ciclo`}
             />
@@ -326,7 +326,7 @@ export default function SpResultados() {
               valor={String(emp.acessos_emergencia)}
               unidade="acessos"
               meta={METAS.reducao_acessos_emergencia}
-              metaLabel="Redução contratual"
+              metaLabel={<span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer hover:bg-indigo-100 transition-colors">Entender melhor</span>}
               progresso={0}
             />
             <KpiCard
@@ -334,7 +334,7 @@ export default function SpResultados() {
               valor={String(emp.acessos_total)}
               unidade="acessos"
               meta={METAS.reducao_acessos_total}
-              metaLabel="Redução contratual"
+              metaLabel={<span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer hover:bg-indigo-100 transition-colors">Entender melhor</span>}
               progresso={0}
             />
           </div>
