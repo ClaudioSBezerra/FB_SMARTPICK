@@ -75,9 +75,10 @@ interface KpiCardProps {
   progresso: number          // 0-100, relativo à meta
   trend?: number[]           // valores para sparkline (ordem cronológica: mais antigo → mais recente)
   reducao?: number | null    // % de redução entre ciclo mais antigo e mais recente
+  detalhe?: string           // linha contextual abaixo do valor principal
 }
 
-function KpiCard({ titulo, valor, unidade, meta, metaLabel, progresso, trend, reducao }: KpiCardProps) {
+function KpiCard({ titulo, valor, unidade, meta, metaLabel, progresso, trend, reducao, detalhe }: KpiCardProps) {
   const sparkData = trend?.map((v, i) => ({ i, v })) ?? []
   const clampedPct = Math.min(100, Math.max(0, progresso))
 
@@ -88,9 +89,14 @@ function KpiCard({ titulo, valor, unidade, meta, metaLabel, progresso, trend, re
         {reducao !== undefined && <div className="shrink-0">{renderReducao(reducao)}</div>}
       </div>
 
-      <div className="flex items-end gap-1">
-        <span className="text-2xl font-bold leading-none">{valor}</span>
-        <span className="text-xs text-muted-foreground mb-0.5">{unidade}</span>
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-end gap-1">
+          <span className="text-2xl font-bold leading-none">{valor}</span>
+          <span className="text-xs text-muted-foreground mb-0.5">{unidade}</span>
+        </div>
+        {detalhe && (
+          <span className="text-[10px] text-muted-foreground">{detalhe}</span>
+        )}
       </div>
 
       <Progress value={clampedPct} className="h-1.5" />
@@ -154,7 +160,7 @@ function CdCard({ cd }: { cd: SpResultadosCD }) {
           <KpiCard
             titulo="Ofensores falta (Curva A/B)"
             valor={String(atual.ofensores_falta_ab)}
-            unidade="SKUs"
+            unidade="produtos"
             meta={METAS.reducao_ofensores_ab}
             metaLabel={`Meta: redução ≥${METAS.reducao_ofensores_ab}%`}
             progresso={(() => {
@@ -163,6 +169,7 @@ function CdCard({ cd }: { cd: SpResultadosCD }) {
             })()}
             trend={sparkBase.map(c => c.ofensores_falta_ab)}
             reducao={calcReducao(ciclos, 'ofensores_falta_ab')}
+            detalhe={`de ${atual.total_enderecos} endereços no ciclo`}
           />
 
           {/* KPI 3 — Caixas ociosas */}
@@ -174,6 +181,7 @@ function CdCard({ cd }: { cd: SpResultadosCD }) {
             metaLabel={`Meta: ≥${METAS.pct_realocado}%`}
             progresso={(atual.pct_realocado / METAS.pct_realocado) * 100}
             trend={sparkBase.map(c => c.pct_realocado)}
+            detalhe={atual.caixas_ociosas > 0 ? `${atual.caixas_aprovadas} de ${atual.caixas_ociosas} cx ociosas aprovadas` : undefined}
           />
 
           {/* KPI 4 — Reposições emergenciais */}
@@ -247,7 +255,6 @@ export default function SpResultados() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-base font-semibold">Painel de Resultados</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">KPIs contratuais — últimos 4 ciclos por CD</p>
         </div>
         <select
           value={cdID}
@@ -299,10 +306,11 @@ export default function SpResultados() {
             <KpiCard
               titulo="Ofensores falta (A/B)"
               valor={String(emp.ofensores_falta_ab)}
-              unidade="SKUs"
+              unidade="produtos"
               meta={METAS.reducao_ofensores_ab}
               metaLabel="Redução contratual"
               progresso={0}
+              detalhe={`de ${emp.total_enderecos} endereços no ciclo`}
             />
             <KpiCard
               titulo="Caixas ociosas realocadas (%)"
@@ -311,6 +319,7 @@ export default function SpResultados() {
               meta={METAS.pct_realocado}
               metaLabel={`Meta: ≥${METAS.pct_realocado}%`}
               progresso={(emp.pct_realocado / METAS.pct_realocado) * 100}
+              detalhe={emp.caixas_ociosas > 0 ? `${emp.caixas_aprovadas} de ${emp.caixas_ociosas} cx ociosas aprovadas` : undefined}
             />
             <KpiCard
               titulo="Acessos emergenciais (90d)"

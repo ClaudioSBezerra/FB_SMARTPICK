@@ -50,7 +50,7 @@ export const modules: Record<string, ModuleConfig> = {
   resultados: {
     label: 'Painel de Resultados',
     tabs: [
-      { label: 'Resultados Contratuais', path: '/resultados' },
+      { label: 'Resultados e Métricas 4 Ciclos', path: '/resultados' },
     ],
   },
   // ── Administração (gestor_filial+ — oculto para admin) ───────────────────
