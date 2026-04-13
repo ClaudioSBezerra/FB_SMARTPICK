@@ -56,7 +56,12 @@ type SpVincularFiliaisRequest struct {
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
-// SpListUsuariosHandler lista os usuários com acesso SmartPick para a empresa ativa.
+// SpListUsuariosHandler lista os usuários com acesso SmartPick.
+//
+// Escopo de visibilidade:
+//   - Tenant master (companies.group_id IS NULL): lista TODOS os usuários do sistema.
+//   - Tenant normal (group_id preenchido): lista apenas usuários do mesmo enterprise_group,
+//     mesmo que o usuário logado seja admin_fbtax.
 func SpListUsuariosHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -70,8 +75,19 @@ func SpListUsuariosHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Lista usuários com vínculo explícito nesta empresa + dados de hierarquia
-		rows, err := db.Query(`
+		// ── Determina escopo: master (group_id IS NULL) ou tenant normal ──────
+		var rawGroupID sql.NullString
+		if err := db.QueryRow(
+			`SELECT group_id::text FROM companies WHERE id = $1::uuid`, spCtx.EmpresaID,
+		).Scan(&rawGroupID); err != nil {
+			log.Printf("SpListUsuarios group_id lookup: %v", err)
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		isMaster := !rawGroupID.Valid || rawGroupID.String == ""
+
+		// ── SELECT base (idêntico nos dois casos) ─────────────────────────────
+		const selectBase = `
 			SELECT u.id::text, u.email, u.full_name, u.sp_role::text, u.is_verified, u.trial_ends_at, u.created_at::text,
 			    COALESCE(ue.environment_id::text, ''),
 			    COALESCE(e.name, ''),
@@ -88,18 +104,33 @@ func SpListUsuariosHandler(db *sql.DB) http.HandlerFunc {
 			) ue ON true
 			LEFT JOIN environments e ON e.id = ue.environment_id
 			LEFT JOIN companies pc ON pc.id = ue.preferred_company_id
-			LEFT JOIN enterprise_groups eg ON eg.id = pc.group_id
-			WHERE u.id = $2
-			   OR EXISTS (
-			       SELECT 1 FROM smartpick.sp_user_filiais uf
-			       WHERE uf.user_id = u.id AND uf.empresa_id = $1
-			   )
-			   OR EXISTS (
-			       SELECT 1 FROM user_environments ue2
-			       WHERE ue2.user_id = u.id AND ue2.preferred_company_id = $1
-			   )
-			ORDER BY u.full_name
-		`, spCtx.EmpresaID, spCtx.UserID)
+			LEFT JOIN enterprise_groups eg ON eg.id = pc.group_id`
+
+		var (
+			rows *sql.Rows
+			err  error
+		)
+		if isMaster {
+			// Tenant master: todos os usuários do sistema
+			rows, err = db.Query(selectBase + ` ORDER BY u.full_name`)
+		} else {
+			// Tenant normal: apenas usuários do mesmo grupo empresarial
+			// $1 = group_id da empresa ativa  $2 = user_id do solicitante
+			rows, err = db.Query(selectBase+`
+				WHERE u.id = $2
+				   OR EXISTS (
+				       SELECT 1 FROM user_environments ue2
+				       JOIN companies c ON c.id = ue2.preferred_company_id
+				       WHERE ue2.user_id = u.id AND c.group_id = $1::uuid
+				   )
+				   OR EXISTS (
+				       SELECT 1 FROM smartpick.sp_user_filiais uf
+				       JOIN companies c ON c.id = uf.empresa_id
+				       WHERE uf.user_id = u.id AND c.group_id = $1::uuid
+				   )
+				ORDER BY u.full_name`,
+				rawGroupID.String, spCtx.UserID)
+		}
 		if err != nil {
 			log.Printf("SpListUsuarios: %v", err)
 			http.Error(w, "Database error", http.StatusInternalServerError)
