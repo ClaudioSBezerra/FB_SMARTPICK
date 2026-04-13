@@ -21,7 +21,10 @@ import { useAuth } from '@/contexts/AuthContext'
 
 interface SpFilial { id: number; cod_filial: number; nome: string }
 interface SpCD     { id: number; filial_id: number; nome: string }
-interface SpCSVJob { id: string; filename: string; status: string; created_at: string }
+interface SpCSVJob {
+  id: string; filename: string; status: string; created_at: string
+  cd_id: number; filial_id: number
+}
 
 interface Proposta {
   id: number
@@ -314,10 +317,11 @@ export default function SpDashboard() {
   // Sincroniza quando o usuário navega via sidebar
   useEffect(() => { setActiveTab(urlTab) }, [urlTab])
 
-  const [filialID, setFilialID] = useState<string>('')
-  const [cdID,     setCdID]     = useState<string>('')
-  const [jobID,    setJobID]    = useState<string>('')
-  const [loadingId, setLoadingId] = useState<number | null>(null)
+  const [filialID,   setFilialID]   = useState<string>('')
+  const [cdID,       setCdID]       = useState<string>('')
+  const [jobID,      setJobID]      = useState<string>('')
+  const [loadingId,  setLoadingId]  = useState<number | null>(null)
+  const [autoSel,    setAutoSel]    = useState(false)
 
   // ── Dialog de motivo de rejeição ──────────────────────────────────────────
   const [rejeitarId,    setRejeitarId]    = useState<number | null>(null)
@@ -362,6 +366,15 @@ export default function SpDashboard() {
     },
   })
   const doneJobs = jobs.filter(j => j.status === 'done')
+
+  // Auto-seleciona filial + CD do job mais recente ao abrir o painel (uma só vez)
+  useEffect(() => {
+    if (autoSel || filialID || !doneJobs.length) return
+    const latest = doneJobs[0]   // já vem ordenado DESC por created_at
+    if (latest.filial_id) setFilialID(String(latest.filial_id))
+    if (latest.cd_id)     setCdID(String(latest.cd_id))
+    setAutoSel(true)
+  }, [doneJobs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Resumo ────────────────────────────────────────────────────────────────
   const resumoParams = new URLSearchParams()
