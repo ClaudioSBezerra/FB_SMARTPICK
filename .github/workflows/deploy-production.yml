@@ -62,8 +62,11 @@ jobs:
     steps:
       - name: Trigger Coolify redeploy
         run: |
+          # force=true garante rebuild sem cache — essencial para mudanças em
+          # nginx.conf/Dockerfile do frontend serem aplicadas (o docker-compose
+          # rebuilda web + api a partir do fonte, não usa a imagem do GHCR).
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "http://76.13.171.196:8000/api/v1/deploy?uuid=u4k84840408sc4wgogcw4c04&force=false")
+            "http://76.13.171.196:8000/api/v1/deploy?uuid=u4k84840408sc4wgogcw4c04&force=true")
           echo "Coolify HTTP status: $STATUS"
 
   notify:
