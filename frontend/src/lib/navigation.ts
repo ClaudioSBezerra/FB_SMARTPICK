@@ -4,6 +4,7 @@ export interface ModuleTab {
   disabled?: boolean
   danger?: boolean
   adminOnly?: boolean
+  masterOnly?: boolean   // visível apenas para admin de plataforma (MASTER)
 }
 
 export interface ModuleConfig {
@@ -66,8 +67,8 @@ export const modules: Record<string, ModuleConfig> = {
     label: 'Configurações',
     adminOnly: true,
     tabs: [
-      { label: 'Plano e Limites', path: '/config/planos' },
-      { label: 'Ambiente',        path: '/config/ambiente' },
+      { label: 'Plano e Limites', path: '/config/planos',    masterOnly: true },
+      { label: 'Ambiente',        path: '/config/ambiente',   masterOnly: true },
       { label: 'Usuários',        path: '/config/usuarios' },
       { label: 'Manutenção',      path: '/config/manutencao' },
     ],

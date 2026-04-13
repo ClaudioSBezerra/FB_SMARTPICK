@@ -46,14 +46,18 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function ModuleTabs() {
   const location  = useLocation()
   const { user, spRole }  = useAuth()
-  const isAdmin   = user?.role === 'admin' || spRole === 'admin_fbtax'
+  const isMaster  = user?.role === 'admin'
+  const isAdmin   = isMaster || spRole === 'admin_fbtax'
   const moduleId  = getActiveModule(location.pathname)
   const moduleCfg = modules[moduleId]
 
   if (!moduleCfg || moduleCfg.tabs.length === 0) return null
   if (moduleCfg.adminOnly && !isAdmin) return null
 
-  const visibleTabs = moduleCfg.tabs.filter(t => !t.adminOnly || isAdmin)
+  const visibleTabs = moduleCfg.tabs.filter(t =>
+    (!t.adminOnly  || isAdmin) &&
+    (!t.masterOnly || isMaster)
+  )
 
   return (
     <div key={moduleId} className="border-b bg-white px-4 flex items-center gap-0.5 overflow-x-auto shrink-0 h-10">
