@@ -454,14 +454,27 @@ func main() {
 				http.NotFound(w, r)
 				return
 			}
+
 			filePath := filepath.Join(staticDir, filepath.Clean(r.URL.Path))
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			_, statErr := os.Stat(filePath)
+
+			if os.IsNotExist(statErr) {
+				// Se tem extensão (js, css, png…) é um asset — retorna 404 real,
+				// não servir index.html como conteúdo CSS/JS quebrado.
+				ext := filepath.Ext(r.URL.Path)
+				if ext != "" && ext != ".html" {
+					http.NotFound(w, r)
+					return
+				}
+				// Rota SPA (sem extensão, ex: /login /dashboard) → index.html
 				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 				w.Header().Set("Pragma", "no-cache")
 				w.Header().Set("Expires", "0")
 				http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
 				return
 			}
+
+			// index.html nunca deve ser cacheado pelo browser
 			if r.URL.Path == "/" || r.URL.Path == "/index.html" {
 				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 				w.Header().Set("Pragma", "no-cache")
