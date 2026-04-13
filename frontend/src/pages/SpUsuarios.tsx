@@ -437,6 +437,7 @@ export default function SpUsuarios() {
               <Select value={novoSpRole} onValueChange={setNovoSpRole}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="admin_fbtax">Admin FbTax</SelectItem>
                   <SelectItem value="gestor_geral">Gestor Geral</SelectItem>
                   <SelectItem value="gestor_filial">Gestor de Filial</SelectItem>
                   <SelectItem value="somente_leitura">Somente Leitura</SelectItem>
