@@ -124,6 +124,10 @@ export function AppRail() {
         </nav>
 
         {/* Config (admin) + User */}
+        <div className="pb-1">
+          <span className="text-[9px] text-muted-foreground/50 select-none">v{__APP_VERSION__}</span>
+        </div>
+
         <div className="flex flex-col items-center gap-1 p-2 border-t shrink-0">
           {isAdmin && (
           <Tooltip>
