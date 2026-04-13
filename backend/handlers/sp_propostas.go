@@ -90,7 +90,7 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 
 		limit := 200
 		if limitStr != "" {
-			if v, err := strconv.Atoi(limitStr); err == nil && v > 0 && v <= 1000 {
+			if v, err := strconv.Atoi(limitStr); err == nil && v > 0 {
 				limit = v
 			}
 		}

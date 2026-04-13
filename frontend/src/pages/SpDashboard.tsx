@@ -393,7 +393,7 @@ export default function SpDashboard() {
 
   // ── Propostas ─────────────────────────────────────────────────────────────
   function buildPropostasUrl(tipo: 'falta' | 'espaco' | 'calibrado' | 'curva_a_mantida', status?: string) {
-    const p = new URLSearchParams({ tipo, limit: '500' })
+    const p = new URLSearchParams({ tipo, limit: '99999' })
     if (status) p.set('status', status)
     if (cdID)   p.set('cd_id', cdID)
     if (jobID)  p.set('job_id', jobID)

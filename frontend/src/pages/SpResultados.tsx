@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
-  AreaChart, Area, ResponsiveContainer,
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  AreaChart, Area,
 } from 'recharts'
 import { Progress } from '@/components/ui/progress'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 
 // ─── Metas contratuais ────────────────────────────────────────────────────────
 const METAS = {
@@ -55,8 +58,6 @@ interface HistoricoKPI {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// calcReducao: positivo = melhora (reduziu), negativo = piora (aumentou)
-// ciclos[0] = mais recente, ciclos[last] = mais antigo (base)
 function calcReducao(ciclos: CicloKPI[], campo: keyof CicloKPI): number | null {
   if (ciclos.length < 2) return null
   const base  = ciclos[ciclos.length - 1][campo] as number
@@ -78,6 +79,88 @@ function fmt(n: number | undefined | null, decimals = 1): string {
   return Number(n).toFixed(decimals)
 }
 
+function fmtDate(iso: string): string {
+  // "2026-04-13T..." → "13/04"
+  return iso.substring(8, 10) + '/' + iso.substring(5, 7)
+}
+
+// ─── Gráfico de Barras — comparativo entre importações ────────────────────────
+
+function ComparativoChart({
+  cdID, token,
+}: {
+  cdID: string
+  token: string
+}) {
+  const [pontos, setPontos] = useState<HistoricoKPI[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!cdID) return
+    setLoading(true)
+    fetch(`/api/sp/resultados/historico?cd_id=${cdID}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => setPontos(d.pontos ?? []))
+      .catch(() => setPontos([]))
+      .finally(() => setLoading(false))
+  }, [cdID, token])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
+        Carregando histórico...
+      </div>
+    )
+  }
+
+  if (pontos.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
+        Nenhuma importação encontrada para este CD.
+      </div>
+    )
+  }
+
+  if (pontos.length === 1) {
+    return (
+      <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
+        Apenas 1 importação — importe novamente para comparar a evolução.
+      </div>
+    )
+  }
+
+  const chartData = pontos.map((p, idx) => ({
+    label: `Imp. ${idx + 1}\n${fmtDate(p.criado_em)}`,
+    data: fmtDate(p.criado_em),
+    calibrados: p.calibrados_ok,
+    falta: p.ofensores_falta,
+    espaco: p.ofensores_espaco,
+  }))
+
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <BarChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 4 }} barCategoryGap="20%">
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+        <XAxis dataKey="data" tick={{ fontSize: 11 }} />
+        <YAxis tick={{ fontSize: 11 }} />
+        <Tooltip
+          contentStyle={{ fontSize: 12 }}
+          formatter={(val: number, name: string) => [
+            val.toLocaleString('pt-BR'),
+            name,
+          ]}
+        />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="calibrados" name="SKUs Calibrados"   fill="#22c55e" radius={[3, 3, 0, 0]} />
+        <Bar dataKey="falta"      name="Ofensores Falta"   fill="#ef4444" radius={[3, 3, 0, 0]} />
+        <Bar dataKey="espaco"     name="Ofensores Espaço"  fill="#f97316" radius={[3, 3, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
 // ─── KpiCard ─────────────────────────────────────────────────────────────────
 interface KpiCardProps {
   titulo: string
@@ -85,10 +168,10 @@ interface KpiCardProps {
   unidade: string
   meta: number
   metaLabel: React.ReactNode
-  progresso: number          // 0-100, relativo à meta
-  trend?: number[]           // valores para sparkline (ordem cronológica: mais antigo → mais recente)
-  reducao?: number | null    // % de redução entre ciclo mais antigo e mais recente
-  detalhe?: string           // linha contextual abaixo do valor principal
+  progresso: number
+  trend?: number[]
+  reducao?: number | null
+  detalhe?: string
 }
 
 function KpiCard({ titulo, valor, unidade, meta, metaLabel, progresso, trend, reducao, detalhe }: KpiCardProps) {
@@ -136,146 +219,84 @@ function KpiCard({ titulo, valor, unidade, meta, metaLabel, progresso, trend, re
   )
 }
 
-// ─── CdCard ──────────────────────────────────────────────────────────────────
-function CdCard({ cd }: { cd: SpResultadosCD }) {
+// ─── KPIs do ciclo atual de um CD ────────────────────────────────────────────
+function CdKpis({ cd }: { cd: SpResultadosCD }) {
   const ciclos = cd.ciclos
   const atual  = ciclos[0] ?? null
-
-  // Sparkline: reverter para ordem cronológica (mais antigo → mais recente)
   const sparkBase = [...ciclos].reverse()
 
+  if (!atual) return null
+
   return (
-    <div className="rounded-lg border bg-white p-4 flex flex-col gap-3 shadow-sm">
-      <div>
-        <p className="text-sm font-semibold leading-tight">{cd.cd_nome}</p>
-        <p className="text-[11px] text-muted-foreground">{cd.filial_nome}</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">
-          {ciclos.length} ciclo{ciclos.length !== 1 ? 's' : ''} disponível{ciclos.length !== 1 ? 'is' : ''}
-        </p>
-      </div>
-
-      {!atual ? (
-        <p className="text-xs text-muted-foreground">—</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-2">
-          {/* KPI 1 — SKUs calibrados */}
-          <KpiCard
-            titulo="SKUs calibrados (%)"
-            valor={fmt(atual.pct_calibrados)}
-            unidade="%"
-            meta={METAS.pct_calibrados}
-            metaLabel={`Meta: >${METAS.pct_calibrados}%`}
-            progresso={(atual.pct_calibrados / METAS.pct_calibrados) * 100}
-            trend={sparkBase.map(c => c.pct_calibrados)}
-          />
-
-          {/* KPI 2 — Ofensores A/B */}
-          <KpiCard
-            titulo="Ofensores falta (Curva A/B)"
-            valor={String(atual.ofensores_falta_ab)}
-            unidade="produtos"
-            meta={METAS.reducao_ofensores_ab}
-            metaLabel={`Meta: redução ≥${METAS.reducao_ofensores_ab}%`}
-            progresso={(() => {
-              const r = calcReducao(ciclos, 'ofensores_falta_ab')
-              return r !== null ? Math.min(100, (r / METAS.reducao_ofensores_ab) * 100) : 0
-            })()}
-            trend={sparkBase.map(c => c.ofensores_falta_ab)}
-            reducao={calcReducao(ciclos, 'ofensores_falta_ab')}
-            detalhe={`de ${atual.total_enderecos} endereços no ciclo`}
-          />
-
-          {/* KPI 3 — Caixas ociosas */}
-          <KpiCard
-            titulo="Caixas ociosas realocadas (%)"
-            valor={fmt(atual.pct_realocado)}
-            unidade="%"
-            meta={METAS.pct_realocado}
-            metaLabel={`Meta: ≥${METAS.pct_realocado}%`}
-            progresso={(atual.pct_realocado / METAS.pct_realocado) * 100}
-            trend={sparkBase.map(c => c.pct_realocado)}
-            detalhe={atual.caixas_ociosas > 0 ? `${atual.caixas_aprovadas} de ${atual.caixas_ociosas} cx ociosas aprovadas` : undefined}
-          />
-
-          {/* KPI 4 — Reposições emergenciais */}
-          <KpiCard
-            titulo="Acessos emergenciais (90d)"
-            valor={String(atual.acessos_emergencia)}
-            unidade="acessos"
-            meta={METAS.reducao_acessos_emergencia}
-            metaLabel={`Meta: redução ≥${METAS.reducao_acessos_emergencia}%`}
-            progresso={(() => {
-              const r = calcReducao(ciclos, 'acessos_emergencia')
-              return r !== null ? Math.min(100, (r / METAS.reducao_acessos_emergencia) * 100) : 0
-            })()}
-            trend={sparkBase.map(c => c.acessos_emergencia)}
-            reducao={calcReducao(ciclos, 'acessos_emergencia')}
-          />
-
-          {/* KPI 5 — Acessos picking total */}
-          <KpiCard
-            titulo="Acessos picking total (90d)"
-            valor={String(atual.acessos_total)}
-            unidade="acessos"
-            meta={METAS.reducao_acessos_total}
-            metaLabel={`Meta: redução ≥${METAS.reducao_acessos_total}%`}
-            progresso={(() => {
-              const r = calcReducao(ciclos, 'acessos_total')
-              return r !== null ? Math.min(100, (r / METAS.reducao_acessos_total) * 100) : 0
-            })()}
-            trend={sparkBase.map(c => c.acessos_total)}
-            reducao={calcReducao(ciclos, 'acessos_total')}
-          />
-        </div>
-      )}
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      <KpiCard
+        titulo="SKUs calibrados (%)"
+        valor={fmt(atual.pct_calibrados)}
+        unidade="%"
+        meta={METAS.pct_calibrados}
+        metaLabel={`Meta: >${METAS.pct_calibrados}%`}
+        progresso={(atual.pct_calibrados / METAS.pct_calibrados) * 100}
+        trend={sparkBase.map(c => c.pct_calibrados)}
+      />
+      <KpiCard
+        titulo="Ofensores falta (A/B)"
+        valor={String(atual.ofensores_falta_ab)}
+        unidade="SKUs"
+        meta={METAS.reducao_ofensores_ab}
+        metaLabel={<EntenderBadge />}
+        progresso={(() => {
+          const r = calcReducao(ciclos, 'ofensores_falta_ab')
+          return r !== null ? Math.min(100, (r / METAS.reducao_ofensores_ab) * 100) : 0
+        })()}
+        trend={sparkBase.map(c => c.ofensores_falta_ab)}
+        reducao={calcReducao(ciclos, 'ofensores_falta_ab')}
+        detalhe={`de ${atual.total_enderecos} endereços`}
+      />
+      <KpiCard
+        titulo="Caixas ociosas realocadas (%)"
+        valor={fmt(atual.pct_realocado)}
+        unidade="%"
+        meta={METAS.pct_realocado}
+        metaLabel={`Meta: ≥${METAS.pct_realocado}%`}
+        progresso={(atual.pct_realocado / METAS.pct_realocado) * 100}
+        trend={sparkBase.map(c => c.pct_realocado)}
+        detalhe={atual.caixas_ociosas > 0 ? `${atual.caixas_aprovadas} de ${atual.caixas_ociosas} cx` : undefined}
+      />
+      <KpiCard
+        titulo="Acessos emergenciais (90d)"
+        valor={String(atual.acessos_emergencia)}
+        unidade="acessos"
+        meta={METAS.reducao_acessos_emergencia}
+        metaLabel={<EntenderBadge />}
+        progresso={(() => {
+          const r = calcReducao(ciclos, 'acessos_emergencia')
+          return r !== null ? Math.min(100, (r / METAS.reducao_acessos_emergencia) * 100) : 0
+        })()}
+        trend={sparkBase.map(c => c.acessos_emergencia)}
+        reducao={calcReducao(ciclos, 'acessos_emergencia')}
+      />
+      <KpiCard
+        titulo="Acessos picking total (90d)"
+        valor={String(atual.acessos_total)}
+        unidade="acessos"
+        meta={METAS.reducao_acessos_total}
+        metaLabel={<EntenderBadge />}
+        progresso={(() => {
+          const r = calcReducao(ciclos, 'acessos_total')
+          return r !== null ? Math.min(100, (r / METAS.reducao_acessos_total) * 100) : 0
+        })()}
+        trend={sparkBase.map(c => c.acessos_total)}
+        reducao={calcReducao(ciclos, 'acessos_total')}
+      />
     </div>
   )
 }
 
-// ─── Gráfico histórico ────────────────────────────────────────────────────────
-
-function HistoricoChart({ cdID, token }: { cdID: string; token: string }) {
-  const [pontos, setPontos] = useState<HistoricoKPI[]>([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    setLoading(true)
-    fetch(`/api/sp/resultados/historico?cd_id=${cdID}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(d => setPontos(d.pontos ?? []))
-      .catch(() => setPontos([]))
-      .finally(() => setLoading(false))
-  }, [cdID, token])
-
-  if (loading) return <p className="text-xs text-muted-foreground py-4">Carregando histórico...</p>
-  if (pontos.length < 2) return (
-    <p className="text-xs text-muted-foreground py-4">
-      Histórico indisponível — importe ao menos 2 arquivos para este CD.
-    </p>
-  )
-
-  const chartData = pontos.map(p => ({
-    data: p.criado_em.substring(0, 10),
-    calibrados: p.calibrados_ok,
-    falta:  p.ofensores_falta,
-    espaco: p.ofensores_espaco,
-  }))
-
+function EntenderBadge() {
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <LineChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-        <XAxis dataKey="data" tick={{ fontSize: 10 }} />
-        <YAxis tick={{ fontSize: 10 }} />
-        <Tooltip contentStyle={{ fontSize: 11 }} />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
-        <Line type="monotone" dataKey="calibrados" stroke="#22c55e" name="SKUs Calibrados"     strokeWidth={2} dot={{ r: 3 }} />
-        <Line type="monotone" dataKey="falta"       stroke="#ef4444" name="Ofensores Falta"    strokeWidth={2} dot={{ r: 3 }} />
-        <Line type="monotone" dataKey="espaco"      stroke="#eab308" name="Ofensores Espaço"   strokeWidth={2} dot={{ r: 3 }} />
-      </LineChart>
-    </ResponsiveContainer>
+    <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer hover:bg-indigo-100 transition-colors">
+      Entender melhor
+    </span>
   )
 }
 
@@ -287,6 +308,7 @@ export default function SpResultados() {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
 
+  // Carrega KPI cards
   useEffect(() => {
     if (!token) return
     setLoading(true)
@@ -302,44 +324,49 @@ export default function SpResultados() {
       .finally(() => setLoading(false))
   }, [token, cdID])
 
-  const emp   = data?.empresa ?? null
-  const cds   = data?.cds ?? []
-  const cdOpts = data?.cds ?? []
+  const cds    = data?.cds ?? []
+  const cdOpts = cds
+
+  // Auto-seleciona CD quando há apenas um
+  useEffect(() => {
+    if (!cdID && cds.length === 1) {
+      setCdID(String(cds[0].cd_id))
+    }
+  }, [cds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedCd = cdID ? cds.find(c => String(c.cd_id) === cdID) : null
 
   return (
     <div className="flex flex-col gap-6">
 
-      {/* ── Cabeçalho + filtro ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-base font-semibold">Painel de Resultados</h1>
-        </div>
-        <select
-          value={cdID}
-          onChange={e => setCdID(e.target.value)}
-          className="text-xs border rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary"
-        >
-          <option value="">Todos os CDs</option>
-          {cdOpts.map(cd => (
-            <option key={cd.cd_id} value={String(cd.cd_id)}>
-              {cd.filial_nome} — {cd.cd_nome}
-            </option>
-          ))}
-        </select>
+      {/* ── Seletor de CD ──────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Select value={cdID || 'all'} onValueChange={v => setCdID(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-64 text-xs">
+            <SelectValue placeholder="Selecione um CD" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os CDs</SelectItem>
+            {cdOpts.map(cd => (
+              <SelectItem key={cd.cd_id} value={String(cd.cd_id)}>
+                {cd.filial_nome} — {cd.cd_nome}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedCd && (
+          <span className="text-xs text-muted-foreground">
+            {selectedCd.ciclos.length} ciclo{selectedCd.ciclos.length !== 1 ? 's' : ''} disponível{selectedCd.ciclos.length !== 1 ? 'is' : ''}
+          </span>
+        )}
       </div>
 
-      {/* ── Estado de loading / erro ──────────────────────────────────── */}
-      {loading && (
-        <p className="text-sm text-muted-foreground">Carregando...</p>
-      )}
-      {error && (
-        <p className="text-sm text-red-500">{error}</p>
-      )}
+      {/* ── Loading / erro ─────────────────────────────────────────────── */}
+      {loading && <p className="text-sm text-muted-foreground">Carregando...</p>}
+      {error   && <p className="text-sm text-red-500">{error}</p>}
 
-      {/* ── Sem dados ─────────────────────────────────────────────────── */}
-      {!loading && !error && (!data || (cds.length === 0 && !emp)) && (
+      {/* ── Sem dados ──────────────────────────────────────────────────── */}
+      {!loading && !error && cds.length === 0 && (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="text-sm text-muted-foreground">
             Nenhum dado disponível. Importe e processe um CSV para ver os resultados.
@@ -347,95 +374,104 @@ export default function SpResultados() {
         </div>
       )}
 
-      {/* ── Empresa Consolidada (apenas quando "Todos os CDs") ────────── */}
-      {!loading && !cdID && emp && (
+      {/* ── Gráfico comparativo entre importações (elemento principal) ─── */}
+      {!loading && cdID && token && (
         <section>
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-            Empresa Consolidada
+            Evolução por Importação
           </h2>
-          {/* KPIs de % e absolutos — sem % de redução (bases distintas por CD, AC 12) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="rounded-lg border bg-white p-4 shadow-sm">
+            <div className="flex gap-4 mb-3 flex-wrap">
+              <span className="flex items-center gap-1.5 text-xs">
+                <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#22c55e' }} />
+                SKUs Calibrados
+              </span>
+              <span className="flex items-center gap-1.5 text-xs">
+                <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#ef4444' }} />
+                Ofensores Falta (A/B)
+              </span>
+              <span className="flex items-center gap-1.5 text-xs">
+                <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#f97316' }} />
+                Ofensores Espaço
+              </span>
+            </div>
+            <ComparativoChart cdID={cdID} token={token} />
+          </div>
+        </section>
+      )}
+
+      {/* Mensagem para selecionar CD quando há múltiplos */}
+      {!loading && !cdID && cds.length > 1 && (
+        <div className="rounded-lg border border-dashed p-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            Selecione um CD acima para ver o gráfico comparativo entre importações.
+          </p>
+        </div>
+      )}
+
+      {/* ── KPIs do ciclo atual (ciclo mais recente do CD selecionado) ─── */}
+      {!loading && selectedCd && (
+        <section>
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+            KPIs Contratuais — Ciclo Atual
+          </h2>
+          <CdKpis cd={selectedCd} />
+        </section>
+      )}
+
+      {/* ── Visão Empresa Consolidada (apenas sem filtro de CD) ─────────── */}
+      {!loading && !cdID && data?.empresa && (
+        <section>
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+            Empresa Consolidada — Ciclo Atual
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             <KpiCard
               titulo="SKUs calibrados (%)"
-              valor={fmt(emp.pct_calibrados)}
+              valor={fmt(data.empresa.pct_calibrados)}
               unidade="%"
               meta={METAS.pct_calibrados}
               metaLabel={`Meta: >${METAS.pct_calibrados}%`}
-              progresso={(emp.pct_calibrados / METAS.pct_calibrados) * 100}
+              progresso={(data.empresa.pct_calibrados / METAS.pct_calibrados) * 100}
             />
             <KpiCard
               titulo="Ofensores falta (A/B)"
-              valor={String(emp.ofensores_falta_ab)}
-              unidade="produtos"
+              valor={String(data.empresa.ofensores_falta_ab)}
+              unidade="SKUs"
               meta={METAS.reducao_ofensores_ab}
-              metaLabel={<span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer hover:bg-indigo-100 transition-colors">Entender melhor</span>}
+              metaLabel={<EntenderBadge />}
               progresso={0}
-              detalhe={`de ${emp.total_enderecos} endereços no ciclo`}
+              detalhe={`de ${data.empresa.total_enderecos} endereços`}
             />
             <KpiCard
               titulo="Caixas ociosas realocadas (%)"
-              valor={fmt(emp.pct_realocado)}
+              valor={fmt(data.empresa.pct_realocado)}
               unidade="%"
               meta={METAS.pct_realocado}
               metaLabel={`Meta: ≥${METAS.pct_realocado}%`}
-              progresso={(emp.pct_realocado / METAS.pct_realocado) * 100}
-              detalhe={emp.caixas_ociosas > 0 ? `${emp.caixas_aprovadas} de ${emp.caixas_ociosas} cx ociosas aprovadas` : undefined}
+              progresso={(data.empresa.pct_realocado / METAS.pct_realocado) * 100}
+              detalhe={data.empresa.caixas_ociosas > 0 ? `${data.empresa.caixas_aprovadas} de ${data.empresa.caixas_ociosas} cx` : undefined}
             />
             <KpiCard
               titulo="Acessos emergenciais (90d)"
-              valor={String(emp.acessos_emergencia)}
+              valor={String(data.empresa.acessos_emergencia)}
               unidade="acessos"
               meta={METAS.reducao_acessos_emergencia}
-              metaLabel={<span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer hover:bg-indigo-100 transition-colors">Entender melhor</span>}
+              metaLabel={<EntenderBadge />}
               progresso={0}
             />
             <KpiCard
               titulo="Acessos picking total (90d)"
-              valor={String(emp.acessos_total)}
+              valor={String(data.empresa.acessos_total)}
               unidade="acessos"
               meta={METAS.reducao_acessos_total}
-              metaLabel={<span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer hover:bg-indigo-100 transition-colors">Entender melhor</span>}
+              metaLabel={<EntenderBadge />}
               progresso={0}
             />
           </div>
         </section>
       )}
 
-      {/* ── Breakdown por CD ──────────────────────────────────────────── */}
-      {!loading && (
-        <section>
-          {!cdID && (
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Por Centro de Distribuição
-            </h2>
-          )}
-
-          {/* Filtro por CD selecionado: exibe só aquele */}
-          {selectedCd ? (
-            <div className="max-w-sm">
-              <CdCard cd={selectedCd} />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {cds.map(cd => (
-                <CdCard key={cd.cd_id} cd={cd} />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Evolução histórica (apenas com CD selecionado) ────────────── */}
-      {!loading && cdID && token && (
-        <section>
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-            Evolução Histórica
-          </h2>
-          <div className="rounded-lg border bg-white p-4 shadow-sm">
-            <HistoricoChart cdID={cdID} token={token} />
-          </div>
-        </section>
-      )}
     </div>
   )
 }

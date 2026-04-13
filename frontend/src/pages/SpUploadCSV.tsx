@@ -154,6 +154,7 @@ export default function SpUploadCSV() {
     onSuccess: () => {
       toast.success('Calibração iniciada! As propostas serão geradas em instantes.')
       qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
+      navigate('/dashboard/urgencia/falta')
     },
     onError: (e: Error) => toast.error(e.message),
   })
