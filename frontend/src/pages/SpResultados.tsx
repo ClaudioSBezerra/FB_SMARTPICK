@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { AreaChart, Area, ResponsiveContainer } from 'recharts'
+import {
+  AreaChart, Area, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from 'recharts'
 import { Progress } from '@/components/ui/progress'
 
 // ─── Metas contratuais ────────────────────────────────────────────────────────
@@ -38,6 +41,16 @@ interface SpResultadosCD {
 interface SpResultadosResponse {
   empresa: CicloKPI | null
   cds: SpResultadosCD[]
+}
+
+interface HistoricoKPI {
+  job_id: string
+  criado_em: string
+  total_enderecos: number
+  calibrados_ok: number
+  pct_calibrados: number
+  ofensores_falta: number
+  ofensores_espaco: number
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -219,6 +232,53 @@ function CdCard({ cd }: { cd: SpResultadosCD }) {
   )
 }
 
+// ─── Gráfico histórico ────────────────────────────────────────────────────────
+
+function HistoricoChart({ cdID, token }: { cdID: string; token: string }) {
+  const [pontos, setPontos] = useState<HistoricoKPI[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/sp/resultados/historico?cd_id=${cdID}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => setPontos(d.pontos ?? []))
+      .catch(() => setPontos([]))
+      .finally(() => setLoading(false))
+  }, [cdID, token])
+
+  if (loading) return <p className="text-xs text-muted-foreground py-4">Carregando histórico...</p>
+  if (pontos.length < 2) return (
+    <p className="text-xs text-muted-foreground py-4">
+      Histórico indisponível — importe ao menos 2 arquivos para este CD.
+    </p>
+  )
+
+  const chartData = pontos.map(p => ({
+    data: p.criado_em.substring(0, 10),
+    calibrados: p.calibrados_ok,
+    falta:  p.ofensores_falta,
+    espaco: p.ofensores_espaco,
+  }))
+
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <LineChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+        <XAxis dataKey="data" tick={{ fontSize: 10 }} />
+        <YAxis tick={{ fontSize: 10 }} />
+        <Tooltip contentStyle={{ fontSize: 11 }} />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <Line type="monotone" dataKey="calibrados" stroke="#22c55e" name="SKUs Calibrados"     strokeWidth={2} dot={{ r: 3 }} />
+        <Line type="monotone" dataKey="falta"       stroke="#ef4444" name="Ofensores Falta"    strokeWidth={2} dot={{ r: 3 }} />
+        <Line type="monotone" dataKey="espaco"      stroke="#eab308" name="Ofensores Espaço"   strokeWidth={2} dot={{ r: 3 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function SpResultados() {
   const { token } = useAuth()
@@ -362,6 +422,18 @@ export default function SpResultados() {
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {/* ── Evolução histórica (apenas com CD selecionado) ────────────── */}
+      {!loading && cdID && token && (
+        <section>
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+            Evolução Histórica
+          </h2>
+          <div className="rounded-lg border bg-white p-4 shadow-sm">
+            <HistoricoChart cdID={cdID} token={token} />
+          </div>
         </section>
       )}
     </div>

@@ -94,6 +94,10 @@ func SpListUsuariosHandler(db *sql.DB) http.HandlerFunc {
 			       SELECT 1 FROM smartpick.sp_user_filiais uf
 			       WHERE uf.user_id = u.id AND uf.empresa_id = $1
 			   )
+			   OR EXISTS (
+			       SELECT 1 FROM user_environments ue2
+			       WHERE ue2.user_id = u.id AND ue2.preferred_company_id = $1
+			   )
 			ORDER BY u.full_name
 		`, spCtx.EmpresaID, spCtx.UserID)
 		if err != nil {

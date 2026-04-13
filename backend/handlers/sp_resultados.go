@@ -271,3 +271,140 @@ func safeDiv(num, den float64) float64 {
 	}
 	return num / den
 }
+
+// ─── Histórico (gráfico de evolução) ─────────────────────────────────────────
+
+// HistoricoKPI — snapshot de um job para o gráfico de evolução
+type HistoricoKPI struct {
+	JobID           string  `json:"job_id"`
+	CriadoEm        string  `json:"criado_em"`
+	TotalEnderecos  int     `json:"total_enderecos"`
+	CalibradosOk    int     `json:"calibrados_ok"`
+	PctCalibrados   float64 `json:"pct_calibrados"`
+	OfensoresFalta  int     `json:"ofensores_falta"`   // Curva A/B delta > 0
+	OfensoresEspaco int     `json:"ofensores_espaco"`  // COUNT delta < 0
+}
+
+// SpHistoricoResponse — série histórica de um CD
+type SpHistoricoResponse struct {
+	CdID       int            `json:"cd_id"`
+	CdNome     string         `json:"cd_nome"`
+	FilialNome string         `json:"filial_nome"`
+	Pontos     []HistoricoKPI `json:"pontos"` // do mais antigo ao mais recente
+}
+
+// SpResultadosHistoricoHandler retorna a série histórica de KPIs de um CD (todos os jobs).
+// GET /api/sp/resultados/historico?cd_id=X  (cd_id obrigatório)
+func SpResultadosHistoricoHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		cdIDStr := r.URL.Query().Get("cd_id")
+		if cdIDStr == "" {
+			http.Error(w, "cd_id obrigatório", http.StatusBadRequest)
+			return
+		}
+		cdID, err := strconv.Atoi(cdIDStr)
+		if err != nil {
+			http.Error(w, "cd_id inválido", http.StatusBadRequest)
+			return
+		}
+
+		// Valida pertencimento à empresa
+		var exists bool
+		err = db.QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM smartpick.sp_centros_dist cd
+			              JOIN smartpick.sp_filiais f ON f.id = cd.filial_id
+			              WHERE cd.id = $1 AND f.empresa_id = $2)`,
+			cdID, spCtx.EmpresaID,
+		).Scan(&exists)
+		if err != nil || !exists {
+			http.Error(w, "CD não encontrado", http.StatusNotFound)
+			return
+		}
+
+		rows, err := db.Query(`
+			WITH todos_jobs AS (
+				SELECT j.id AS job_id, j.created_at,
+				       cd.nome AS cd_nome, f.nome AS filial_nome
+				FROM smartpick.sp_csv_jobs j
+				JOIN smartpick.sp_centros_dist cd ON cd.id = j.cd_id
+				JOIN smartpick.sp_filiais f ON f.id = cd.filial_id
+				WHERE j.empresa_id = $1 AND j.cd_id = $2 AND j.status = 'done'
+			),
+			end_agg AS (
+				SELECT e.job_id,
+				       COUNT(*) AS total_enderecos
+				FROM smartpick.sp_enderecos e
+				WHERE e.job_id IN (SELECT job_id FROM todos_jobs)
+				GROUP BY e.job_id
+			),
+			prop_agg AS (
+				SELECT p.job_id,
+				       COUNT(*) FILTER (WHERE p.delta = 0)                               AS calibrados_ok,
+				       COUNT(*) FILTER (WHERE p.delta > 0 AND p.classe_venda IN ('A','B')) AS ofensores_falta,
+				       COUNT(*) FILTER (WHERE p.delta < 0)                               AS ofensores_espaco
+				FROM smartpick.sp_propostas p
+				WHERE p.job_id IN (SELECT job_id FROM todos_jobs)
+				GROUP BY p.job_id
+			)
+			SELECT
+				j.cd_nome, j.filial_nome,
+				j.job_id::text,
+				TO_CHAR(j.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS criado_em,
+				COALESCE(ea.total_enderecos,   0) AS total_enderecos,
+				COALESCE(pa.calibrados_ok,     0) AS calibrados_ok,
+				COALESCE(pa.ofensores_falta,   0) AS ofensores_falta,
+				COALESCE(pa.ofensores_espaco,  0) AS ofensores_espaco
+			FROM todos_jobs j
+			LEFT JOIN end_agg   ea ON ea.job_id = j.job_id
+			LEFT JOIN prop_agg  pa ON pa.job_id = j.job_id
+			ORDER BY j.created_at ASC
+		`, spCtx.EmpresaID, cdID)
+		if err != nil {
+			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		resp := SpHistoricoResponse{CdID: cdID, Pontos: []HistoricoKPI{}}
+		for rows.Next() {
+			var (
+				cdNome, filialNome, jobID, criadoEm string
+				totalEnderecos, calibradosOk         int
+				ofensoresFalta, ofensoresEspaco      int
+			)
+			if err := rows.Scan(
+				&cdNome, &filialNome, &jobID, &criadoEm,
+				&totalEnderecos, &calibradosOk,
+				&ofensoresFalta, &ofensoresEspaco,
+			); err != nil {
+				continue
+			}
+			if resp.CdNome == "" {
+				resp.CdNome = cdNome
+				resp.FilialNome = filialNome
+			}
+			resp.Pontos = append(resp.Pontos, HistoricoKPI{
+				JobID:           jobID,
+				CriadoEm:        criadoEm,
+				TotalEnderecos:  totalEnderecos,
+				CalibradosOk:    calibradosOk,
+				PctCalibrados:   safeDiv(float64(calibradosOk), float64(totalEnderecos)) * 100,
+				OfensoresFalta:  ofensoresFalta,
+				OfensoresEspaco: ofensoresEspaco,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}
+}

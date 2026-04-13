@@ -10,6 +10,9 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -316,7 +319,20 @@ export default function SpDashboard() {
   const [jobID,    setJobID]    = useState<string>('')
   const [loadingId, setLoadingId] = useState<number | null>(null)
 
+  // ── Dialog de motivo de rejeição ──────────────────────────────────────────
+  const [rejeitarId,    setRejeitarId]    = useState<number | null>(null)
+  const [motivoSel,     setMotivoSel]     = useState<string>('')
+
   // ── Queries base ──────────────────────────────────────────────────────────
+  const { data: motivosRejeicao = [] } = useQuery<{ id: number; codigo: number; descricao: string }[]>({
+    queryKey: ['sp-motivos-rejeicao'],
+    queryFn: async () => {
+      const r = await fetch('/api/sp/propostas/motivos-rejeicao', { headers })
+      if (!r.ok) throw new Error()
+      return r.json()
+    },
+  })
+
   const { data: filiais = [] } = useQuery<SpFilial[]>({
     queryKey: ['filiais'],
     queryFn: async () => {
@@ -426,19 +442,31 @@ export default function SpDashboard() {
     onSettled: () => setLoadingId(null),
   })
 
-  // ── Rejeitar individual ───────────────────────────────────────────────────
+  // ── Rejeitar individual (requer motivo) ──────────────────────────────────
   const rejeitarMutation = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async ({ id, motivoId }: { id: number; motivoId: number }) => {
       const r = await fetch(`/api/sp/propostas/${id}/rejeitar`, {
-        method: 'POST', headers,
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo_rejeicao_id: motivoId }),
       })
       if (!r.ok) throw new Error((await r.json()).error ?? 'Erro')
     },
-    onMutate: (id) => setLoadingId(id),
-    onSuccess: () => { toast.success('Proposta rejeitada'); invalidateAll() },
+    onMutate: ({ id }) => setLoadingId(id),
+    onSuccess: () => {
+      toast.success('Proposta rejeitada')
+      invalidateAll()
+      setRejeitarId(null)
+      setMotivoSel('')
+    },
     onError: (e: Error) => toast.error(e.message),
     onSettled: () => setLoadingId(null),
   })
+
+  function confirmarRejeicao() {
+    if (!rejeitarId || !motivoSel) return
+    rejeitarMutation.mutate({ id: rejeitarId, motivoId: Number(motivoSel) })
+  }
 
   // ── Editar inline ─────────────────────────────────────────────────────────
   const editarMutation = useMutation({
@@ -638,7 +666,7 @@ export default function SpDashboard() {
             <PropostasTable
               propostas={propostasFalta}
               onAprovar={id => aprovarMutation.mutate(id)}
-              onRejeitar={id => rejeitarMutation.mutate(id)}
+              onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
               onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
               loadingId={loadingId}
             />
@@ -664,7 +692,7 @@ export default function SpDashboard() {
             <PropostasTable
               propostas={propostasEspaco}
               onAprovar={id => aprovarMutation.mutate(id)}
-              onRejeitar={id => rejeitarMutation.mutate(id)}
+              onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
               onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
               loadingId={loadingId}
             />
@@ -768,6 +796,42 @@ export default function SpDashboard() {
           </TabsContent>
         </Tabs>
       )}
+
+      {/* ── Dialog: motivo de rejeição ──────────────────────────────────── */}
+      <Dialog open={!!rejeitarId} onOpenChange={open => { if (!open) { setRejeitarId(null); setMotivoSel('') } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Motivo da rejeição</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Selecione o motivo para rejeitar esta sugestão de calibragem.
+          </p>
+          <Select value={motivoSel} onValueChange={setMotivoSel}>
+            <SelectTrigger className="text-xs">
+              <SelectValue placeholder="Selecione um motivo..." />
+            </SelectTrigger>
+            <SelectContent>
+              {motivosRejeicao.map(m => (
+                <SelectItem key={m.id} value={String(m.id)} className="text-xs">
+                  {m.codigo} – {m.descricao}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => { setRejeitarId(null); setMotivoSel('') }}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive" size="sm"
+              disabled={!motivoSel || rejeitarMutation.isPending}
+              onClick={confirmarRejeicao}
+            >
+              {rejeitarMutation.isPending ? 'Rejeitando...' : 'Confirmar rejeição'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

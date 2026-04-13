@@ -408,7 +408,8 @@ func main() {
 	http.HandleFunc("/api/sp/me", withSP(handlers.SpMeHandler, ""))
 
 	// ── SmartPick — Painel de Resultados (Epic 9) ─────────────────────────────
-	http.HandleFunc("/api/sp/resultados", withSP(handlers.SpResultadosHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/resultados",          withSP(handlers.SpResultadosHandler,          "gestor_filial"))
+	http.HandleFunc("/api/sp/resultados/historico", withSP(handlers.SpResultadosHistoricoHandler, "gestor_filial"))
 
 	// ── SmartPick — Geração de PDF (Epic 6) ──────────────────────────────────
 	http.HandleFunc("/api/sp/pdf/calibracao", withSP(handlers.SpPDFCalibracaoHandler, "gestor_filial"))
@@ -416,6 +417,7 @@ func main() {
 	// ── SmartPick — Dashboard de Urgência e Propostas (Epic 5) ───────────────
 	http.HandleFunc("/api/sp/propostas", withSP(handlers.SpPropostasHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/resumo", withSP(handlers.SpPropostasResumoHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/propostas/motivos-rejeicao", withSP(handlers.SpMotivoRejeicaoHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/aprovar-lote", withSP(handlers.SpPropostasAprovarLoteHandler, "gestor_geral"))
 	http.HandleFunc("/api/sp/propostas/", withSP(handlers.SpPropostaItemHandler, "gestor_geral"))
 

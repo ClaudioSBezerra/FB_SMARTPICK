@@ -6,9 +6,10 @@ package handlers
 //
 // GET  /api/sp/propostas              → lista propostas (filtros: cd_id, job_id, tipo, status)
 // GET  /api/sp/propostas/resumo       → contadores por tipo e status
+// GET  /api/sp/propostas/motivos-rejeicao → lista tipos de rejeição (sp_tipo_rejeicao)
 // PUT  /api/sp/propostas/{id}         → edição inline (sugestao_editada)
 // POST /api/sp/propostas/{id}/aprovar → aprovação individual
-// POST /api/sp/propostas/{id}/rejeitar→ rejeição individual
+// POST /api/sp/propostas/{id}/rejeitar→ rejeição individual (body: {motivo_rejeicao_id})
 // POST /api/sp/propostas/aprovar-lote → aprovação em lote por job_id ou cd_id
 //
 // Semântica de urgência (delta = sugestao_calibragem - capacidade_atual):
@@ -271,9 +272,9 @@ func SpPropostaItemHandler(db *sql.DB) http.HandlerFunc {
 		case r.Method == http.MethodPut && action == "":
 			editarProposta(db, spCtx, propostaID, w, r)
 		case r.Method == http.MethodPost && action == "aprovar":
-			mudarStatusProposta(db, spCtx, propostaID, "aprovada", w)
+			mudarStatusProposta(db, spCtx, propostaID, "aprovada", nil, w)
 		case r.Method == http.MethodPost && action == "rejeitar":
-			mudarStatusProposta(db, spCtx, propostaID, "rejeitada", w)
+			mudarStatusProposta(db, spCtx, propostaID, "rejeitada", r, w)
 		default:
 			http.Error(w, "Not found", http.StatusNotFound)
 		}
@@ -307,13 +308,35 @@ func editarProposta(db *sql.DB, spCtx *SmartPickContext, id int64, w http.Respon
 	json.NewEncoder(w).Encode(map[string]string{"message": "Proposta editada"})
 }
 
-func mudarStatusProposta(db *sql.DB, spCtx *SmartPickContext, id int64, novoStatus string, w http.ResponseWriter) {
-	// Ao aprovar, usa sugestao_editada se disponível, senão sugestao_calibragem
-	res, err := db.Exec(`
-		UPDATE smartpick.sp_propostas
-		SET status = $1, aprovado_por = $2::uuid, aprovado_em = $3
-		WHERE id = $4 AND empresa_id = $5 AND status = 'pendente'
-	`, novoStatus, spCtx.UserID, time.Now().UTC(), id, spCtx.EmpresaID)
+func mudarStatusProposta(db *sql.DB, spCtx *SmartPickContext, id int64, novoStatus string, r *http.Request, w http.ResponseWriter) {
+	// Para rejeição: lê motivo_rejeicao_id do body (obrigatório)
+	var motivoID *int
+	if novoStatus == "rejeitada" && r != nil {
+		var body struct {
+			MotivoRejeicaoID *int `json:"motivo_rejeicao_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.MotivoRejeicaoID == nil {
+			http.Error(w, "motivo_rejeicao_id obrigatório para rejeição", http.StatusBadRequest)
+			return
+		}
+		motivoID = body.MotivoRejeicaoID
+	}
+
+	var res sql.Result
+	var err error
+	if motivoID != nil {
+		res, err = db.Exec(`
+			UPDATE smartpick.sp_propostas
+			SET status = $1, aprovado_por = $2::uuid, aprovado_em = $3, motivo_rejeicao_id = $6
+			WHERE id = $4 AND empresa_id = $5 AND status = 'pendente'
+		`, novoStatus, spCtx.UserID, time.Now().UTC(), id, spCtx.EmpresaID, *motivoID)
+	} else {
+		res, err = db.Exec(`
+			UPDATE smartpick.sp_propostas
+			SET status = $1, aprovado_por = $2::uuid, aprovado_em = $3
+			WHERE id = $4 AND empresa_id = $5 AND status = 'pendente'
+		`, novoStatus, spCtx.UserID, time.Now().UTC(), id, spCtx.EmpresaID)
+	}
 	if err != nil {
 		http.Error(w, "Erro ao atualizar proposta: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -325,6 +348,46 @@ func mudarStatusProposta(db *sql.DB, spCtx *SmartPickContext, id int64, novoStat
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Status atualizado para " + novoStatus})
+}
+
+// ─── Motivos de Rejeição ─────────────────────────────────────────────────────
+
+// SpMotivoRejeicaoHandler lista os tipos de rejeição ativos.
+// GET /api/sp/propostas/motivos-rejeicao
+func SpMotivoRejeicaoHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		rows, err := db.Query(`
+			SELECT id, codigo, descricao FROM smartpick.sp_tipo_rejeicao
+			WHERE ativo = true ORDER BY codigo
+		`)
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type motivo struct {
+			ID       int    `json:"id"`
+			Codigo   int    `json:"codigo"`
+			Descricao string `json:"descricao"`
+		}
+		var lista []motivo
+		for rows.Next() {
+			var m motivo
+			if rows.Scan(&m.ID, &m.Codigo, &m.Descricao) == nil {
+				lista = append(lista, m)
+			}
+		}
+		if lista == nil {
+			lista = []motivo{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(lista)
+	}
 }
 
 // ─── Aprovação em Lote ────────────────────────────────────────────────────────
