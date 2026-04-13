@@ -75,16 +75,23 @@ func SpListUsuariosHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// ── Determina escopo: master (group_id IS NULL) ou tenant normal ──────
+		// ── Determina escopo: master ou tenant normal ────────────────────────
+		// "master" = empresa ativa pertence ao grupo 'MASTER' (migration 024).
+		// Usuários do grupo MASTER enxergam todos os usuários do sistema.
+		// Qualquer outro grupo (ex: JC) enxerga apenas o próprio grupo.
+		var groupName sql.NullString
 		var rawGroupID sql.NullString
-		if err := db.QueryRow(
-			`SELECT group_id::text FROM companies WHERE id = $1::uuid`, spCtx.EmpresaID,
-		).Scan(&rawGroupID); err != nil {
-			log.Printf("SpListUsuarios group_id lookup: %v", err)
+		if err := db.QueryRow(`
+			SELECT COALESCE(eg.name, '')::text, COALESCE(eg.id::text, '')
+			FROM companies c
+			LEFT JOIN enterprise_groups eg ON eg.id = c.group_id
+			WHERE c.id = $1::uuid
+		`, spCtx.EmpresaID).Scan(&groupName, &rawGroupID); err != nil {
+			log.Printf("SpListUsuarios group lookup: %v", err)
 			http.Error(w, "Database error", http.StatusInternalServerError)
 			return
 		}
-		isMaster := !rawGroupID.Valid || rawGroupID.String == ""
+		isMaster := groupName.String == "MASTER"
 
 		// ── SELECT base (idêntico nos dois casos) ─────────────────────────────
 		const selectBase = `
