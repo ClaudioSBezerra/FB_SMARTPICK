@@ -46,7 +46,8 @@ export function AppRail() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, company, logout, token, spRole } = useAuth()
-  const isAdmin = user?.role === 'admin'
+  // isAdmin: plataforma admin OU admin_fbtax SmartPick → acessa configurações e manutenção
+  const isAdmin = user?.role === 'admin' || spRole === 'admin_fbtax'
   const active = getActiveModule(location.pathname)
   // Optimistic: mostra enquanto spRole carrega (null); esconde apenas se confirmado somente_leitura
   const canAccessResultados = spRole !== 'somente_leitura'

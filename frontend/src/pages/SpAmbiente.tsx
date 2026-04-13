@@ -283,7 +283,13 @@ export default function SpAmbiente() {
     },
     onSuccess: (data: Record<string, unknown>) => {
       toast.success(`Limpeza concluída: ${data.sp_propostas ?? 0} propostas, ${data.sp_enderecos ?? 0} endereços, ${data.sp_csv_jobs ?? 0} jobs removidos`)
+      // Invalida TODOS os caches relacionados para que o Painel de Calibragem
+      // e demais páginas recarreguem dados frescos após a limpeza.
       qc.invalidateQueries({ queryKey: ['sp-plano'] })
+      qc.invalidateQueries({ queryKey: ['sp-propostas'] })
+      qc.invalidateQueries({ queryKey: ['sp-propostas-resumo'] })
+      qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
+      qc.invalidateQueries({ queryKey: ['sp-historico'] })
       setLimparDialog(false)
     },
     onError: (e: Error) => toast.error(e.message),
