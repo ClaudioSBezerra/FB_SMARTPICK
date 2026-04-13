@@ -117,7 +117,7 @@ const Login = () => {
           </ul>
 
           <p className="text-xs pt-2" style={{ color: "#475569" }}>
-            © {new Date().getFullYear()} Fortes Bezerra Tecnologia · SmartPick v1.0
+            © {new Date().getFullYear()} Fortes Bezerra Tecnologia · SmartPick v{__APP_VERSION__}
           </p>
         </div>
       </div>
