@@ -321,6 +321,7 @@ function PropostasTable({
               <TableHead className="py-1.5">Ender.</TableHead>
               <TableHead className="text-right py-1.5">Cap.</TableHead>
               <TableHead className="text-right py-1.5">Giro/dia</TableHead>
+              <TableHead className="text-right py-1.5">Méd.Vda</TableHead>
               <TableHead className="text-right py-1.5">Sug.</TableHead>
               <TableHead className="text-right py-1.5">Δ</TableHead>
               <TableHead className="py-1.5">Status</TableHead>
@@ -344,6 +345,9 @@ function PropostasTable({
                 <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
                 <TableCell className="py-1 text-right text-muted-foreground">
                   {p.giro_dia_cx != null ? p.giro_dia_cx.toFixed(1) : '—'}
+                </TableCell>
+                <TableCell className="py-1 text-right text-muted-foreground">
+                  {p.med_venda_cx != null ? p.med_venda_cx.toFixed(1) : '—'}
                 </TableCell>
                 <TableCell className="py-1 text-right">
                   <SugestaoCell proposta={p} onSave={onEditar} />
