@@ -402,9 +402,75 @@ func SpCriarUsuarioHandler(db *sql.DB) http.HandlerFunc {
 		log.Printf("SpCriarUsuario: criado user %s (%s) sp_role=%s empresa=%s por %s",
 			userID, req.Email, req.SpRole, spCtx.EmpresaID, spCtx.UserID)
 
+		writeAuditLog(db, spCtx.EmpresaID, spCtx.UserID, "usuario", userID, "criar_usuario", map[string]any{
+			"email": req.Email, "full_name": req.FullName, "sp_role": req.SpRole,
+		})
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]string{"id": userID, "message": "Usuário criado com sucesso"})
+	}
+}
+
+// SpDeletarUsuarioHandler remove um usuário do sistema (admin_fbtax only).
+// DELETE /api/sp/usuarios/{id}
+func SpDeletarUsuarioHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil || !spCtx.IsAdminFbtax() {
+			http.Error(w, "Forbidden: apenas admin_fbtax pode excluir usuários", http.StatusForbidden)
+			return
+		}
+
+		targetID := strings.TrimPrefix(r.URL.Path, "/api/sp/usuarios/")
+		if targetID == "" {
+			http.Error(w, "User ID required", http.StatusBadRequest)
+			return
+		}
+		if targetID == spCtx.UserID {
+			http.Error(w, "Não é possível excluir o próprio usuário", http.StatusBadRequest)
+			return
+		}
+
+		// Busca dados para o audit log antes de deletar
+		var email, fullName string
+		_ = db.QueryRow("SELECT email, full_name FROM users WHERE id = $1", targetID).Scan(&email, &fullName)
+
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		_, _ = tx.Exec("DELETE FROM smartpick.sp_user_filiais WHERE user_id = $1", targetID)
+		_, _ = tx.Exec("DELETE FROM user_environments WHERE user_id = $1", targetID)
+		res, err := tx.Exec("DELETE FROM users WHERE id = $1", targetID)
+		if err != nil {
+			http.Error(w, "Erro ao excluir usuário: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			http.Error(w, "Usuário não encontrado", http.StatusNotFound)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Commit error", http.StatusInternalServerError)
+			return
+		}
+
+		writeAuditLog(db, spCtx.EmpresaID, spCtx.UserID, "usuario", targetID, "excluir_usuario", map[string]any{
+			"email": email, "full_name": fullName,
+		})
+
+		log.Printf("SpDeletarUsuario: excluído user %s (%s) por %s", targetID, email, spCtx.UserID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "Usuário excluído com sucesso"})
 	}
 }
 

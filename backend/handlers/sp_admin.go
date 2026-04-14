@@ -110,6 +110,12 @@ func SpLimparCalibragemHandler(db *sql.DB) http.HandlerFunc {
 			totais["sp_propostas"], totais["sp_historico"],
 			removidos, spCtx.UserID)
 
+		writeAuditLog(db, spCtx.EmpresaID, spCtx.UserID, "calibragem", "all", "limpar_dados", map[string]any{
+			"sp_csv_jobs": totais["sp_csv_jobs"], "sp_enderecos": totais["sp_enderecos"],
+			"sp_propostas": totais["sp_propostas"], "sp_historico": totais["sp_historico"],
+			"arquivos_removidos": removidos,
+		})
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"message":            "Dados de calibragem removidos com sucesso",

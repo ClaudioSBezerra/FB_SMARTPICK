@@ -11,6 +11,7 @@ import SpGerarPDF from './pages/SpGerarPDF'
 import SpHistorico from './pages/SpHistorico'
 import SpReincidencia from './pages/SpReincidencia'
 import SpResultados from './pages/SpResultados'
+import SpAuditLog from './pages/SpAuditLog'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -39,6 +40,15 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   if (loading) return null
   if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />
   if (user?.role !== 'admin') return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
+function MasterRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, loading, group } = useAuth()
+  const location = useLocation()
+  if (loading) return null
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />
+  if (group !== 'MASTER') return <Navigate to="/" replace />
   return <>{children}</>
 }
 
@@ -154,8 +164,9 @@ function AppLayout() {
               <Route path="/config/planos"      element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
               <Route path="/config/manutencao"  element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
               <Route path="/config/ambiente"    element={<ProtectedRoute><GestaoAmbiente /></ProtectedRoute>} />
-              <Route path="/config/usuarios"    element={<AdminRoute><SpUsuarios /></AdminRoute>} />
-              <Route path="/config/usuarios-admin" element={<AdminRoute><AdminUsers /></AdminRoute>} />
+              <Route path="/config/usuarios"    element={<MasterRoute><SpUsuarios /></MasterRoute>} />
+              <Route path="/config/usuarios-admin" element={<MasterRoute><AdminUsers /></MasterRoute>} />
+              <Route path="/config/audit-log"   element={<MasterRoute><SpAuditLog /></MasterRoute>} />
 
               {/* Redirecionamentos de rotas antigas */}
               <Route path="/config/parametros-motor" element={<Navigate to="/gestao/regras" replace />} />

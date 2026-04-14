@@ -60,6 +60,7 @@ interface NavItem {
   icon: React.ElementType;
   disabled?: boolean;
   adminOnly?: boolean;
+  masterOnly?: boolean;
   danger?: boolean;
 }
 
@@ -88,8 +89,9 @@ const sections: NavSection[] = [
       { title: "Gestão de Ambiente",      url: "/config/ambiente",          icon: Building },
       { title: "Credenciais API RFB",     url: "/rfb/credenciais",          icon: KeyRound, adminOnly: true },
       { title: "Credenciais ERP Bridge",  url: "/config/erp-bridge",    icon: KeyRound,   adminOnly: true },
-      { title: "Gestão de Usuários",      url: "/config/usuarios",      icon: Users,      adminOnly: true },
-      { title: "Limpar Dados",            url: "/config/limpar-dados",  icon: ShieldAlert, adminOnly: true, danger: true },
+      { title: "Gestão de Usuários",      url: "/config/usuarios",      icon: Users,      masterOnly: true },
+      { title: "Log de Auditoria",        url: "/config/audit-log",     icon: ShieldAlert, masterOnly: true },
+      { title: "Limpar Dados",            url: "/config/limpar-dados",  icon: ShieldAlert, masterOnly: true, danger: true },
     ],
   },
   {
@@ -165,8 +167,9 @@ const sections: NavSection[] = [
 // ---------------------------------------------------------------------------
 export function AppSidebar() {
   const location = useLocation()
-  const { user, company, logout, token } = useAuth()
+  const { user, group, company, logout, token } = useAuth()
   const isAdmin = user?.role === "admin"
+  const isMaster = group === "MASTER"
 
   // Estado de expansão de cada seção (todas abertas por padrão)
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
@@ -245,7 +248,7 @@ export function AppSidebar() {
         {sections.map((section) => {
           if (section.adminOnly && !isAdmin) return null
           const visibleItems = section.items.filter(
-            (item) => !item.adminOnly || isAdmin
+            (item) => (!item.adminOnly || isAdmin) && (!item.masterOnly || isMaster)
           )
           if (visibleItems.length === 0) return null
 

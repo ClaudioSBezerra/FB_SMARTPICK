@@ -436,7 +436,11 @@ func main() {
 					handlers.SpSaveVinculosHandler(db)(w, r)
 				}
 			default:
-				http.Error(w, "Not found", http.StatusNotFound)
+				if r.Method == http.MethodDelete {
+					handlers.SpDeletarUsuarioHandler(db)(w, r)
+				} else {
+					http.Error(w, "Not found", http.StatusNotFound)
+				}
 			}
 		}
 	}, "admin_fbtax"))
@@ -444,6 +448,7 @@ func main() {
 	// ── SmartPick — Admin / Manutenção ───────────────────────────────────────
 	http.HandleFunc("/api/sp/admin/limpar-calibragem",   withSP(handlers.SpLimparCalibragemHandler, "admin_fbtax"))
 	http.HandleFunc("/api/sp/admin/purgar-csv-antigos", withSP(handlers.SpPurgarCsvAntigosHandler, "gestor_geral"))
+	http.HandleFunc("/api/sp/admin/audit-log",          withSP(handlers.SpAuditLogHandler, "admin_fbtax"))
 
 	// ── Frontend estático (SPA React) ─────────────────────────────────────────
 	staticDir := "./static"
