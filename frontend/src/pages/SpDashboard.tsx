@@ -46,6 +46,7 @@ interface Proposta {
   justificativa: string | null
   status: string
   sugestao_editada: number | null
+  giro_dia_cx: number | null
 }
 
 interface Resumo {
@@ -247,6 +248,7 @@ function PropostasTable({
               <TableHead className="py-1.5">Cód.</TableHead>
               <TableHead className="py-1.5">Endereço</TableHead>
               <TableHead className="text-right py-1.5">Cap.</TableHead>
+              <TableHead className="text-right py-1.5">Giro/dia (cx)</TableHead>
               <TableHead className="text-right py-1.5">Sugestão</TableHead>
               <TableHead className="text-right py-1.5">Δ</TableHead>
               <TableHead className="py-1.5">Status</TableHead>
@@ -265,6 +267,9 @@ function PropostasTable({
                 <TableCell className="py-1 font-mono">{p.codprod}</TableCell>
                 <TableCell className="py-1"><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
                 <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
+                <TableCell className="py-1 text-right text-muted-foreground">
+                  {p.giro_dia_cx != null ? p.giro_dia_cx.toFixed(1) : '—'}
+                </TableCell>
                 <TableCell className="py-1 text-right">
                   <SugestaoCell proposta={p} onSave={onEditar} />
                 </TableCell>

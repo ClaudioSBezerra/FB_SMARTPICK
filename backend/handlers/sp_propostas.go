@@ -49,10 +49,11 @@ type PropostaResponse struct {
 	Status             string  `json:"status"`
 	AprovadoPor        *string `json:"aprovado_por,omitempty"`
 	AprovadoEm         *string `json:"aprovado_em,omitempty"`
-	SugestaoEditada    *int    `json:"sugestao_editada,omitempty"`
-	EditadoPor         *string `json:"editado_por,omitempty"`
-	EditadoEm          *string `json:"editado_em,omitempty"`
-	CreatedAt          string  `json:"created_at"`
+	SugestaoEditada    *int      `json:"sugestao_editada,omitempty"`
+	EditadoPor         *string   `json:"editado_por,omitempty"`
+	EditadoEm          *string   `json:"editado_em,omitempty"`
+	CreatedAt          string    `json:"created_at"`
+	GiroDiaCx          *float64  `json:"giro_dia_cx,omitempty"` // qt_giro_dia / unidade_master
 }
 
 type PropostasResumo struct {
@@ -103,7 +104,10 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			       p.status, p.aprovado_por::text, TO_CHAR(p.aprovado_em,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 			       p.sugestao_editada, p.editado_por::text,
 			       TO_CHAR(p.editado_em,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-			       TO_CHAR(p.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+			       TO_CHAR(p.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			       CASE WHEN e.unidade_master > 0 AND e.qt_giro_dia IS NOT NULL
+			            THEN ROUND(e.qt_giro_dia / e.unidade_master, 2)
+			            ELSE NULL END
 			FROM smartpick.sp_propostas p
 			LEFT JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
 			WHERE p.empresa_id = $1
@@ -157,7 +161,7 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 				&p.CapacidadeAtual, &p.SugestaoCalibragem, &p.Delta, &p.Justificativa,
 				&p.Status, &p.AprovadoPor, &p.AprovadoEm,
 				&p.SugestaoEditada, &p.EditadoPor, &p.EditadoEm,
-				&p.CreatedAt,
+				&p.CreatedAt, &p.GiroDiaCx,
 			); err != nil {
 				continue
 			}
