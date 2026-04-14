@@ -61,9 +61,9 @@ func (s *SmartPickContext) CanWrite() bool {
 	return hasSpRole(s.SpRole, "gestor_filial")
 }
 
-// CanApprove retorna true se o perfil permite aprovar propostas (gestor_geral ou acima).
+// CanApprove retorna true se o perfil permite aprovar/rejeitar propostas (gestor_filial ou acima).
 func (s *SmartPickContext) CanApprove() bool {
-	return hasSpRole(s.SpRole, "gestor_geral")
+	return hasSpRole(s.SpRole, "gestor_filial")
 }
 
 // IsAdminFbtax retorna true para admin_fbtax (acesso cross-tenant).
