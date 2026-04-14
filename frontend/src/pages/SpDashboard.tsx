@@ -14,7 +14,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -326,6 +327,33 @@ function PropostasTable({
             limpar filtros
           </button>
         )}
+        <Button size="sm" variant="outline" className="h-7 text-[10px] ml-auto" disabled={filtered.length === 0} onClick={() => {
+          const data = filtered.map(r => ({
+            'Departamento': r.departamento ?? '',
+            'Seção': r.secao ?? '',
+            'Curva': r.classe_venda ?? '',
+            'Produto': r.produto ?? '',
+            'Código': r.codprod,
+            'Endereço': r._end,
+            'Capacidade': r.capacidade_atual ?? '',
+            'Giro/dia (cx)': r.giro_dia_cx != null ? r.giro_dia_cx : '',
+            'Méd.Venda (cx)': r.med_venda_cx != null ? r.med_venda_cx : '',
+            'Pt.Reposição': r.ponto_reposicao ?? '',
+            'Sugestão': r.sugestao_editada ?? r.sugestao_calibragem,
+            'Delta': r.delta,
+            'Status': r.status,
+            'GiroCap.': r._ind.giroCap ?? '',
+            'GPRepos.': r._ind.giroPR ?? '',
+            'CMEN2DDV': r._ind.capDias2 ?? '',
+          }))
+          const ws = XLSX.utils.json_to_sheet(data)
+          const wb = XLSX.utils.book_new()
+          XLSX.utils.book_append_sheet(wb, ws, 'Propostas')
+          XLSX.writeFile(wb, `calibragem_${new Date().toISOString().slice(0, 10)}.xlsx`)
+          toast.success(`${filtered.length} linhas exportadas`)
+        }}>
+          <Download className="h-3.5 w-3.5 mr-1" />Exportar Excel
+        </Button>
       </div>
 
       {/* ── Tabela ── */}
