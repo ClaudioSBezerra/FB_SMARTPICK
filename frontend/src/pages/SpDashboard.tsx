@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -210,30 +210,42 @@ function PropostasTable({
   const [filterGiroPR,   setFilterGiroPR]   = useState('')
   const [filterCapDias,  setFilterCapDias]  = useState('')
 
-  // Opções únicas para os selects de filtro
-  const deptos = [...new Set(propostas.map(p => p.departamento).filter(Boolean))] as string[]
-  const secoes = [...new Set(
-    propostas
-      .filter(p => !filterDepto || p.departamento === filterDepto)
-      .map(p => p.secao)
-      .filter(Boolean)
-  )] as string[]
+  // Pré-computa indicadores + endereço uma única vez por lista
+  const rows = useMemo(() =>
+    propostas.map(p => ({
+      ...p,
+      _ind: calcIndicadores(p),
+      _end: [p.rua, p.predio, p.apto].filter(v => v != null).join('-'),
+    })),
+    [propostas],
+  )
 
-  const filtered = propostas.filter(p => {
-    if (filterDepto && p.departamento !== filterDepto) return false
-    if (filterSecao && p.secao !== filterSecao) return false
-    if (filterEnder) {
-      const end = [p.rua, p.predio, p.apto].filter(v => v != null).join('-')
-      if (!end.startsWith(filterEnder)) return false
-    }
-    if (filterGiroCap || filterGiroPR || filterCapDias) {
-      const ind = calcIndicadores(p)
-      if (filterGiroCap && ind.giroCap !== filterGiroCap) return false
-      if (filterGiroPR  && ind.giroPR  !== filterGiroPR)  return false
-      if (filterCapDias && ind.capDias2 !== filterCapDias) return false
-    }
-    return true
-  })
+  const deptos = useMemo(() =>
+    [...new Set(rows.map(r => r.departamento).filter(Boolean))] as string[],
+    [rows],
+  )
+  const secoes = useMemo(() =>
+    [...new Set(
+      rows
+        .filter(r => !filterDepto || r.departamento === filterDepto)
+        .map(r => r.secao)
+        .filter(Boolean),
+    )] as string[],
+    [rows, filterDepto],
+  )
+
+  const filtered = useMemo(() =>
+    rows.filter(r => {
+      if (filterDepto && r.departamento !== filterDepto) return false
+      if (filterSecao && r.secao !== filterSecao) return false
+      if (filterEnder && !r._end.startsWith(filterEnder)) return false
+      if (filterGiroCap && r._ind.giroCap !== filterGiroCap) return false
+      if (filterGiroPR  && r._ind.giroPR  !== filterGiroPR)  return false
+      if (filterCapDias && r._ind.capDias2 !== filterCapDias) return false
+      return true
+    }),
+    [rows, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias],
+  )
 
   const hasFilters = filterDepto || filterSecao || filterEnder || filterGiroCap || filterGiroPR || filterCapDias
 
@@ -302,7 +314,9 @@ function PropostasTable({
             limpar filtros
           </button>
         )}
-        <span className="text-[11px] text-muted-foreground ml-auto">{filtered.length} de {propostas.length}</span>
+        <span className="text-[11px] text-muted-foreground ml-auto">
+          {filtered.length > 500 ? `500 de ${filtered.length} (filtrados de ${propostas.length})` : `${filtered.length} de ${propostas.length}`}
+        </span>
       </div>
 
       {/* ── Tabela ── */}
@@ -332,7 +346,7 @@ function PropostasTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map(p => (
+            {filtered.slice(0, 500).map(p => (
               <TableRow key={p.id} className={`text-[11px] ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
                 <TableCell className="py-1 leading-tight">
                   <div className="text-[10px] font-medium truncate max-w-[76px]" title={p.departamento ?? ''}>{p.departamento || '—'}</div>
@@ -354,11 +368,9 @@ function PropostasTable({
                 </TableCell>
                 <TableCell className="py-1 text-right"><AcaoBadge delta={p.delta} /></TableCell>
                 <TableCell className="py-1"><StatusBadge status={p.status} /></TableCell>
-                {(() => { const ind = calcIndicadores(p); return (<>
-                  <TableCell className="py-1 text-center"><IndicadorBadge valor={ind.giroCap} /></TableCell>
-                  <TableCell className="py-1 text-center"><IndicadorBadge valor={ind.giroPR} /></TableCell>
-                  <TableCell className="py-1 text-center"><IndicadorBadge valor={ind.capDias2} /></TableCell>
-                </>)})()}
+                <TableCell className="py-1 text-center"><IndicadorBadge valor={p._ind.giroCap} /></TableCell>
+                <TableCell className="py-1 text-center"><IndicadorBadge valor={p._ind.giroPR} /></TableCell>
+                <TableCell className="py-1 text-center"><IndicadorBadge valor={p._ind.capDias2} /></TableCell>
                 <TableCell className="py-1">
                   {p.status === 'pendente' && (
                     <div className="flex gap-1">
@@ -491,6 +503,7 @@ export default function SpDashboard() {
 
   const { data: propostasFalta = [], refetch: refetchFalta } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'falta', cdID, jobID],
+    staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch(buildPropostasUrl('falta', 'pendente'), { headers })
       if (!r.ok) throw new Error()
@@ -500,6 +513,7 @@ export default function SpDashboard() {
 
   const { data: propostasEspaco = [], refetch: refetchEspaco } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'espaco', cdID, jobID],
+    staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch(buildPropostasUrl('espaco', 'pendente'), { headers })
       if (!r.ok) throw new Error()
@@ -509,6 +523,7 @@ export default function SpDashboard() {
 
   const { data: propostasCalibrado = [], refetch: refetchCalibrado } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'calibrado', cdID, jobID],
+    staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch(buildPropostasUrl('calibrado'), { headers })
       if (!r.ok) throw new Error()
@@ -518,6 +533,7 @@ export default function SpDashboard() {
 
   const { data: propostasCurvaA = [], refetch: refetchCurvaA } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'curva_a_mantida', cdID, jobID],
+    staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch(buildPropostasUrl('curva_a_mantida'), { headers })
       if (!r.ok) throw new Error()
