@@ -47,6 +47,8 @@ interface Proposta {
   status: string
   sugestao_editada: number | null
   giro_dia_cx: number | null
+  med_venda_cx: number | null
+  ponto_reposicao: number | null
 }
 
 interface Resumo {
@@ -97,6 +99,27 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${map[status] ?? 'bg-gray-100'}`}>
       {label[status] ?? status}
+    </span>
+  )
+}
+
+function calcIndicadores(p: Proposta) {
+  const mv = p.med_venda_cx
+  const cap = p.capacidade_atual
+  const pr = p.ponto_reposicao
+  return {
+    giroCap:   mv != null && cap != null ? (mv <= cap   ? 'OK' : 'Revisar') : null,
+    giroPR:    mv != null && pr  != null ? (mv <= pr    ? 'OK' : 'Revisar') : null,
+    capDias2:  mv != null && cap != null ? (cap >= 2 * mv ? 'OK' : 'Revisar') : null,
+  }
+}
+
+function IndicadorBadge({ valor }: { valor: string | null }) {
+  if (!valor) return <span className="text-muted-foreground text-[10px]">—</span>
+  const ok = valor === 'OK'
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${ok ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+      {valor}
     </span>
   )
 }
@@ -173,9 +196,12 @@ function PropostasTable({
   onEditar: (id: number, valor: number) => void
   loadingId: number | null
 }) {
-  const [filterDepto,  setFilterDepto]  = useState('')
-  const [filterSecao,  setFilterSecao]  = useState('')
-  const [filterEnder,  setFilterEnder]  = useState('')
+  const [filterDepto,    setFilterDepto]    = useState('')
+  const [filterSecao,    setFilterSecao]    = useState('')
+  const [filterEnder,    setFilterEnder]    = useState('')
+  const [filterGiroCap,  setFilterGiroCap]  = useState('')
+  const [filterGiroPR,   setFilterGiroPR]   = useState('')
+  const [filterCapDias,  setFilterCapDias]  = useState('')
 
   // Opções únicas para os selects de filtro
   const deptos = [...new Set(propostas.map(p => p.departamento).filter(Boolean))] as string[]
@@ -193,10 +219,16 @@ function PropostasTable({
       const end = [p.rua, p.predio, p.apto].filter(v => v != null).join('-')
       if (!end.startsWith(filterEnder)) return false
     }
+    if (filterGiroCap || filterGiroPR || filterCapDias) {
+      const ind = calcIndicadores(p)
+      if (filterGiroCap && ind.giroCap !== filterGiroCap) return false
+      if (filterGiroPR  && ind.giroPR  !== filterGiroPR)  return false
+      if (filterCapDias && ind.capDias2 !== filterCapDias) return false
+    }
     return true
   })
 
-  const hasFilters = filterDepto || filterSecao || filterEnder
+  const hasFilters = filterDepto || filterSecao || filterEnder || filterGiroCap || filterGiroPR || filterCapDias
 
   return (
     <div className="space-y-2">
@@ -222,10 +254,34 @@ function PropostasTable({
           onChange={e => setFilterEnder(e.target.value)}
           className="h-7 text-xs w-36"
         />
+        <Select value={filterGiroCap || 'all'} onValueChange={v => setFilterGiroCap(v === 'all' ? '' : v)}>
+          <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Giro&Cap" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Giro&Cap: Todos</SelectItem>
+            <SelectItem value="OK">OK</SelectItem>
+            <SelectItem value="Revisar">Revisar</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterGiroPR || 'all'} onValueChange={v => setFilterGiroPR(v === 'all' ? '' : v)}>
+          <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Giro&Pt.Rep" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Giro&Pt.Rep: Todos</SelectItem>
+            <SelectItem value="OK">OK</SelectItem>
+            <SelectItem value="Revisar">Revisar</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterCapDias || 'all'} onValueChange={v => setFilterCapDias(v === 'all' ? '' : v)}>
+          <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Cap<2dias" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Cap&lt;2dias: Todos</SelectItem>
+            <SelectItem value="OK">OK</SelectItem>
+            <SelectItem value="Revisar">Revisar</SelectItem>
+          </SelectContent>
+        </Select>
         {hasFilters && (
           <button
             className="text-[11px] text-muted-foreground hover:text-foreground underline"
-            onClick={() => { setFilterDepto(''); setFilterSecao(''); setFilterEnder('') }}
+            onClick={() => { setFilterDepto(''); setFilterSecao(''); setFilterEnder(''); setFilterGiroCap(''); setFilterGiroPR(''); setFilterCapDias('') }}
           >
             limpar filtros
           </button>
@@ -242,16 +298,19 @@ function PropostasTable({
         <Table>
           <TableHeader>
             <TableRow className="text-[11px]">
-              <TableHead className="w-20 py-1.5">Depto / Seção</TableHead>
+              <TableHead className="w-[72px] py-1.5">Depto/Seção</TableHead>
               <TableHead className="w-7 py-1.5">Curva</TableHead>
-              <TableHead className="py-1.5">Produto</TableHead>
+              <TableHead className="py-1.5 max-w-[120px]">Produto</TableHead>
               <TableHead className="py-1.5">Cód.</TableHead>
-              <TableHead className="py-1.5">Endereço</TableHead>
+              <TableHead className="py-1.5">Ender.</TableHead>
               <TableHead className="text-right py-1.5">Cap.</TableHead>
-              <TableHead className="text-right py-1.5">Giro/dia (cx)</TableHead>
-              <TableHead className="text-right py-1.5">Sugestão</TableHead>
+              <TableHead className="text-right py-1.5">Giro/dia</TableHead>
+              <TableHead className="text-right py-1.5">Sug.</TableHead>
               <TableHead className="text-right py-1.5">Δ</TableHead>
               <TableHead className="py-1.5">Status</TableHead>
+              <TableHead className="py-1.5 text-center">Giro&Cap</TableHead>
+              <TableHead className="py-1.5 text-center">Giro&Pt.Rep</TableHead>
+              <TableHead className="py-1.5 text-center">Cap&lt;2dias</TableHead>
               <TableHead className="w-28 py-1.5">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -263,7 +322,7 @@ function PropostasTable({
                   <div className="text-[10px] text-muted-foreground truncate max-w-[76px]" title={p.secao ?? ''}>{p.secao || '—'}</div>
                 </TableCell>
                 <TableCell className="py-1"><ClasseBadge classe={p.classe_venda} /></TableCell>
-                <TableCell className="py-1 max-w-[160px] truncate" title={p.produto}>{p.produto || '—'}</TableCell>
+                <TableCell className="py-1 max-w-[120px] truncate" title={p.produto}>{p.produto || '—'}</TableCell>
                 <TableCell className="py-1 font-mono">{p.codprod}</TableCell>
                 <TableCell className="py-1"><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
                 <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
@@ -275,6 +334,11 @@ function PropostasTable({
                 </TableCell>
                 <TableCell className="py-1 text-right"><AcaoBadge delta={p.delta} /></TableCell>
                 <TableCell className="py-1"><StatusBadge status={p.status} /></TableCell>
+                {(() => { const ind = calcIndicadores(p); return (<>
+                  <TableCell className="py-1 text-center"><IndicadorBadge valor={ind.giroCap} /></TableCell>
+                  <TableCell className="py-1 text-center"><IndicadorBadge valor={ind.giroPR} /></TableCell>
+                  <TableCell className="py-1 text-center"><IndicadorBadge valor={ind.capDias2} /></TableCell>
+                </>)})()}
                 <TableCell className="py-1">
                   {p.status === 'pendente' && (
                     <div className="flex gap-1">
