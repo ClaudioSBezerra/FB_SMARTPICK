@@ -190,7 +190,7 @@ function PropostasTable({
     if (filterSecao && p.secao !== filterSecao) return false
     if (filterEnder) {
       const end = [p.rua, p.predio, p.apto].filter(v => v != null).join('-')
-      if (!end.includes(filterEnder)) return false
+      if (!end.startsWith(filterEnder)) return false
     }
     return true
   })
