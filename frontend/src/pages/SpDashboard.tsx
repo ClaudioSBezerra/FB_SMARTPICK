@@ -254,30 +254,39 @@ function PropostasTable({
           onChange={e => setFilterEnder(e.target.value)}
           className="h-7 text-xs w-36"
         />
-        <Select value={filterGiroCap || 'all'} onValueChange={v => setFilterGiroCap(v === 'all' ? '' : v)}>
-          <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Giro&Cap" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Giro&Cap: Todos</SelectItem>
-            <SelectItem value="OK">OK</SelectItem>
-            <SelectItem value="Revisar">Revisar</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filterGiroPR || 'all'} onValueChange={v => setFilterGiroPR(v === 'all' ? '' : v)}>
-          <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Giro&Pt.Rep" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Giro&Pt.Rep: Todos</SelectItem>
-            <SelectItem value="OK">OK</SelectItem>
-            <SelectItem value="Revisar">Revisar</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filterCapDias || 'all'} onValueChange={v => setFilterCapDias(v === 'all' ? '' : v)}>
-          <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Cap<2dias" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Cap&lt;2dias: Todos</SelectItem>
-            <SelectItem value="OK">OK</SelectItem>
-            <SelectItem value="Revisar">Revisar</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-1">
+          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Giro&amp;Cap</label>
+          <Select value={filterGiroCap || 'all'} onValueChange={v => setFilterGiroCap(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-7 text-xs w-24"><SelectValue placeholder="Todos" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="OK">OK</SelectItem>
+              <SelectItem value="Revisar">Revisar</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1">
+          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Giro&amp;Pt.Rep</label>
+          <Select value={filterGiroPR || 'all'} onValueChange={v => setFilterGiroPR(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-7 text-xs w-24"><SelectValue placeholder="Todos" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="OK">OK</SelectItem>
+              <SelectItem value="Revisar">Revisar</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1">
+          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Cap&lt;2dias</label>
+          <Select value={filterCapDias || 'all'} onValueChange={v => setFilterCapDias(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-7 text-xs w-24"><SelectValue placeholder="Todos" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="OK">OK</SelectItem>
+              <SelectItem value="Revisar">Revisar</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         {hasFilters && (
           <button
             className="text-[11px] text-muted-foreground hover:text-foreground underline"
