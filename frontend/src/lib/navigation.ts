@@ -69,7 +69,7 @@ export const modules: Record<string, ModuleConfig> = {
     tabs: [
       { label: 'Plano e Limites', path: '/config/planos',    masterOnly: true },
       { label: 'Ambiente',        path: '/config/ambiente',   masterOnly: true },
-      { label: 'Usuários',        path: '/config/usuarios' },
+      { label: 'Usuários',        path: '/config/usuarios',  masterOnly: true },
       { label: 'Manutenção',      path: '/config/manutencao' },
     ],
   },

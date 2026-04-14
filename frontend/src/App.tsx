@@ -55,8 +55,8 @@ function MasterRoute({ children }: { children: React.ReactNode }) {
 // ── Barra de abas por módulo ─────────────────────────────────────────────────
 function ModuleTabs() {
   const location  = useLocation()
-  const { user, spRole }  = useAuth()
-  const isMaster  = user?.role === 'admin'
+  const { user, spRole, group }  = useAuth()
+  const isMaster  = group === 'MASTER'
   const isAdmin   = isMaster || spRole === 'admin_fbtax'
   const moduleId  = getActiveModule(location.pathname)
   const moduleCfg = modules[moduleId]
