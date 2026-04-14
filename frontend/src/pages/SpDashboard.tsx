@@ -107,18 +107,25 @@ function calcIndicadores(p: Proposta) {
   const mv = p.med_venda_cx
   const cap = p.capacidade_atual
   const pr = p.ponto_reposicao
-  return {
-    giroCap:   mv != null && cap != null ? (mv <= cap   ? 'OK' : 'Revisar') : null,
-    giroPR:    mv != null && pr  != null ? (mv <= pr    ? 'OK' : 'Revisar') : null,
-    capDias2:  mv != null && cap != null ? (cap >= 2 * mv ? 'OK' : 'Revisar') : null,
-  }
+  const giroCap = mv != null && cap != null ? (mv >= cap ? 'Urgencia' : 'OK') : null
+  const giroPR  = mv != null && pr  != null ? (pr <= mv  ? 'Ajustar'  : 'OK') : null
+  const capDias2 = giroCap === 'OK' && mv != null && cap != null && cap > 0
+    ? (mv / cap > 0.5 ? 'CAP Menor' : 'OK')
+    : (mv != null && cap != null ? 'OK' : null)
+  return { giroCap, giroPR, capDias2 }
+}
+
+const indicadorColors: Record<string, string> = {
+  OK:          'bg-green-100 text-green-800',
+  Urgencia:    'bg-red-100 text-red-800',
+  Ajustar:     'bg-orange-100 text-orange-800',
+  'CAP Menor': 'bg-yellow-100 text-yellow-800',
 }
 
 function IndicadorBadge({ valor }: { valor: string | null }) {
   if (!valor) return <span className="text-muted-foreground text-[10px]">—</span>
-  const ok = valor === 'OK'
   return (
-    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${ok ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${indicadorColors[valor] ?? 'bg-gray-100'}`}>
       {valor}
     </span>
   )
@@ -255,35 +262,35 @@ function PropostasTable({
           className="h-7 text-xs w-36"
         />
         <div className="flex items-center gap-1">
-          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Giro&amp;Cap</label>
+          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">GiroCap.</label>
           <Select value={filterGiroCap || 'all'} onValueChange={v => setFilterGiroCap(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-24"><SelectValue placeholder="Todos" /></SelectTrigger>
+            <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="OK">OK</SelectItem>
-              <SelectItem value="Revisar">Revisar</SelectItem>
+              <SelectItem value="Urgencia">Urgencia</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Giro&amp;Pt.Rep</label>
+          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">GPRepos.</label>
           <Select value={filterGiroPR || 'all'} onValueChange={v => setFilterGiroPR(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-24"><SelectValue placeholder="Todos" /></SelectTrigger>
+            <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="OK">OK</SelectItem>
-              <SelectItem value="Revisar">Revisar</SelectItem>
+              <SelectItem value="Ajustar">Ajustar</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Cap&lt;2dias</label>
+          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">CMEN2DDV</label>
           <Select value={filterCapDias || 'all'} onValueChange={v => setFilterCapDias(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-24"><SelectValue placeholder="Todos" /></SelectTrigger>
+            <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="OK">OK</SelectItem>
-              <SelectItem value="Revisar">Revisar</SelectItem>
+              <SelectItem value="CAP Menor">CAP Menor</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -317,9 +324,9 @@ function PropostasTable({
               <TableHead className="text-right py-1.5">Sug.</TableHead>
               <TableHead className="text-right py-1.5">Δ</TableHead>
               <TableHead className="py-1.5">Status</TableHead>
-              <TableHead className="py-1.5 text-center">Giro&Cap</TableHead>
-              <TableHead className="py-1.5 text-center">Giro&Pt.Rep</TableHead>
-              <TableHead className="py-1.5 text-center">Cap&lt;2dias</TableHead>
+              <TableHead className="py-1.5 text-center">GiroCap.</TableHead>
+              <TableHead className="py-1.5 text-center">GPRepos.</TableHead>
+              <TableHead className="py-1.5 text-center">CMEN2DDV</TableHead>
               <TableHead className="w-28 py-1.5">Ações</TableHead>
             </TableRow>
           </TableHeader>
