@@ -14,7 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -209,6 +209,8 @@ function PropostasTable({
   const [filterGiroCap,  setFilterGiroCap]  = useState('')
   const [filterGiroPR,   setFilterGiroPR]   = useState('')
   const [filterCapDias,  setFilterCapDias]  = useState('')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 100
 
   // Pré-computa indicadores + endereço uma única vez por lista
   const rows = useMemo(() =>
@@ -248,6 +250,16 @@ function PropostasTable({
   )
 
   const hasFilters = filterDepto || filterSecao || filterEnder || filterGiroCap || filterGiroPR || filterCapDias
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const paged = useMemo(() =>
+    filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filtered, safePage],
+  )
+
+  // Reset página ao mudar filtros ou dados
+  useEffect(() => { setPage(1) }, [filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, propostas])
 
   return (
     <div className="space-y-2">
@@ -314,9 +326,6 @@ function PropostasTable({
             limpar filtros
           </button>
         )}
-        <span className="text-[11px] text-muted-foreground ml-auto">
-          {filtered.length > 500 ? `500 de ${filtered.length} (filtrados de ${propostas.length})` : `${filtered.length} de ${propostas.length}`}
-        </span>
       </div>
 
       {/* ── Tabela ── */}
@@ -346,7 +355,7 @@ function PropostasTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.slice(0, 500).map(p => (
+            {paged.map(p => (
               <TableRow key={p.id} className={`text-[11px] ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
                 <TableCell className="py-1 leading-tight">
                   <div className="text-[10px] font-medium truncate max-w-[76px]" title={p.departamento ?? ''}>{p.departamento || '—'}</div>
@@ -397,6 +406,45 @@ function PropostasTable({
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {/* ── Paginação ── */}
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between pt-2 border-t">
+          <span className="text-[11px] text-muted-foreground">
+            {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} de {filtered.length}
+            {filtered.length !== propostas.length && ` (filtrados de ${propostas.length})`}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="outline" className="h-7 w-7 p-0" disabled={safePage <= 1} onClick={() => setPage(1)}>
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 w-7 p-0" disabled={safePage <= 1} onClick={() => setPage(p => p - 1)}>
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            {(() => {
+              const pages: number[] = []
+              const start = Math.max(1, safePage - 2)
+              const end = Math.min(totalPages, safePage + 2)
+              for (let i = start; i <= end; i++) pages.push(i)
+              return pages.map(pg => (
+                <Button key={pg} size="sm" variant={pg === safePage ? 'default' : 'outline'}
+                  className="h-7 min-w-[28px] px-1.5 text-xs"
+                  onClick={() => setPage(pg)}
+                >
+                  {pg}
+                </Button>
+              ))
+            })()}
+            <Button size="sm" variant="outline" className="h-7 w-7 p-0" disabled={safePage >= totalPages} onClick={() => setPage(p => p + 1)}>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 w-7 p-0" disabled={safePage >= totalPages} onClick={() => setPage(totalPages)}>
+              <ChevronsRight className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-[11px] text-muted-foreground ml-2">Pág. {safePage}/{totalPages}</span>
+          </div>
+        </div>
       )}
     </div>
   )
