@@ -299,6 +299,11 @@ func SpCriarUsuarioHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Forbidden: apenas admin_fbtax pode criar usuários", http.StatusForbidden)
 			return
 		}
+		// H2 fix: criação de usuário só é permitida para MASTER (casar com frontend)
+		if !spCtx.IsMasterTenant(db) {
+			http.Error(w, "Forbidden: apenas usuários MASTER podem criar contas", http.StatusForbidden)
+			return
+		}
 
 		var req SpCriarUsuarioRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -425,18 +430,32 @@ func SpDeletarUsuarioHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Forbidden: apenas admin_fbtax pode excluir usuários", http.StatusForbidden)
 			return
 		}
-
-		targetID := strings.TrimPrefix(r.URL.Path, "/api/sp/usuarios/")
-		if targetID == "" {
-			http.Error(w, "User ID required", http.StatusBadRequest)
+		// H2 fix: exclusão só permitida para MASTER (casar com frontend)
+		if !spCtx.IsMasterTenant(db) {
+			http.Error(w, "Forbidden: apenas usuários MASTER podem excluir contas", http.StatusForbidden)
 			return
 		}
-		if targetID == spCtx.UserID {
+
+		// Extrai {id} do path /api/sp/usuarios/{id} (tolera barras extras/sufixos inválidos)
+		targetID := strings.TrimPrefix(r.URL.Path, "/api/sp/usuarios/")
+		targetID = strings.Trim(targetID, "/")
+		if targetID == "" || strings.Contains(targetID, "/") {
+			http.Error(w, "User ID inválido", http.StatusBadRequest)
+			return
+		}
+		if strings.EqualFold(targetID, spCtx.UserID) {
 			http.Error(w, "Não é possível excluir o próprio usuário", http.StatusBadRequest)
 			return
 		}
 
-		// Busca dados para o audit log antes de deletar
+		// H1 fix: bloqueia cross-tenant delete. Só permite se caller é MASTER
+		// ou se o alvo pertence ao mesmo grupo empresarial.
+		if !spCtx.TargetUserInSameTenant(db, targetID) {
+			http.Error(w, "Forbidden: usuário fora do seu escopo", http.StatusForbidden)
+			return
+		}
+
+		// Busca dados para o audit log antes de deletar (dentro da tx para consistência)
 		var email, fullName string
 		_ = db.QueryRow("SELECT email, full_name FROM users WHERE id = $1", targetID).Scan(&email, &fullName)
 
@@ -459,14 +478,18 @@ func SpDeletarUsuarioHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// H3 fix: audit log dentro da tx — se falhar, rollback da operação.
+		if err := writeAuditLogTx(tx, spCtx.EmpresaID, spCtx.UserID, "usuario", targetID, "excluir_usuario", map[string]any{
+			"email": email, "full_name": fullName,
+		}); err != nil {
+			http.Error(w, "Erro ao gravar auditoria: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "Commit error", http.StatusInternalServerError)
 			return
 		}
-
-		writeAuditLog(db, spCtx.EmpresaID, spCtx.UserID, "usuario", targetID, "excluir_usuario", map[string]any{
-			"email": email, "full_name": fullName,
-		})
 
 		log.Printf("SpDeletarUsuario: excluído user %s (%s) por %s", targetID, email, spCtx.UserID)
 		w.Header().Set("Content-Type", "application/json")

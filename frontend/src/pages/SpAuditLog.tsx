@@ -32,6 +32,7 @@ export default function SpAuditLog() {
 
   const { data: entries = [], isLoading } = useQuery<AuditEntry[]>({
     queryKey: ['sp-audit-log'],
+    staleTime: 30_000,
     queryFn: async () => {
       const r = await fetch('/api/sp/admin/audit-log?limit=500', { headers })
       if (!r.ok) throw new Error()
@@ -63,15 +64,18 @@ export default function SpAuditLog() {
           <TableBody>
             {entries.map(e => {
               const cfg = ACAO_LABELS[e.acao] ?? { label: e.acao, color: 'bg-gray-100 text-gray-800' }
-              const details: string[] = []
-              if (e.payload) {
-                if (e.payload.email) details.push(`Email: ${e.payload.email}`)
-                if (e.payload.full_name) details.push(`Nome: ${e.payload.full_name}`)
-                if (e.payload.sp_role) details.push(`Perfil: ${e.payload.sp_role}`)
-                if (e.payload.sp_csv_jobs != null) details.push(`Jobs: ${e.payload.sp_csv_jobs}`)
-                if (e.payload.sp_propostas != null) details.push(`Propostas: ${e.payload.sp_propostas}`)
-                if (e.payload.sp_enderecos != null) details.push(`Enderecos: ${e.payload.sp_enderecos}`)
+              // L5 fix: renderiza todo o payload como "chave: valor" (exceto null/undefined)
+              const labelMap: Record<string, string> = {
+                email: 'Email', full_name: 'Nome', sp_role: 'Perfil',
+                sp_csv_jobs: 'Jobs', sp_enderecos: 'Endereços',
+                sp_propostas: 'Propostas', sp_historico: 'Histórico',
+                arquivos_a_remover: 'Arquivos',
               }
+              const details: string[] = e.payload
+                ? Object.entries(e.payload)
+                    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+                    .map(([k, v]) => `${labelMap[k] ?? k}: ${v}`)
+                : []
               return (
                 <TableRow key={e.id} className="text-[11px]">
                   <TableCell className="py-1.5 font-mono text-muted-foreground">{formatDate(e.created_at)}</TableCell>

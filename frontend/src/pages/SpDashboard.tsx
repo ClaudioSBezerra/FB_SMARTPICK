@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -14,8 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -211,6 +210,7 @@ function PropostasTable({
   const [filterGiroPR,   setFilterGiroPR]   = useState('')
   const [filterCapDias,  setFilterCapDias]  = useState('')
   const [page, setPage] = useState(1)
+  const [isExporting, setIsExporting] = useState(false)
   const PAGE_SIZE = 100
 
   // Pré-computa indicadores + endereço uma única vez por lista
@@ -259,8 +259,10 @@ function PropostasTable({
     [filtered, safePage],
   )
 
-  // Reset página ao mudar filtros ou dados
-  useEffect(() => { setPage(1) }, [filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, propostas])
+  // M5 fix: reset usa hash estável (length + primeiro id) em vez da referência
+  // do array, evitando volta à página 1 em refetches cuja data é idêntica.
+  const propostasKey = `${propostas.length}:${propostas[0]?.id ?? ''}`
+  useEffect(() => { setPage(1) }, [filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, propostasKey])
 
   return (
     <div className="space-y-2">
@@ -327,32 +329,55 @@ function PropostasTable({
             limpar filtros
           </button>
         )}
-        <Button size="sm" variant="outline" className="h-7 text-[10px] ml-auto" disabled={filtered.length === 0} onClick={() => {
-          const data = filtered.map(r => ({
-            'Departamento': r.departamento ?? '',
-            'Seção': r.secao ?? '',
-            'Curva': r.classe_venda ?? '',
-            'Produto': r.produto ?? '',
-            'Código': r.codprod,
-            'Endereço': r._end,
-            'Capacidade': r.capacidade_atual ?? '',
-            'Giro/dia (cx)': r.giro_dia_cx != null ? r.giro_dia_cx : '',
-            'Méd.Venda (cx)': r.med_venda_cx != null ? r.med_venda_cx : '',
-            'Pt.Reposição': r.ponto_reposicao ?? '',
-            'Sugestão': r.sugestao_editada ?? r.sugestao_calibragem,
-            'Delta': r.delta,
-            'Status': r.status,
-            'GiroCap.': r._ind.giroCap ?? '',
-            'GPRepos.': r._ind.giroPR ?? '',
-            'CMEN2DDV': r._ind.capDias2 ?? '',
-          }))
-          const ws = XLSX.utils.json_to_sheet(data)
-          const wb = XLSX.utils.book_new()
-          XLSX.utils.book_append_sheet(wb, ws, 'Propostas')
-          XLSX.writeFile(wb, `calibragem_${new Date().toISOString().slice(0, 10)}.xlsx`)
-          toast.success(`${filtered.length} linhas exportadas`)
-        }}>
-          <Download className="h-3.5 w-3.5 mr-1" />Exportar Excel
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-[10px] ml-auto"
+          disabled={filtered.length === 0 || isExporting}
+          onClick={async () => {
+            // M4 fix: feedback durante export. M3 fix: lazy-load xlsx (~900KB)
+            // apenas quando o usuário realmente clica, não no bundle inicial.
+            setIsExporting(true)
+            try {
+              const XLSX = await import('xlsx')
+              // L3 fix: data local (pt-BR em formato ISO) no nome do arquivo
+              const today = new Date().toLocaleDateString('sv-SE')
+              const data = filtered.map(r => ({
+                'Departamento': r.departamento ?? '',
+                'Seção': r.secao ?? '',
+                'Curva': r.classe_venda ?? '',
+                'Produto': r.produto ?? '',
+                'Código': r.codprod,
+                'Endereço': r._end,
+                'Capacidade': r.capacidade_atual ?? '',
+                'Giro/dia (cx)': r.giro_dia_cx != null ? r.giro_dia_cx : '',
+                'Méd.Venda (cx)': r.med_venda_cx != null ? r.med_venda_cx : '',
+                'Pt.Reposição': r.ponto_reposicao ?? '',
+                'Sugestão': r.sugestao_editada ?? r.sugestao_calibragem,
+                'Delta': r.delta,
+                'Status': r.status,
+                'GiroCap.': r._ind.giroCap ?? '',
+                'GPRepos.': r._ind.giroPR ?? '',
+                'CMEN2DDV': r._ind.capDias2 ?? '',
+              }))
+              const ws = XLSX.utils.json_to_sheet(data)
+              const wb = XLSX.utils.book_new()
+              XLSX.utils.book_append_sheet(wb, ws, 'Propostas')
+              XLSX.writeFile(wb, `calibragem_${today}.xlsx`)
+              toast.success(`${filtered.length} linhas exportadas`)
+            } catch (err) {
+              toast.error('Falha ao exportar: ' + (err as Error).message)
+            } finally {
+              setIsExporting(false)
+            }
+          }}
+        >
+          {isExporting ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+          ) : (
+            <Download className="h-3.5 w-3.5 mr-1" />
+          )}
+          {isExporting ? 'Exportando…' : 'Exportar Excel'}
         </Button>
       </div>
 

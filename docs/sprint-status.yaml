@@ -146,3 +146,10 @@ development_status:
   epic-9: done
   9-1-painel-de-resultados-backend-e-frontend: done
   epic-9-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Pseudo-Story v1.8.0 (retrospectiva — pedidos ad-hoc consolidados)
+  # Tag v1.8.0 → indicadores calibragem, paginação, Excel, RBAC MASTER, audit log
+  # Code review adversarial em 2026-04-15 → 3 HIGH + 5 MEDIUM + 3 LOW corrigidos
+  # ─────────────────────────────────────────────────────────────
+  v1-8-0-indicadores-paginacao-audit: done

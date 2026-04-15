@@ -34,6 +34,11 @@ func SpLimparCalibragemHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Forbidden: apenas admin_fbtax pode limpar dados", http.StatusForbidden)
 			return
 		}
+		// H2 fix: limpeza só permitida para MASTER (casar com frontend)
+		if !spCtx.IsMasterTenant(db) {
+			http.Error(w, "Forbidden: apenas usuários MASTER podem limpar dados", http.StatusForbidden)
+			return
+		}
 
 		tx, err := db.Begin()
 		if err != nil {
@@ -86,18 +91,30 @@ func SpLimparCalibragemHandler(db *sql.DB) http.HandlerFunc {
 			totais[t.nome] = n
 		}
 
+		// H3 fix: audit log dentro da tx — se falhar, rollback cancela a limpeza.
+		// "arquivos_a_remover" é a meta; remoção real vem após o commit (best-effort).
+		if err := writeAuditLogTx(tx, spCtx.EmpresaID, spCtx.UserID, "calibragem", "all", "limpar_dados", map[string]any{
+			"sp_csv_jobs": totais["sp_csv_jobs"], "sp_enderecos": totais["sp_enderecos"],
+			"sp_propostas": totais["sp_propostas"], "sp_historico": totais["sp_historico"],
+			"arquivos_a_remover": len(arquivos),
+		}); err != nil {
+			log.Printf("SpLimparCalibragem: falha ao gravar auditoria — abortando: %v", err)
+			http.Error(w, "Erro ao gravar auditoria: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "Erro ao confirmar limpeza", http.StatusInternalServerError)
 			return
 		}
 
-		// Remove arquivos CSV do disco (best-effort, não falha se arquivo não existir)
+		// Remove arquivos CSV do disco APÓS o commit (best-effort).
+		// Se falhar, DB já está consistente e uma purga posterior pode limpar.
 		removidos := 0
 		for _, p := range arquivos {
 			if p == "" {
 				continue
 			}
-			// Sanitiza: só remove dentro do diretório de uploads
 			clean := filepath.Clean(p)
 			if err := os.Remove(clean); err == nil {
 				removidos++
@@ -109,12 +126,6 @@ func SpLimparCalibragemHandler(db *sql.DB) http.HandlerFunc {
 			totais["sp_csv_jobs"], totais["sp_enderecos"],
 			totais["sp_propostas"], totais["sp_historico"],
 			removidos, spCtx.UserID)
-
-		writeAuditLog(db, spCtx.EmpresaID, spCtx.UserID, "calibragem", "all", "limpar_dados", map[string]any{
-			"sp_csv_jobs": totais["sp_csv_jobs"], "sp_enderecos": totais["sp_enderecos"],
-			"sp_propostas": totais["sp_propostas"], "sp_historico": totais["sp_historico"],
-			"arquivos_removidos": removidos,
-		})
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{

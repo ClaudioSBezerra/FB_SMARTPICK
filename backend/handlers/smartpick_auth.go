@@ -71,6 +71,52 @@ func (s *SmartPickContext) IsAdminFbtax() bool {
 	return s.SpRole == "admin_fbtax"
 }
 
+// IsMasterTenant retorna true quando a empresa ativa pertence ao grupo MASTER
+// (criado pela migration 024). Usado para gatear operações sensíveis que
+// o frontend expõe apenas para usuários MASTER.
+func (s *SmartPickContext) IsMasterTenant(db *sql.DB) bool {
+	var groupName sql.NullString
+	err := db.QueryRow(`
+		SELECT COALESCE(eg.name, '')
+		FROM companies c
+		LEFT JOIN enterprise_groups eg ON eg.id = c.group_id
+		WHERE c.id = $1::uuid
+	`, s.EmpresaID).Scan(&groupName)
+	if err != nil {
+		return false
+	}
+	return groupName.String == "MASTER"
+}
+
+// TargetUserInSameTenant verifica se o usuário alvo pertence ao mesmo grupo
+// empresarial do usuário autenticado (ou se o caller é MASTER, que vê todos).
+// Previne cross-tenant updates/deletes.
+func (s *SmartPickContext) TargetUserInSameTenant(db *sql.DB, targetUserID string) bool {
+	if s.IsMasterTenant(db) {
+		return true
+	}
+	var count int
+	err := db.QueryRow(`
+		SELECT COUNT(1) FROM (
+			SELECT 1 FROM user_environments ue
+			JOIN companies c ON c.id = ue.preferred_company_id
+			WHERE ue.user_id = $1::uuid AND c.group_id = (
+				SELECT group_id FROM companies WHERE id = $2::uuid
+			)
+			UNION
+			SELECT 1 FROM smartpick.sp_user_filiais uf
+			JOIN companies c ON c.id = uf.empresa_id
+			WHERE uf.user_id = $1::uuid AND c.group_id = (
+				SELECT group_id FROM companies WHERE id = $2::uuid
+			)
+		) x
+	`, targetUserID, s.EmpresaID).Scan(&count)
+	if err != nil {
+		return false
+	}
+	return count > 0
+}
+
 // HasFilialAccess verifica se o usuário tem acesso à filial informada.
 func (s *SmartPickContext) HasFilialAccess(filialID int) bool {
 	if s.AllFiliais {

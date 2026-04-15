@@ -14,7 +14,8 @@ import (
 )
 
 // writeAuditLog insere uma entrada no audit log.
-// Deve ser chamada APÓS a operação ter sido confirmada (commit).
+// Fallback quando não há transação disponível — falha apenas é logada.
+// Prefira writeAuditLogTx() para operações sensíveis (limpar dados, CRUD de usuário).
 func writeAuditLog(db *sql.DB, empresaID, userID, entidade, entidadeID, acao string, payload any) {
 	var payloadJSON []byte
 	if payload != nil {
@@ -25,8 +26,28 @@ func writeAuditLog(db *sql.DB, empresaID, userID, entidade, entidadeID, acao str
 		VALUES ($1, $2::uuid, $3, $4, $5, $6)
 	`, empresaID, userID, entidade, entidadeID, acao, payloadJSON)
 	if err != nil {
-		log.Printf("writeAuditLog: erro ao gravar auditoria: %v", err)
+		log.Printf("writeAuditLog: erro CRÍTICO ao gravar auditoria (%s/%s/%s): %v",
+			entidade, entidadeID, acao, err)
 	}
+}
+
+// writeAuditLogTx insere uma entrada no audit log usando a transação do caller.
+// Retorna erro para que o caller possa rollback se o audit falhar — garantindo
+// que operações sensíveis nunca sejam aplicadas sem registro.
+func writeAuditLogTx(tx *sql.Tx, empresaID, userID, entidade, entidadeID, acao string, payload any) error {
+	var payloadJSON []byte
+	if payload != nil {
+		var err error
+		payloadJSON, err = json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(`
+		INSERT INTO smartpick.sp_audit_log (empresa_id, user_id, entidade, entidade_id, acao, payload)
+		VALUES ($1, $2::uuid, $3, $4, $5, $6)
+	`, empresaID, userID, entidade, entidadeID, acao, payloadJSON)
+	return err
 }
 
 // ─── Consulta do Audit Log ───────────────────────────────────────────────────
@@ -52,8 +73,8 @@ func SpAuditLogHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		spCtx := GetSpContext(r)
-		if spCtx == nil || !spCtx.IsAdminFbtax() {
-			http.Error(w, "Forbidden", http.StatusForbidden)
+		if spCtx == nil || !spCtx.IsAdminFbtax() || !spCtx.IsMasterTenant(db) {
+			http.Error(w, "Forbidden: apenas usuários MASTER podem visualizar o audit log", http.StatusForbidden)
 			return
 		}
 
