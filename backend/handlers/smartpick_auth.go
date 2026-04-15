@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
 // ─── Contexto SmartPick ───────────────────────────────────────────────────────
@@ -152,11 +153,12 @@ func SmartPickAuthMiddleware(db *sql.DB, next http.HandlerFunc, requiredSpRole s
 			return
 		}
 
-		// Carrega sp_role do banco (campo adicionado pela migration 101_sp_rbac.sql)
-		var spRole string
+		// Carrega sp_role, role (auth geral) e trial_ends_at do banco
+		var spRole, userRole string
+		var trialEndsAt sql.NullTime
 		if err := db.QueryRow(
-			"SELECT sp_role FROM users WHERE id = $1", userID,
-		).Scan(&spRole); err != nil {
+			"SELECT sp_role, role, trial_ends_at FROM users WHERE id = $1", userID,
+		).Scan(&spRole, &userRole, &trialEndsAt); err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, "User not found", http.StatusUnauthorized)
 			} else {
@@ -169,6 +171,25 @@ func SmartPickAuthMiddleware(db *sql.DB, next http.HandlerFunc, requiredSpRole s
 		if requiredSpRole != "" && !hasSpRole(spRole, requiredSpRole) {
 			http.Error(w, "Forbidden: SmartPick role insuficiente", http.StatusForbidden)
 			return
+		}
+
+		// Enforcement contínuo da licença: bloqueia user se trial_ends_at passou.
+		// role=admin (geral) bypassa para permitir MASTER renovar mesmo após expirar.
+		if userRole != "admin" && trialEndsAt.Valid && trialEndsAt.Time.Before(time.Now()) {
+			http.Error(w, "Licença expirada. Contate o administrador MASTER para renovar.", http.StatusForbidden)
+			return
+		}
+
+		// Enforcement contínuo do bloqueio de empresa. role=admin bypassa.
+		if userRole != "admin" {
+			var blockedAt sql.NullTime
+			_ = db.QueryRow(
+				"SELECT blocked_at FROM companies WHERE id = $1::uuid", empresaID,
+			).Scan(&blockedAt)
+			if blockedAt.Valid {
+				http.Error(w, "Empresa bloqueada. Contate o administrador MASTER.", http.StatusForbidden)
+				return
+			}
 		}
 
 		// Monta SmartPickContext com escopo de filiais

@@ -16,7 +16,7 @@ export function Footer() {
         <div className="flex items-center gap-2">
           <span>{user.full_name}</span>
           <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-[10px] font-medium border border-yellow-200 ml-1">
-             Vencimento: {new Date(user.trial_ends_at).toLocaleDateString()}
+             Licença vence: {new Date(user.trial_ends_at).toLocaleDateString('pt-BR')}
           </span>
         </div>
       </div>

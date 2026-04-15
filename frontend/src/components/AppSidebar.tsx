@@ -91,6 +91,7 @@ const sections: NavSection[] = [
       { title: "Credenciais ERP Bridge",  url: "/config/erp-bridge",    icon: KeyRound,   adminOnly: true },
       { title: "Gestão de Usuários",      url: "/config/usuarios",      icon: Users,      masterOnly: true },
       { title: "Log de Auditoria",        url: "/config/audit-log",     icon: ShieldAlert, masterOnly: true },
+      { title: "Bloqueio de Empresas",    url: "/config/empresas-bloqueio", icon: ShieldAlert, masterOnly: true, danger: true },
       { title: "Limpar Dados",            url: "/config/limpar-dados",  icon: ShieldAlert, masterOnly: true, danger: true },
     ],
   },
@@ -337,7 +338,7 @@ export function AppSidebar() {
               <p className="text-xs font-medium truncate leading-tight text-sidebar-foreground">{user.full_name}</p>
               <div className="flex items-center gap-1.5">
                 <span className="bg-yellow-100 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded text-[9px] font-medium">
-                  Vence: {new Date(user.trial_ends_at).toLocaleDateString("pt-BR")}
+                  Licença vence: {new Date(user.trial_ends_at).toLocaleDateString("pt-BR")}
                 </span>
                 <button
                   onClick={() => setPwDialog(true)}

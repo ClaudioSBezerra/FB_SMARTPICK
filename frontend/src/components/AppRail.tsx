@@ -172,7 +172,7 @@ export function AppRail() {
                   <DropdownMenuSeparator />
                   <div className="px-2 py-1">
                     <span className="inline-flex items-center text-[10px] bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded font-medium">
-                      Trial vence: {trialDate}
+                      Licença vence: {trialDate}
                     </span>
                   </div>
                 </>

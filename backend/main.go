@@ -449,6 +449,8 @@ func main() {
 	http.HandleFunc("/api/sp/admin/limpar-calibragem",   withSP(handlers.SpLimparCalibragemHandler, "admin_fbtax"))
 	http.HandleFunc("/api/sp/admin/purgar-csv-antigos", withSP(handlers.SpPurgarCsvAntigosHandler, "gestor_geral"))
 	http.HandleFunc("/api/sp/admin/audit-log",          withSP(handlers.SpAuditLogHandler, "admin_fbtax"))
+	http.HandleFunc("/api/sp/admin/empresas",           withSP(handlers.SpListEmpresasHandler, "admin_fbtax"))
+	http.HandleFunc("/api/sp/admin/empresas/",          withSP(handlers.SpEmpresaBloqueioHandler, "admin_fbtax"))
 
 	// ── Frontend estático (SPA React) ─────────────────────────────────────────
 	staticDir := "./static"

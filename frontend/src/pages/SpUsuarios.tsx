@@ -78,6 +78,7 @@ export default function SpUsuarios() {
   const [novoDialog,    setNovoDialog]    = useState(false)
   const [selected,      setSelected]      = useState<SpUsuario | null>(null)
   const [newRole,       setNewRole]       = useState('')
+  const [editTrialDate, setEditTrialDate] = useState('')
   const [allFiliais,    setAllFiliais]    = useState(false)
   const [chosenFiliais, setChosenFiliais] = useState<number[]>([])
 
@@ -185,14 +186,14 @@ export default function SpUsuarios() {
 
   // ── Mutations ────────────────────────────────────────────────────────────────
   const updateRole = useMutation({
-    mutationFn: async ({ id, sp_role, full_name, environment_id, group_id, company_id }:
-      { id: string; sp_role: string; full_name: string; environment_id?: string; group_id?: string; company_id?: string }) => {
+    mutationFn: async ({ id, sp_role, full_name, environment_id, group_id, company_id, trial_ends_at }:
+      { id: string; sp_role: string; full_name: string; environment_id?: string; group_id?: string; company_id?: string; trial_ends_at?: string }) => {
       const res = await fetch(`/api/sp/usuarios/${id}/role`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body:    JSON.stringify({ sp_role, full_name, environment_id, group_id, company_id }),
+        body:    JSON.stringify({ sp_role, full_name, environment_id, group_id, company_id, trial_ends_at }),
       })
-      if (!res.ok) throw new Error((await res.json()).error ?? 'Erro ao atualizar perfil')
+      if (!res.ok) throw new Error((await res.text()) || 'Erro ao atualizar perfil')
     },
     onSuccess: () => {
       toast.success('Perfil atualizado')
@@ -282,6 +283,7 @@ export default function SpUsuarios() {
     setSelected(u)
     setNewRole(u.sp_role)
     setEditNome(u.full_name)
+    setEditTrialDate(u.trial_ends_at ? u.trial_ends_at.slice(0, 10) : '')
     setShowReassign(false)
     setReassignEnvId('')
     setReassignGroupId('')
@@ -539,6 +541,18 @@ export default function SpUsuarios() {
               </Select>
             </div>
 
+            <div className="grid gap-1.5">
+              <Label>Vencimento da licença</Label>
+              <Input
+                type="date"
+                value={editTrialDate}
+                onChange={e => setEditTrialDate(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Renovar a licença não apaga dados — só estende o prazo de acesso do usuário.
+              </p>
+            </div>
+
             {/* Hierarquia atual */}
             <div className="border-t pt-3 space-y-2">
               <div className="flex items-center justify-between">
@@ -596,6 +610,7 @@ export default function SpUsuarios() {
                 id: selected.id,
                 sp_role: newRole,
                 full_name: editNome,
+                ...(editTrialDate && editTrialDate !== (selected.trial_ends_at?.slice(0, 10) ?? '') ? { trial_ends_at: editTrialDate } : {}),
                 ...(showReassign && reassignEnvId ? {
                   environment_id: reassignEnvId,
                   group_id: reassignGroupId,

@@ -16,9 +16,12 @@ interface AuditEntry {
 }
 
 const ACAO_LABELS: Record<string, { label: string; color: string }> = {
-  limpar_dados:    { label: 'Limpeza de dados',   color: 'bg-red-100 text-red-800' },
-  criar_usuario:   { label: 'Criar usuário',      color: 'bg-green-100 text-green-800' },
-  excluir_usuario: { label: 'Excluir usuário',    color: 'bg-red-100 text-red-800' },
+  limpar_dados:        { label: 'Limpeza de dados',   color: 'bg-red-100 text-red-800' },
+  criar_usuario:       { label: 'Criar usuário',      color: 'bg-green-100 text-green-800' },
+  excluir_usuario:     { label: 'Excluir usuário',    color: 'bg-red-100 text-red-800' },
+  bloquear_empresa:    { label: 'Bloquear empresa',   color: 'bg-red-100 text-red-800' },
+  desbloquear_empresa: { label: 'Desbloquear empresa', color: 'bg-green-100 text-green-800' },
+  renovar_licenca:     { label: 'Renovar licença',    color: 'bg-blue-100 text-blue-800' },
 }
 
 function formatDate(iso: string) {
@@ -69,7 +72,8 @@ export default function SpAuditLog() {
                 email: 'Email', full_name: 'Nome', sp_role: 'Perfil',
                 sp_csv_jobs: 'Jobs', sp_enderecos: 'Endereços',
                 sp_propostas: 'Propostas', sp_historico: 'Histórico',
-                arquivos_a_remover: 'Arquivos',
+                arquivos_a_remover: 'Arquivos', motivo: 'Motivo',
+                trial_ends_at: 'Nova licença até',
               }
               const details: string[] = e.payload
                 ? Object.entries(e.payload)

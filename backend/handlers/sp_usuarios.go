@@ -47,6 +47,7 @@ type SpUpdateRoleRequest struct {
 	EnvironmentID string `json:"environment_id"` // opcional — reatribui hierarquia
 	GroupID       string `json:"group_id"`       // ignorado (derivado da empresa)
 	CompanyID     string `json:"company_id"`     // define preferred_company_id
+	TrialEndsAt   string `json:"trial_ends_at"`  // opcional — "YYYY-MM-DD"; renova licença
 }
 
 type SpVincularFiliaisRequest struct {
@@ -225,9 +226,25 @@ func SpUpdateRoleHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Parse opcional de trial_ends_at (renovação de licença)
+		var trialEnds *time.Time
+		if req.TrialEndsAt != "" {
+			t, parseErr := time.Parse("2006-01-02", req.TrialEndsAt)
+			if parseErr != nil {
+				http.Error(w, "trial_ends_at inválido (use YYYY-MM-DD)", http.StatusBadRequest)
+				return
+			}
+			tUTC := t.UTC()
+			trialEnds = &tUTC
+		}
+
 		res, err := db.Exec(
-			`UPDATE users SET sp_role = $1, full_name = CASE WHEN $2 != '' THEN $2 ELSE full_name END WHERE id = $3`,
-			req.SpRole, req.FullName, targetID,
+			`UPDATE users SET
+			    sp_role = $1,
+			    full_name = CASE WHEN $2 != '' THEN $2 ELSE full_name END,
+			    trial_ends_at = CASE WHEN $4::timestamptz IS NOT NULL THEN $4::timestamptz ELSE trial_ends_at END
+			 WHERE id = $3`,
+			req.SpRole, req.FullName, targetID, trialEnds,
 		)
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
@@ -236,6 +253,13 @@ func SpUpdateRoleHandler(db *sql.DB) http.HandlerFunc {
 		if n, _ := res.RowsAffected(); n == 0 {
 			http.Error(w, "User not found", http.StatusNotFound)
 			return
+		}
+
+		// Audit log da renovação de licença (se aplicável)
+		if trialEnds != nil {
+			writeAuditLog(db, spCtx.EmpresaID, spCtx.UserID, "usuario", targetID, "renovar_licenca", map[string]any{
+				"trial_ends_at": req.TrialEndsAt,
+			})
 		}
 
 		// Reatribuição de hierarquia (ambiente + empresa preferida)

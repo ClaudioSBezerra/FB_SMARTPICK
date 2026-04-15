@@ -187,13 +187,6 @@ const Login = () => {
                 <Button type="submit" className="w-full text-sm" disabled={isLoading}>
                   {isLoading ? "Entrando..." : "Entrar"}
                 </Button>
-
-                <p className="text-center text-xs text-gray-500 mt-1">
-                  Não tem uma conta?{" "}
-                  <Link to="/register" className="text-primary hover:underline">
-                    Crie grátis
-                  </Link>
-                </p>
               </form>
             </CardContent>
           </Card>
