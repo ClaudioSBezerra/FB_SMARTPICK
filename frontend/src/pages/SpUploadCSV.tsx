@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner'
 import { Upload, RefreshCw, Zap } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { BatchStatusMini } from '@/components/BatchStatusBar'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -257,13 +258,14 @@ export default function SpUploadCSV() {
             <TableHead>Linhas</TableHead>
             <TableHead>Importado em</TableHead>
             <TableHead>Concluído em</TableHead>
+            <TableHead className="w-36">Calibragem</TableHead>
             <TableHead className="w-44">Ação</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {jobs.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">
+              <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
                 Nenhuma importação encontrada.
               </TableCell>
             </TableRow>
@@ -290,6 +292,9 @@ export default function SpUploadCSV() {
               </TableCell>
               <TableCell className="text-xs">{fmtDate(j.created_at)}</TableCell>
               <TableCell className="text-xs">{fmtDate(j.finished_at)}</TableCell>
+              <TableCell className="py-2">
+                {j.status === 'done' ? <BatchStatusMini jobId={j.id} /> : null}
+              </TableCell>
               <TableCell>
                 {j.status === 'done' && (
                   <Button

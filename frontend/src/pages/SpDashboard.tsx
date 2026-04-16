@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner'
 import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { BatchStatusBar } from '@/components/BatchStatusBar'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -777,41 +778,34 @@ export default function SpDashboard() {
         </Button>
       </div>
 
-      {/* Contadores */}
+      {/* Barra de status do lote */}
       {resumo && (
-        <div className="flex gap-4 flex-wrap text-sm">
-          <div className="border rounded px-3 py-2 bg-yellow-50">
-            <span className="text-xs text-muted-foreground block">Pendentes</span>
-            <span className="font-bold text-yellow-800">{resumo.total_pendente}</span>
-          </div>
-          <div className="border rounded px-3 py-2 bg-red-50">
-            <span className="text-xs text-muted-foreground block">Ampliar Slot</span>
-            <span className="font-bold text-red-700">{resumo.falta_pendente}</span>
-          </div>
-          <div className="border rounded px-3 py-2 bg-yellow-50">
-            <span className="text-xs text-muted-foreground block">Reduzir Slot</span>
-            <span className="font-bold text-yellow-700">{resumo.espaco_pendente}</span>
-          </div>
-          <div className="border rounded px-3 py-2 bg-green-50">
-            <span className="text-xs text-muted-foreground block">Aprovadas</span>
-            <span className="font-bold text-green-700">{resumo.total_aprovada}</span>
-          </div>
-          <div className="border rounded px-3 py-2 bg-gray-50">
-            <span className="text-xs text-muted-foreground block">Rejeitadas</span>
-            <span className="font-bold text-gray-600">{resumo.total_rejeitada}</span>
-          </div>
-          {resumo.calibrado_total > 0 && (
-            <div className="border rounded px-3 py-2 bg-blue-50">
-              <span className="text-xs text-muted-foreground block">Já Calibrados</span>
-              <span className="font-bold text-blue-700">{resumo.calibrado_total}</span>
+        <div className="space-y-2">
+          <BatchStatusBar resumo={resumo} />
+
+          {/* Cards de detalhe — pendentes por tipo + categorias especiais */}
+          <div className="flex gap-3 flex-wrap text-sm">
+            <div className="border rounded px-3 py-1.5 bg-red-50">
+              <span className="text-[10px] text-muted-foreground block">Ampliar Slot</span>
+              <span className="font-bold text-red-700 text-sm">{resumo.falta_pendente}</span>
             </div>
-          )}
-          {resumo.curva_a_mantida > 0 && (
-            <div className="border rounded px-3 py-2 bg-amber-50">
-              <span className="text-xs text-muted-foreground block">Curva A — Revisar</span>
-              <span className="font-bold text-amber-700">{resumo.curva_a_mantida}</span>
+            <div className="border rounded px-3 py-1.5 bg-yellow-50">
+              <span className="text-[10px] text-muted-foreground block">Reduzir Slot</span>
+              <span className="font-bold text-yellow-700 text-sm">{resumo.espaco_pendente}</span>
             </div>
-          )}
+            {resumo.calibrado_total > 0 && (
+              <div className="border rounded px-3 py-1.5 bg-blue-50">
+                <span className="text-[10px] text-muted-foreground block">Já Calibrados</span>
+                <span className="font-bold text-blue-700 text-sm">{resumo.calibrado_total}</span>
+              </div>
+            )}
+            {resumo.curva_a_mantida > 0 && (
+              <div className="border rounded px-3 py-1.5 bg-amber-50">
+                <span className="text-[10px] text-muted-foreground block">Curva A — Revisar</span>
+                <span className="font-bold text-amber-700 text-sm">{resumo.curva_a_mantida}</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
