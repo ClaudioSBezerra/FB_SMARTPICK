@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -103,6 +104,22 @@ func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 			args = append(args, cdIDStr)
 		}
 
+		// Filtro de rua (opcional) — lista separada por vírgula: "1,2,5"
+		ruaStr := r.URL.Query().Get("rua")
+		if ruaStr != "" {
+			var placeholders []string
+			for _, part := range strings.Split(ruaStr, ",") {
+				if rua, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
+					placeholders = append(placeholders, fmt.Sprintf("$%d", idx))
+					args = append(args, rua)
+					idx++
+				}
+			}
+			if len(placeholders) > 0 {
+				filter += " AND p.rua IN (" + strings.Join(placeholders, ",") + ")"
+			}
+		}
+
 		// Ordenado por RUA → PREDIO → APTO → CURVA (operador percorre fisicamente)
 		query := fmt.Sprintf(`
 			SELECT p.codprod,
@@ -159,8 +176,13 @@ func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		filename := fmt.Sprintf("calibracao_%s_%s.pdf",
+		ruaLabel := ""
+		if ruaStr != "" {
+			ruaLabel = "_rua" + strings.ReplaceAll(ruaStr, ",", "-")
+		}
+		filename := fmt.Sprintf("calibracao_%s%s_%s.pdf",
 			sanitizeFilename(cdNome),
+			ruaLabel,
 			time.Now().Format("20060102"))
 
 		w.Header().Set("Content-Type", "application/pdf")

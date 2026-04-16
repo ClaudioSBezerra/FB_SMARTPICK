@@ -417,6 +417,7 @@ func main() {
 	// ── SmartPick — Dashboard de Urgência e Propostas (Epic 5) ───────────────
 	http.HandleFunc("/api/sp/propostas", withSP(handlers.SpPropostasHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/resumo", withSP(handlers.SpPropostasResumoHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/propostas/ruas", withSP(handlers.SpPropostasRuasHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/motivos-rejeicao", withSP(handlers.SpMotivoRejeicaoHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/aprovar-lote", withSP(handlers.SpPropostasAprovarLoteHandler, "gestor_geral"))
 	http.HandleFunc("/api/sp/propostas/", withSP(handlers.SpPropostaItemHandler, "gestor_geral"))

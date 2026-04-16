@@ -485,3 +485,67 @@ func SpPropostasAprovarLoteHandler(db *sql.DB) http.HandlerFunc {
 		})
 	}
 }
+
+// ─── GET /api/sp/propostas/ruas ───────────────────────────────────────────────
+// Retorna lista de ruas distintas com propostas aprovadas para um CD ou job.
+// Usado pelo frontend para popular o seletor de ruas na emissão do PDF.
+
+func SpPropostasRuasHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		q := r.URL.Query()
+		jobIDStr := q.Get("job_id")
+		cdIDStr  := q.Get("cd_id")
+		if jobIDStr == "" && cdIDStr == "" {
+			http.Error(w, "job_id ou cd_id obrigatório", http.StatusBadRequest)
+			return
+		}
+
+		filter := "WHERE empresa_id = $1 AND rua IS NOT NULL AND status = 'aprovada'"
+		args   := []any{spCtx.EmpresaID}
+		idx    := 2
+
+		if jobIDStr != "" {
+			filter += fmt.Sprintf(" AND job_id = $%d", idx)
+			args = append(args, jobIDStr)
+		} else {
+			filter += fmt.Sprintf(" AND cd_id = $%d", idx)
+			v, err := strconv.Atoi(cdIDStr)
+			if err != nil {
+				http.Error(w, "cd_id inválido", http.StatusBadRequest)
+				return
+			}
+			args = append(args, v)
+		}
+
+		rows, err := db.Query(
+			fmt.Sprintf("SELECT DISTINCT rua FROM smartpick.sp_propostas %s ORDER BY rua", filter),
+			args...,
+		)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		ruas := []int{}
+		for rows.Next() {
+			var rua int
+			if err := rows.Scan(&rua); err == nil {
+				ruas = append(ruas, rua)
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ruas)
+	}
+}
