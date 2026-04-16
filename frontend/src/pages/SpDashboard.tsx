@@ -13,6 +13,9 @@ import { Input } from '@/components/ui/input'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { toast } from 'sonner'
 import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -291,39 +294,65 @@ function PropostasTable({
           onChange={e => setFilterEnder(e.target.value)}
           className="h-7 text-xs w-36"
         />
-        <div className="flex items-center gap-1">
-          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">GiroCap.</label>
-          <Select value={filterGiroCap || 'all'} onValueChange={v => setFilterGiroCap(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="OK">OK</SelectItem>
-              <SelectItem value="Urgencia">Urgencia</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-1">
-          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">GPRepos.</label>
-          <Select value={filterGiroPR || 'all'} onValueChange={v => setFilterGiroPR(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="OK">OK</SelectItem>
-              <SelectItem value="Ajustar">Ajustar</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-1">
-          <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">CMEN2DDV</label>
-          <Select value={filterCapDias || 'all'} onValueChange={v => setFilterCapDias(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="OK">OK</SelectItem>
-              <SelectItem value="CAP Menor">CAP Menor</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <TooltipProvider delayDuration={200}>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap cursor-help underline decoration-dotted">GiroCap.</label>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-56 text-xs">
+                <p className="font-semibold">Giro e Capacidade</p>
+                <p>Analisa se o Giro/Dia é ≥ à capacidade atual do endereço. Indica risco de ruptura de estoque.</p>
+              </TooltipContent>
+            </Tooltip>
+            <Select value={filterGiroCap || 'all'} onValueChange={v => setFilterGiroCap(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="OK">OK</SelectItem>
+                <SelectItem value="Urgencia">Urgencia</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap cursor-help underline decoration-dotted">GPRepos.</label>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-56 text-xs">
+                <p className="font-semibold">Giro e Ponto de Reposição</p>
+                <p>Analisa se o Giro/Dia é ≥ ao ponto de reposição. Indica que o produto é reposto antes de zerar o estoque.</p>
+              </TooltipContent>
+            </Tooltip>
+            <Select value={filterGiroPR || 'all'} onValueChange={v => setFilterGiroPR(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="OK">OK</SelectItem>
+                <SelectItem value="Ajustar">Ajustar</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap cursor-help underline decoration-dotted">CMEN2DDV</label>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-56 text-xs">
+                <p className="font-semibold">Capacidade Menor que 2 DDVs</p>
+                <p>Analisa se a capacidade atual do endereço suporta pelo menos 2 dias de venda. Abaixo disso o risco de ruptura é alto.</p>
+              </TooltipContent>
+            </Tooltip>
+            <Select value={filterCapDias || 'all'} onValueChange={v => setFilterCapDias(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="OK">OK</SelectItem>
+                <SelectItem value="CAP Menor">CAP Menor</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </TooltipProvider>
         {hasFilters && (
           <button
             className="text-[11px] text-muted-foreground hover:text-foreground underline"
@@ -421,9 +450,39 @@ function PropostasTable({
               <TableHead className="text-right py-1.5">Sug.</TableHead>
               <TableHead className="text-right py-1.5">Δ</TableHead>
               <TableHead className="py-1.5">Status</TableHead>
-              <TableHead className="py-1.5 text-center">GiroCap.</TableHead>
-              <TableHead className="py-1.5 text-center">GPRepos.</TableHead>
-              <TableHead className="py-1.5 text-center">CMEN2DDV</TableHead>
+              <TableHead className="py-1.5 text-center">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted">GiroCap.</TooltipTrigger>
+                    <TooltipContent className="max-w-56 text-xs">
+                      <p className="font-semibold">Giro e Capacidade</p>
+                      <p>Analisa se o Giro/Dia é ≥ à capacidade atual. Indica risco de ruptura de estoque.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </TableHead>
+              <TableHead className="py-1.5 text-center">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted">GPRepos.</TooltipTrigger>
+                    <TooltipContent className="max-w-56 text-xs">
+                      <p className="font-semibold">Giro e Ponto de Reposição</p>
+                      <p>Analisa se o Giro/Dia é ≥ ao ponto de reposição. Indica que o produto é reposto antes de zerar.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </TableHead>
+              <TableHead className="py-1.5 text-center">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted">CMEN2DDV</TooltipTrigger>
+                    <TooltipContent className="max-w-56 text-xs">
+                      <p className="font-semibold">Capacidade Menor que 2 DDVs</p>
+                      <p>Analisa se a capacidade suporta pelo menos 2 dias de venda. Abaixo disso o risco de ruptura é alto.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </TableHead>
               <TableHead className="w-28 py-1.5">Ações</TableHead>
             </TableRow>
           </TableHeader>
