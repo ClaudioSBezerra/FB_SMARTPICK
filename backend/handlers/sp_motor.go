@@ -110,6 +110,19 @@ func SpMotorCalibrarHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Bloqueia nova calibração se o CD já tem propostas pendentes (calibragem em andamento)
+		var temPendente bool
+		db.QueryRow(`
+			SELECT EXISTS(
+				SELECT 1 FROM smartpick.sp_propostas
+				WHERE cd_id = $1 AND empresa_id = $2 AND status = 'pendente'
+			)
+		`, cdID, spCtx.EmpresaID).Scan(&temPendente)
+		if temPendente {
+			http.Error(w, "Calibragem em andamento para este CD. Finalize as propostas pendentes antes de iniciar uma nova calibração.", http.StatusConflict)
+			return
+		}
+
 		// Idempotência: verifica se já foram geradas propostas para este job
 		var jaExiste bool
 		db.QueryRow(`SELECT EXISTS(SELECT 1 FROM smartpick.sp_propostas WHERE job_id = $1 AND empresa_id = $2)`, body.JobID, spCtx.EmpresaID).Scan(&jaExiste)

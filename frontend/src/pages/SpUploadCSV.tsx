@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useRef, useState, useMemo } from 'react'
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
@@ -106,6 +106,32 @@ export default function SpUploadCSV() {
     refetchInterval: 5000,
   })
 
+  // ── Status de calibragem por CD (para desabilitar botão proativamente) ───────
+  const uniqueCdIds = useMemo(
+    () => [...new Set(jobs.filter(j => j.status === 'done').map(j => j.cd_id))],
+    [jobs],
+  )
+
+  const cdStatusQueries = useQueries({
+    queries: uniqueCdIds.map(id => ({
+      queryKey: ['sp-resumo-cd', id],
+      staleTime: 10_000,
+      queryFn: async (): Promise<{ total_pendente: number }> => {
+        const r = await fetch(`/api/sp/propostas/resumo?cd_id=${id}`, { headers })
+        if (!r.ok) return { total_pendente: 0 }
+        return r.json()
+      },
+    })),
+  })
+
+  const cdHasPending = useMemo(() => {
+    const map: Record<number, boolean> = {}
+    uniqueCdIds.forEach((id, i) => {
+      map[id] = (cdStatusQueries[i]?.data?.total_pendente ?? 0) > 0
+    })
+    return map
+  }, [cdStatusQueries, uniqueCdIds])
+
   // ── Upload ───────────────────────────────────────────────────────────────────
   async function handleUpload() {
     const file = fileRef.current?.files?.[0]
@@ -150,11 +176,12 @@ export default function SpUploadCSV() {
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ job_id: jobId }),
       })
-      if (!r.ok) throw new Error((await r.json()).error ?? 'Erro ao executar motor')
+      if (!r.ok) throw new Error((await r.text()) || 'Erro ao executar motor')
     },
     onSuccess: () => {
       toast.success('Calibração iniciada! As propostas serão geradas em instantes.')
       qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
+      qc.invalidateQueries({ queryKey: ['sp-resumo-cd'] })
       navigate('/dashboard/urgencia/falta')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -296,17 +323,29 @@ export default function SpUploadCSV() {
                 {j.status === 'done' ? <BatchStatusMini jobId={j.id} /> : null}
               </TableCell>
               <TableCell>
-                {j.status === 'done' && (
-                  <Button
-                    size="sm"
-                    className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
-                    disabled={executarMotor.isPending && motorJobID === j.id}
-                    onClick={() => { setMotorJobID(j.id); executarMotor.mutate(j.id) }}
-                  >
-                    <Zap className="h-3.5 w-3.5 mr-1" />
-                    {executarMotor.isPending && motorJobID === j.id ? 'Iniciando…' : 'Ativar Calibração'}
-                  </Button>
-                )}
+                {j.status === 'done' && (() => {
+                  const isPending = executarMotor.isPending && motorJobID === j.id
+                  const cdBlocked = cdHasPending[j.cd_id] ?? false
+                  return (
+                    <div className="space-y-1">
+                      <Button
+                        size="sm"
+                        className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                        disabled={isPending || cdBlocked}
+                        title={cdBlocked ? 'Há propostas pendentes neste CD. Finalize a calibragem atual antes de iniciar uma nova.' : undefined}
+                        onClick={() => { setMotorJobID(j.id); executarMotor.mutate(j.id) }}
+                      >
+                        <Zap className="h-3.5 w-3.5 mr-1" />
+                        {isPending ? 'Iniciando…' : 'Ativar Calibração'}
+                      </Button>
+                      {cdBlocked && (
+                        <p className="text-[10px] text-amber-600 leading-tight max-w-[160px]">
+                          Calibragem em andamento neste CD
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()}
               </TableCell>
             </TableRow>
           ))}
