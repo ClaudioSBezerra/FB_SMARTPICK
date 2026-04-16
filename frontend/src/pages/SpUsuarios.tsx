@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { ShieldCheck, Building2, UserPlus, Layers } from 'lucide-react'
+import { ShieldCheck, Building2, UserPlus, Layers, Trash2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,6 +76,7 @@ export default function SpUsuarios() {
   const [roleDialog,    setRoleDialog]    = useState(false)
   const [filiaisDialog, setFiliaisDialog] = useState(false)
   const [novoDialog,    setNovoDialog]    = useState(false)
+  const [deleteTarget,  setDeleteTarget]  = useState<SpUsuario | null>(null)
   const [selected,      setSelected]      = useState<SpUsuario | null>(null)
   const [newRole,       setNewRole]       = useState('')
   const [editTrialDate, setEditTrialDate] = useState('')
@@ -253,6 +254,22 @@ export default function SpUsuarios() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const deletarUsuario = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/sp/usuarios/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error((await res.text()) || 'Erro ao excluir usuário')
+    },
+    onSuccess: () => {
+      toast.success('Usuário excluído com sucesso')
+      qc.invalidateQueries({ queryKey: ['sp-usuarios'] })
+      setDeleteTarget(null)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const updateFiliais = useMutation({
     mutationFn: async ({ id, all_filiais, filial_ids }: { id: string; all_filiais: boolean; filial_ids: number[] }) => {
       const res = await fetch(`/api/sp/usuarios/${id}/filiais`, {
@@ -414,6 +431,13 @@ export default function SpUsuarios() {
                     <Button size="sm" variant="outline" onClick={() => openVinculosDialog(u)}>
                       <Layers className="h-3.5 w-3.5 mr-1" />
                       Empresas
+                    </Button>
+                    <Button
+                      size="sm" variant="outline"
+                      className="text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={() => setDeleteTarget(u)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </TableCell>
@@ -788,6 +812,35 @@ export default function SpUsuarios() {
               })}
             >
               {updateFiliais.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: excluir usuário ──────────────────────────────────────── */}
+      <Dialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Excluir usuário
+            </DialogTitle>
+            <DialogDescription>
+              Esta ação é irreversível. Todos os vínculos de filial e ambiente serão removidos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 text-sm">
+            Deseja excluir o usuário <strong>{deleteTarget?.full_name}</strong>?
+            <p className="text-xs text-muted-foreground mt-1">{deleteTarget?.email}</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={deletarUsuario.isPending}
+              onClick={() => deleteTarget && deletarUsuario.mutate(deleteTarget.id)}
+            >
+              {deletarUsuario.isPending ? 'Excluindo...' : 'Excluir'}
             </Button>
           </DialogFooter>
         </DialogContent>
