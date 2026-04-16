@@ -10,7 +10,8 @@ package handlers
 // PUT  /api/sp/propostas/{id}         → edição inline (sugestao_editada)
 // POST /api/sp/propostas/{id}/aprovar → aprovação individual
 // POST /api/sp/propostas/{id}/rejeitar→ rejeição individual (body: {motivo_rejeicao_id})
-// POST /api/sp/propostas/aprovar-lote → aprovação em lote por job_id ou cd_id
+// POST /api/sp/propostas/aprovar-lote       → aprovação em lote por job_id ou cd_id
+// POST /api/sp/propostas/aprovar-selecionados → aprovação de IDs específicos (filtrados)
 //
 // Semântica de urgência (delta = sugestao_calibragem - capacidade_atual):
 //   tipo=falta  → delta > 0  (sugestão aumenta capacidade → slot pequeno demais → falta de espaço no picking)
@@ -481,6 +482,71 @@ func SpPropostasAprovarLoteHandler(db *sql.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message":  fmt.Sprintf("%d propostas aprovadas", count),
+			"aprovadas": count,
+		})
+	}
+}
+
+// SpPropostasAprovarSelecionadosHandler aprova propostas por IDs específicos.
+// POST /api/sp/propostas/aprovar-selecionados
+// Body: { "ids": [1, 2, 3, ...] }
+// Aprova apenas as que pertencem à empresa ativa e estão com status 'pendente'.
+func SpPropostasAprovarSelecionadosHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !spCtx.CanApprove() {
+			http.Error(w, "Forbidden: gestor_filial+ necessário", http.StatusForbidden)
+			return
+		}
+
+		var body struct {
+			IDs []int64 `json:"ids"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
+			http.Error(w, "ids obrigatório e não pode ser vazio", http.StatusBadRequest)
+			return
+		}
+
+		args := []interface{}{time.Now().UTC(), spCtx.EmpresaID, spCtx.UserID}
+		placeholders := make([]string, len(body.IDs))
+		for i, id := range body.IDs {
+			args = append(args, id)
+			placeholders[i] = fmt.Sprintf("$%d", i+4)
+		}
+
+		query := fmt.Sprintf(`
+			UPDATE smartpick.sp_propostas
+			SET status = 'aprovada', aprovado_por = $3::uuid, aprovado_em = $1
+			WHERE empresa_id = $2 AND status = 'pendente'
+			  AND id IN (%s)
+			RETURNING id
+		`, strings.Join(placeholders, ","))
+
+		rows, err := db.Query(query, args...)
+		if err != nil {
+			http.Error(w, "Erro ao aprovar: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		count := 0
+		for rows.Next() {
+			var id int64
+			rows.Scan(&id)
+			count++
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message":   fmt.Sprintf("%d propostas aprovadas", count),
 			"aprovadas": count,
 		})
 	}

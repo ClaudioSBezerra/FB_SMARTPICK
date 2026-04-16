@@ -196,13 +196,15 @@ function SugestaoCell({
 // ─── Tabela de propostas ──────────────────────────────────────────────────────
 
 function PropostasTable({
-  propostas, onAprovar, onRejeitar, onEditar, loadingId,
+  propostas, onAprovar, onRejeitar, onEditar, onAprovarLote, loadingId, loteLoading,
 }: {
   propostas: Proposta[]
   onAprovar: (id: number) => void
   onRejeitar: (id: number) => void
   onEditar: (id: number, valor: number) => void
+  onAprovarLote?: (ids: number[]) => void
   loadingId: number | null
+  loteLoading?: boolean
 }) {
   const [filterDepto,    setFilterDepto]    = useState('')
   const [filterSecao,    setFilterSecao]    = useState('')
@@ -330,6 +332,23 @@ function PropostasTable({
             limpar filtros
           </button>
         )}
+        {onAprovarLote && (() => {
+          const pendingIds = filtered.filter(r => r.status === 'pendente').map(r => r.id)
+          return (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-[10px] text-green-700 border-green-200 hover:bg-green-50"
+              disabled={pendingIds.length === 0 || loteLoading}
+              onClick={() => onAprovarLote(pendingIds)}
+            >
+              <CheckCheck className="h-3.5 w-3.5 mr-1" />
+              {hasFilters
+                ? `Aprovar filtrados (${pendingIds.length})`
+                : `Aprovar todos (${pendingIds.length})`}
+            </Button>
+          )
+        })()}
         <Button
           size="sm"
           variant="outline"
@@ -702,16 +721,13 @@ export default function SpDashboard() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  // ── Aprovar em lote ───────────────────────────────────────────────────────
-  const aprovarLoteMutation = useMutation({
-    mutationFn: async (tipo: 'falta' | 'espaco') => {
-      const body: Record<string, unknown> = { tipo }
-      if (jobID) body.job_id = jobID
-      else if (cdID) body.cd_id = Number(cdID)
-      const r = await fetch('/api/sp/propostas/aprovar-lote', {
+  // ── Aprovar selecionados (filtrados) ──────────────────────────────────────
+  const aprovarSelecionadosMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const r = await fetch('/api/sp/propostas/aprovar-selecionados', {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ids }),
       })
       const data = await r.json()
       if (!r.ok) throw new Error(data.error ?? 'Erro')
@@ -865,22 +881,13 @@ export default function SpDashboard() {
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
               Slot <strong>subestimado</strong> — sugestão maior que a capacidade atual. Separador perde viagem: adicionar CX no endereço.
             </p>
-            <div className="flex justify-end">
-              <Button
-                size="sm" variant="outline"
-                className="text-green-700 border-green-200 hover:bg-green-50"
-                disabled={aprovarLoteMutation.isPending || propostasFalta.length === 0}
-                onClick={() => aprovarLoteMutation.mutate('falta')}
-              >
-                <CheckCheck className="h-3.5 w-3.5 mr-1.5" />
-                Aprovar todas ({propostasFalta.length})
-              </Button>
-            </div>
             <PropostasTable
               propostas={propostasFalta}
               onAprovar={id => aprovarMutation.mutate(id)}
               onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
               onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
+              onAprovarLote={ids => aprovarSelecionadosMutation.mutate(ids)}
+              loteLoading={aprovarSelecionadosMutation.isPending}
               loadingId={loadingId}
             />
           </TabsContent>
@@ -891,22 +898,13 @@ export default function SpDashboard() {
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0" />
               Slot <strong>superestimado</strong> — sugestão menor que a capacidade atual. Espaço desperdiçado: remover CX do endereço.
             </p>
-            <div className="flex justify-end">
-              <Button
-                size="sm" variant="outline"
-                className="text-green-700 border-green-200 hover:bg-green-50"
-                disabled={aprovarLoteMutation.isPending || propostasEspaco.length === 0}
-                onClick={() => aprovarLoteMutation.mutate('espaco')}
-              >
-                <CheckCheck className="h-3.5 w-3.5 mr-1.5" />
-                Aprovar todas ({propostasEspaco.length})
-              </Button>
-            </div>
             <PropostasTable
               propostas={propostasEspaco}
               onAprovar={id => aprovarMutation.mutate(id)}
               onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
               onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
+              onAprovarLote={ids => aprovarSelecionadosMutation.mutate(ids)}
+              loteLoading={aprovarSelecionadosMutation.isPending}
               loadingId={loadingId}
             />
           </TabsContent>

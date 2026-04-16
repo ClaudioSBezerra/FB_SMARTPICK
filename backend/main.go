@@ -420,6 +420,7 @@ func main() {
 	http.HandleFunc("/api/sp/propostas/ruas", withSP(handlers.SpPropostasRuasHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/motivos-rejeicao", withSP(handlers.SpMotivoRejeicaoHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/aprovar-lote", withSP(handlers.SpPropostasAprovarLoteHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/propostas/aprovar-selecionados", withSP(handlers.SpPropostasAprovarSelecionadosHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/", withSP(handlers.SpPropostaItemHandler, "gestor_filial"))
 
 	http.HandleFunc("/api/sp/usuarios/", withSP(func(db *sql.DB) http.HandlerFunc {
