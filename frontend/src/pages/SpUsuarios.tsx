@@ -173,6 +173,7 @@ export default function SpUsuarios() {
     },
   })
 
+  // filiais para o dialog de vincular filiais de usuários existentes (empresa ativa do admin)
   const { data: filiais = [] } = useQuery<Filial[]>({
     queryKey: ['filiais'],
     queryFn: async () => {
@@ -180,6 +181,20 @@ export default function SpUsuarios() {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error('Erro ao carregar filiais')
+      return res.json()
+    },
+  })
+
+  // filiais para o form de criação: usa a empresa-alvo quando selecionada,
+  // evitando vincular filiais da empresa errada ao criar usuário para outra empresa
+  const { data: filiaisCreate = [] } = useQuery<Filial[]>({
+    queryKey: ['filiais-empresa-create', createCompanyId],
+    queryFn: async () => {
+      const url = createCompanyId
+        ? `/api/sp/filiais-empresa?empresa_id=${createCompanyId}`
+        : '/api/filiais'
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) return []
       return res.json()
     },
   })
@@ -475,7 +490,7 @@ export default function SpUsuarios() {
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs text-muted-foreground">Empresa</Label>
-                <Select value={createCompanyId} onValueChange={setCreateCompanyId} disabled={!createGroupId}>
+                <Select value={createCompanyId} onValueChange={v => { setCreateCompanyId(v); setNovoFiliais([]) }} disabled={!createGroupId}>
                   <SelectTrigger><SelectValue placeholder={createGroupId ? 'Selecione a empresa...' : 'Selecione um grupo primeiro'} /></SelectTrigger>
                   <SelectContent>
                     {companies.filter(c => c.id).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -491,8 +506,13 @@ export default function SpUsuarios() {
               </div>
               {!novoAllFiliais && (
                 <div className="space-y-1.5 max-h-40 overflow-y-auto border rounded p-2">
-                  {filiais.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma filial cadastrada.</p>}
-                  {filiais.map(f => (
+                  {!createCompanyId && (
+                    <p className="text-xs text-muted-foreground italic">Selecione a empresa acima para ver as filiais disponíveis.</p>
+                  )}
+                  {createCompanyId && filiaisCreate.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Nenhuma filial cadastrada para esta empresa.</p>
+                  )}
+                  {filiaisCreate.map(f => (
                     <div key={f.id} className="flex items-center gap-2">
                       <Checkbox id={`nf-${f.id}`} checked={novoFiliais.includes(f.id)} onCheckedChange={() => toggleNovoFilial(f.id)} />
                       <Label htmlFor={`nf-${f.id}`} className="text-sm cursor-pointer">
