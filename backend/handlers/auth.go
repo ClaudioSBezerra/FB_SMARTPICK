@@ -383,11 +383,36 @@ func GetEffectiveCompanyID(db *sql.DB, userID, requestedCompanyID string) (strin
 		LIMIT 1
 	`, userID).Scan(&companyID)
 
-	if err != nil {
+	if err == nil {
+		return companyID, nil
+	}
+
+	if err != sql.ErrNoRows {
 		return "", err
 	}
 
-	return companyID, nil
+	// Strategy C: fallback via sp_user_filiais — cobre casos onde preferred_company_id
+	// é NULL e a cadeia environment→group→company está incompleta ou ausente.
+	// Usa a empresa mais recente à qual o usuário foi explicitamente vinculado.
+	err = db.QueryRowContext(ctx, `
+		SELECT uf.empresa_id::text
+		FROM smartpick.sp_user_filiais uf
+		WHERE uf.user_id = $1::uuid
+		ORDER BY uf.created_at DESC
+		LIMIT 1
+	`, userID).Scan(&companyID)
+
+	if err == nil && companyID != "" {
+		// Persiste como preferred_company_id para acelerar requests futuros
+		_, _ = db.ExecContext(ctx, `
+			UPDATE user_environments
+			SET preferred_company_id = $1::uuid
+			WHERE user_id = $2::uuid AND preferred_company_id IS NULL
+		`, companyID, userID)
+		return companyID, nil
+	}
+
+	return "", sql.ErrNoRows
 }
 
 // Deprecated: Use GetEffectiveCompanyID instead

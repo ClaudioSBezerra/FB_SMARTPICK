@@ -76,11 +76,11 @@ export default function SpUploadCSV() {
   const headers = { Authorization: `Bearer ${token}` }
 
   // ── Queries ──────────────────────────────────────────────────────────────────
-  const { data: filiais = [] } = useQuery<SpFilial[]>({
+  const { data: filiais = [], isError: filiaisError } = useQuery<SpFilial[]>({
     queryKey: ['filiais'],
     queryFn: async () => {
       const r = await fetch('/api/filiais', { headers })
-      if (!r.ok) throw new Error()
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
       return r.json()
     },
   })
@@ -201,11 +201,19 @@ export default function SpUploadCSV() {
             </p>
           </div>
 
+          {(filiaisError || filiais.length === 0) && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {filiaisError
+                ? 'Não foi possível carregar as filiais. Verifique se sua empresa está configurada corretamente ou contate o administrador.'
+                : 'Nenhuma filial cadastrada para sua empresa. O administrador precisa criar as filiais em Administração → Gestão de Filiais usando a empresa correta.'}
+            </div>
+          )}
+
           <div className="grid gap-3">
             <div>
               <label className="text-xs font-medium mb-1 block">Filial</label>
-              <Select value={filialID} onValueChange={v => { setFilialID(v); setCdID('') }}>
-                <SelectTrigger><SelectValue placeholder="Selecione a filial" /></SelectTrigger>
+              <Select value={filialID} onValueChange={v => { setFilialID(v); setCdID('') }} disabled={filiais.length === 0}>
+                <SelectTrigger><SelectValue placeholder={filiais.length === 0 ? 'Sem filiais disponíveis' : 'Selecione a filial'} /></SelectTrigger>
                 <SelectContent>
                   {filiais.map(f => (
                     <SelectItem key={f.id} value={String(f.id)}>
