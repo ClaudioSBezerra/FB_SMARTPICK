@@ -13,6 +13,8 @@ import SpReincidencia from './pages/SpReincidencia'
 import SpResultados from './pages/SpResultados'
 import SpAuditLog from './pages/SpAuditLog'
 import SpEmpresasBloqueio from './pages/SpEmpresasBloqueio'
+import SpUsoSistema from './pages/SpUsoSistema'
+import { useUsageTracker } from './hooks/useUsageTracker'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -125,6 +127,7 @@ function AppHeader() {
 
 // ── Layout principal ─────────────────────────────────────────────────────────
 function AppLayout() {
+  useUsageTracker()   // E1: rastreia tempo de permanência por módulo
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <AppRail />
@@ -169,6 +172,7 @@ function AppLayout() {
               <Route path="/config/usuarios-admin" element={<MasterRoute><AdminUsers /></MasterRoute>} />
               <Route path="/config/audit-log"   element={<MasterRoute><SpAuditLog /></MasterRoute>} />
               <Route path="/config/empresas-bloqueio" element={<MasterRoute><SpEmpresasBloqueio /></MasterRoute>} />
+              <Route path="/config/uso"         element={<MasterRoute><SpUsoSistema /></MasterRoute>} />
 
               {/* Redirecionamentos de rotas antigas */}
               <Route path="/config/parametros-motor" element={<Navigate to="/gestao/regras" replace />} />

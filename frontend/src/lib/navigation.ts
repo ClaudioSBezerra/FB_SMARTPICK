@@ -72,6 +72,7 @@ export const modules: Record<string, ModuleConfig> = {
       { label: 'Usuários',        path: '/config/usuarios',   masterOnly: true },
       { label: 'Log de Auditoria', path: '/config/audit-log', masterOnly: true },
       { label: 'Bloqueio Empresas', path: '/config/empresas-bloqueio', masterOnly: true },
+      { label: 'Uso do Sistema',   path: '/config/uso',               masterOnly: true },
       { label: 'Manutenção',      path: '/config/manutencao' },
     ],
   },

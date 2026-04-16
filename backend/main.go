@@ -446,6 +446,10 @@ func main() {
 		}
 	}, "admin_fbtax"))
 
+	// ── SmartPick — Rastreamento de uso (E1) ────────────────────────────────
+	http.HandleFunc("/api/sp/uso",          withSP(handlers.SpUsageIngestHandler, ""))
+	http.HandleFunc("/api/sp/admin/uso",    withSP(handlers.SpUsageReportHandler, "admin_fbtax"))
+
 	// ── SmartPick — Admin / Manutenção ───────────────────────────────────────
 	http.HandleFunc("/api/sp/admin/limpar-calibragem",   withSP(handlers.SpLimparCalibragemHandler, "admin_fbtax"))
 	http.HandleFunc("/api/sp/admin/purgar-csv-antigos", withSP(handlers.SpPurgarCsvAntigosHandler, "gestor_geral"))
