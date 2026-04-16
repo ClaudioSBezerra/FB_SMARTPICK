@@ -34,11 +34,6 @@ func SpLimparCalibragemHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Forbidden: apenas admin_fbtax pode limpar dados", http.StatusForbidden)
 			return
 		}
-		// H2 fix: limpeza só permitida para MASTER (casar com frontend)
-		if !spCtx.IsMasterTenant(db) {
-			http.Error(w, "Forbidden: apenas usuários MASTER podem limpar dados", http.StatusForbidden)
-			return
-		}
 
 		tx, err := db.Begin()
 		if err != nil {

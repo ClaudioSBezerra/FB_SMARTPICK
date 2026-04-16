@@ -7,7 +7,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -82,7 +82,7 @@ function UsageBar({ used, max }: { used: number; max: number }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SpAmbiente() {
-  const { token } = useAuth()
+  const { token, spRole } = useAuth()
   const qc = useQueryClient()
   const location = useLocation()
   const path = location.pathname
@@ -107,6 +107,7 @@ export default function SpAmbiente() {
   const [dupNome,        setDupNome]        = useState('')
   const [editParams,     setEditParams]     = useState<Partial<SpMotorParams>>({})
   const [limparDialog,   setLimparDialog]   = useState(false)
+  const [limparConfirm,  setLimparConfirm]  = useState('')
 
   // ── Simulador da fórmula ─────────────────────────────────────────────────────
   const [showHelp,      setShowHelp]      = useState(true)
@@ -291,6 +292,7 @@ export default function SpAmbiente() {
       qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
       qc.invalidateQueries({ queryKey: ['sp-historico'] })
       setLimparDialog(false)
+      setLimparConfirm('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -906,27 +908,53 @@ export default function SpAmbiente() {
             </p>
           </div>
         </div>
-        <Button variant="destructive" size="sm" onClick={() => setLimparDialog(true)}>
-          <Trash2 className="h-4 w-4 mr-1.5" />
-          Limpar dados de calibragem
-        </Button>
+        {spRole === 'admin_fbtax' && (
+          <Button variant="destructive" size="sm" onClick={() => setLimparDialog(true)}>
+            <Trash2 className="h-4 w-4 mr-1.5" />
+            Limpar dados de calibragem
+          </Button>
+        )}
       </div>
 
-      <Dialog open={limparDialog} onOpenChange={setLimparDialog}>
+      <Dialog open={limparDialog} onOpenChange={v => { setLimparDialog(v); if (!v) setLimparConfirm('') }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-5 w-5" />
-              Confirmar limpeza
+              Limpar dados de calibragem
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Confirmação obrigatória para limpar todos os dados de calibragem da empresa.
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground py-2">
-            Esta ação irá remover <strong>todos</strong> os imports, endereços, propostas e histórico de calibragem da empresa. Os cadastros (filiais, CDs e parâmetros) serão mantidos.
-          </p>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Esta ação irá remover <strong>todos</strong> os imports, endereços, propostas e
+              histórico de calibragem da empresa. Os cadastros (filiais, CDs e parâmetros)
+              serão mantidos. <strong className="text-destructive">Essa operação é irreversível.</strong>
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-sm">
+                Digite <span className="font-mono font-bold text-destructive">CONFIRMO</span> para habilitar a limpeza
+              </Label>
+              <Input
+                value={limparConfirm}
+                onChange={e => setLimparConfirm(e.target.value)}
+                placeholder="CONFIRMO"
+                className="font-mono"
+                autoComplete="off"
+              />
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setLimparDialog(false)}>Cancelar</Button>
-            <Button variant="destructive" disabled={limparCalibragem.isPending}
-              onClick={() => limparCalibragem.mutate()}>
+            <Button variant="outline" onClick={() => { setLimparDialog(false); setLimparConfirm('') }}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={limparConfirm !== 'CONFIRMO' || limparCalibragem.isPending}
+              onClick={() => limparCalibragem.mutate()}
+            >
               {limparCalibragem.isPending ? 'Limpando...' : 'Confirmar limpeza'}
             </Button>
           </DialogFooter>
