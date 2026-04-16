@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -420,6 +420,7 @@ export default function SpUsuarios() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Novo Usuário SmartPick</DialogTitle>
+            <DialogDescription className="sr-only">Preencha os dados para criar um novo usuário no sistema.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="grid gap-1.5">
@@ -520,6 +521,7 @@ export default function SpUsuarios() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Alterar Perfil SmartPick</DialogTitle>
+            <DialogDescription className="sr-only">Edite o perfil, licença e hierarquia do usuário.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-1">
             <div className="grid gap-1.5">
@@ -629,6 +631,7 @@ export default function SpUsuarios() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Empresas — {selectedForVinculos?.full_name}</DialogTitle>
+            <DialogDescription className="sr-only">Gerencie o acesso deste usuário às empresas e suas filiais.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2 max-h-[55vh] overflow-y-auto pr-1">
             {loadingVinculos ? (
@@ -720,6 +723,7 @@ export default function SpUsuarios() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Acesso às Filiais</DialogTitle>
+            <DialogDescription className="sr-only">Defina quais filiais este usuário pode acessar.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">{selected?.full_name}</p>

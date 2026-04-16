@@ -340,7 +340,7 @@ func SpCriarUsuarioHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		validRoles := map[string]bool{
-			"gestor_geral": true, "gestor_filial": true, "somente_leitura": true,
+			"admin_fbtax": true, "gestor_geral": true, "gestor_filial": true, "somente_leitura": true,
 		}
 		if req.SpRole == "" {
 			req.SpRole = "somente_leitura"
