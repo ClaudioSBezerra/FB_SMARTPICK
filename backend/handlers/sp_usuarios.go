@@ -400,17 +400,25 @@ func SpCriarUsuarioHandler(db *sql.DB) http.HandlerFunc {
 			`, spCtx.EmpresaID).Scan(&derivedEnv)
 			envIDToUse = derivedEnv
 		}
-		if envIDToUse != "" {
-			_, _ = db.Exec(
-				"INSERT INTO user_environments (user_id, environment_id, role) VALUES ($1, $2, 'user') ON CONFLICT DO NOTHING",
-				userID, envIDToUse,
-			)
-		}
-
 		// Empresa para vínculo de filiais (usa company_id fornecido ou empresa ativa)
 		empresaIDToUse := spCtx.EmpresaID
 		if req.CompanyID != "" {
 			empresaIDToUse = req.CompanyID
+		}
+
+		if envIDToUse != "" {
+			if empresaIDToUse != "" {
+				// preferred_company_id garante que GetEffectiveCompanyID retorna a empresa certa
+				_, _ = db.Exec(`
+					INSERT INTO user_environments (user_id, environment_id, role, preferred_company_id)
+					VALUES ($1, $2, 'user', $3) ON CONFLICT DO NOTHING
+				`, userID, envIDToUse, empresaIDToUse)
+			} else {
+				_, _ = db.Exec(
+					"INSERT INTO user_environments (user_id, environment_id, role) VALUES ($1, $2, 'user') ON CONFLICT DO NOTHING",
+					userID, envIDToUse,
+				)
+			}
 		}
 
 		// Vincula filiais no SmartPick
