@@ -394,12 +394,12 @@ func main() {
 	http.HandleFunc("/api/sp/csv/upload",    withSP(handlers.SpCSVUploadHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/csv/jobs",      withSP(handlers.SpCSVJobsHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/csv/jobs/",     withSP(handlers.SpCSVJobStatusHandler, "gestor_filial"))
-	http.HandleFunc("/api/sp/motor/calibrar", withSP(handlers.SpMotorCalibrarHandler, "gestor_geral"))
+	http.HandleFunc("/api/sp/motor/calibrar", withSP(handlers.SpMotorCalibrarHandler, "gestor_filial"))
 
 	// ── SmartPick — Histórico e Compliance (Epic 7) ──────────────────────────
 	http.HandleFunc("/api/sp/historico", withSP(handlers.SpHistoricoHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/historico/compliance", withSP(handlers.SpComplianceHandler, "gestor_filial"))
-	http.HandleFunc("/api/sp/historico/", withSP(handlers.SpHistoricoFecharHandler, "gestor_geral"))
+	http.HandleFunc("/api/sp/historico/", withSP(handlers.SpHistoricoFecharHandler, "gestor_filial"))
 
 	// ── SmartPick — Reincidência (Epic 8) ────────────────────────────────────
 	http.HandleFunc("/api/sp/reincidencia", withSP(handlers.SpReincidenciaHandler, "gestor_filial"))
@@ -419,7 +419,7 @@ func main() {
 	http.HandleFunc("/api/sp/propostas/resumo", withSP(handlers.SpPropostasResumoHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/ruas", withSP(handlers.SpPropostasRuasHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/motivos-rejeicao", withSP(handlers.SpMotivoRejeicaoHandler, "gestor_filial"))
-	http.HandleFunc("/api/sp/propostas/aprovar-lote", withSP(handlers.SpPropostasAprovarLoteHandler, "gestor_geral"))
+	http.HandleFunc("/api/sp/propostas/aprovar-lote", withSP(handlers.SpPropostasAprovarLoteHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/", withSP(handlers.SpPropostaItemHandler, "gestor_filial"))
 
 	http.HandleFunc("/api/sp/usuarios/", withSP(func(db *sql.DB) http.HandlerFunc {
