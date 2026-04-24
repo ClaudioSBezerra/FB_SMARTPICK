@@ -372,9 +372,12 @@ func mudarStatusProposta(db *sql.DB, spCtx *SmartPickContext, id int64, novoStat
 // Body (opcional): { "motivo": "texto livre" }
 func ignorarProposta(db *sql.DB, spCtx *SmartPickContext, id int64, w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Motivo string `json:"motivo"`
+		TipoIgnoradoID *int `json:"tipo_ignorado_id"`
 	}
-	json.NewDecoder(r.Body).Decode(&body) // ignora erro — motivo é opcional
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TipoIgnoradoID == nil {
+		http.Error(w, "tipo_ignorado_id obrigatório", http.StatusBadRequest)
+		return
+	}
 
 	// Busca dados da proposta para popular sp_ignorados
 	var cdID, codprod, codFilial int
@@ -400,14 +403,16 @@ func ignorarProposta(db *sql.DB, spCtx *SmartPickContext, id int64, w http.Respo
 	}
 	defer tx.Rollback()
 
-	// Insere em sp_ignorados (ON CONFLICT — atualiza motivo e responsável)
+	// Insere em sp_ignorados (ON CONFLICT — atualiza tipo e responsável)
 	_, err = tx.Exec(`
 		INSERT INTO smartpick.sp_ignorados
-		  (empresa_id, cd_id, codprod, cod_filial, produto, motivo, ignorado_por)
+		  (empresa_id, cd_id, codprod, cod_filial, produto, tipo_ignorado_id, ignorado_por)
 		VALUES ($1,$2,$3,$4,$5,$6,$7::uuid)
 		ON CONFLICT (empresa_id, cd_id, codprod, cod_filial)
-		DO UPDATE SET motivo = EXCLUDED.motivo, ignorado_por = EXCLUDED.ignorado_por, created_at = now()
-	`, spCtx.EmpresaID, cdID, codprod, codFilial, produto, nilIfEmpty(body.Motivo), spCtx.UserID)
+		DO UPDATE SET tipo_ignorado_id = EXCLUDED.tipo_ignorado_id,
+		              ignorado_por = EXCLUDED.ignorado_por,
+		              created_at = now()
+	`, spCtx.EmpresaID, cdID, codprod, codFilial, produto, *body.TipoIgnoradoID, spCtx.UserID)
 	if err != nil {
 		http.Error(w, "Erro ao registrar ignorado: "+err.Error(), http.StatusInternalServerError)
 		return

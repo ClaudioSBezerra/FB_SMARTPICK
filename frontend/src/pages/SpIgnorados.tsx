@@ -24,7 +24,7 @@ interface Ignorado {
   codprod: number
   cod_filial: number
   produto: string | null
-  motivo: string | null
+  tipo_descricao: string | null
   ignorado_por: string | null
   created_at: string
 }
@@ -124,7 +124,7 @@ export default function SpIgnorados() {
               <TableHead className="py-1.5">Produto</TableHead>
               <TableHead className="py-1.5">Cód.</TableHead>
               <TableHead className="py-1.5">Filial</TableHead>
-              <TableHead className="py-1.5">Motivo</TableHead>
+              <TableHead className="py-1.5">Tipo</TableHead>
               <TableHead className="py-1.5">Ignorado por</TableHead>
               <TableHead className="py-1.5">Data</TableHead>
               <TableHead className="py-1.5 w-24">Ação</TableHead>
@@ -138,8 +138,8 @@ export default function SpIgnorados() {
                 </TableCell>
                 <TableCell className="py-1 font-mono">{item.codprod}</TableCell>
                 <TableCell className="py-1">{item.cod_filial}</TableCell>
-                <TableCell className="py-1 text-muted-foreground max-w-[140px] truncate" title={item.motivo ?? ''}>
-                  {item.motivo || '—'}
+                <TableCell className="py-1 text-muted-foreground max-w-[140px] truncate" title={item.tipo_descricao ?? ''}>
+                  {item.tipo_descricao || '—'}
                 </TableCell>
                 <TableCell className="py-1 text-muted-foreground">{item.ignorado_por || '—'}</TableCell>
                 <TableCell className="py-1 text-muted-foreground whitespace-nowrap">{fmtDate(item.created_at)}</TableCell>

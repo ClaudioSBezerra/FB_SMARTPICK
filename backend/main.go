@@ -423,8 +423,9 @@ func main() {
 	http.HandleFunc("/api/sp/propostas/aprovar-selecionados", withSP(handlers.SpPropostasAprovarSelecionadosHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/", withSP(handlers.SpPropostaItemHandler, "gestor_filial"))
 
-	http.HandleFunc("/api/sp/ignorados",  withSP(handlers.SpIgnoradosHandler, "gestor_filial"))
-	http.HandleFunc("/api/sp/ignorados/", withSP(handlers.SpIgnoradosHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/ignorados/tipos", withSP(handlers.SpIgnoradosTiposHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/ignorados",       withSP(handlers.SpIgnoradosHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/ignorados/",      withSP(handlers.SpIgnoradosHandler, "gestor_filial"))
 
 	http.HandleFunc("/api/sp/usuarios/", withSP(func(db *sql.DB) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

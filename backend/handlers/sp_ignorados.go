@@ -2,8 +2,9 @@ package handlers
 
 // sp_ignorados.go — CRUD de produtos ignorados na calibragem
 //
-// GET    /api/sp/ignorados?cd_id=X  → lista produtos ignorados do CD
-// DELETE /api/sp/ignorados/{id}     → reativa o produto (remove da lista)
+// GET    /api/sp/ignorados/tipos   → lista tipos de ignorado ativos
+// GET    /api/sp/ignorados?cd_id=X → lista produtos ignorados do CD
+// DELETE /api/sp/ignorados/{id}    → reativa o produto (remove da lista)
 
 import (
 	"database/sql"
@@ -14,14 +15,60 @@ import (
 )
 
 type IgnoradoResponse struct {
-	ID          int64   `json:"id"`
-	CdID        int     `json:"cd_id"`
-	CodProd     int     `json:"codprod"`
-	CodFilial   int     `json:"cod_filial"`
-	Produto     *string `json:"produto"`
-	Motivo      *string `json:"motivo"`
-	IgnoradoPor *string `json:"ignorado_por,omitempty"`
-	CreatedAt   string  `json:"created_at"`
+	ID           int64   `json:"id"`
+	CdID         int     `json:"cd_id"`
+	CodProd      int     `json:"codprod"`
+	CodFilial    int     `json:"cod_filial"`
+	Produto      *string `json:"produto"`
+	TipoDescricao *string `json:"tipo_descricao"`
+	IgnoradoPor  *string `json:"ignorado_por,omitempty"`
+	CreatedAt    string  `json:"created_at"`
+}
+
+type TipoIgnoradoResponse struct {
+	ID       int    `json:"id"`
+	Codigo   int    `json:"codigo"`
+	Descricao string `json:"descricao"`
+}
+
+// SpIgnoradosTiposHandler lista os tipos de ignorado ativos.
+// GET /api/sp/ignorados/tipos
+func SpIgnoradosTiposHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT id, codigo, descricao FROM smartpick.sp_tipo_ignorado
+			WHERE ativo = true ORDER BY codigo
+		`)
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var tipos []TipoIgnoradoResponse
+		for rows.Next() {
+			var t TipoIgnoradoResponse
+			if rows.Scan(&t.ID, &t.Codigo, &t.Descricao) == nil {
+				tipos = append(tipos, t)
+			}
+		}
+		if tipos == nil {
+			tipos = []TipoIgnoradoResponse{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tipos)
+	}
 }
 
 // SpIgnoradosHandler lista e remove produtos ignorados.
@@ -78,10 +125,12 @@ func SpIgnoradosHandler(db *sql.DB) http.HandlerFunc {
 
 		cdIDStr := r.URL.Query().Get("cd_id")
 		query := `
-			SELECT i.id, i.cd_id, i.codprod, i.cod_filial, i.produto, i.motivo,
+			SELECT i.id, i.cd_id, i.codprod, i.cod_filial, i.produto,
+			       t.descricao,
 			       u.full_name,
 			       TO_CHAR(i.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 			FROM smartpick.sp_ignorados i
+			LEFT JOIN smartpick.sp_tipo_ignorado t ON t.id = i.tipo_ignorado_id
 			LEFT JOIN public.users u ON u.id = i.ignorado_por
 			WHERE i.empresa_id = $1
 		`
@@ -104,7 +153,7 @@ func SpIgnoradosHandler(db *sql.DB) http.HandlerFunc {
 			var item IgnoradoResponse
 			if err := rows.Scan(
 				&item.ID, &item.CdID, &item.CodProd, &item.CodFilial,
-				&item.Produto, &item.Motivo, &item.IgnoradoPor, &item.CreatedAt,
+				&item.Produto, &item.TipoDescricao, &item.IgnoradoPor, &item.CreatedAt,
 			); err != nil {
 				continue
 			}

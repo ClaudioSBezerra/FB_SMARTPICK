@@ -132,10 +132,21 @@ const indicadorColors: Record<string, string> = {
 
 function IndicadorBadge({ valor }: { valor: string | null }) {
   if (!valor) return <span className="text-muted-foreground text-[10px]">—</span>
+  const dotColor: Record<string, string> = {
+    OK:          'bg-green-500',
+    Urgencia:    'bg-red-500',
+    Ajustar:     'bg-orange-500',
+    'CAP Menor': 'bg-yellow-500',
+  }
   return (
-    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${indicadorColors[valor] ?? 'bg-gray-100'}`}>
-      {valor}
-    </span>
+    <TooltipProvider delayDuration={100}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-block w-2.5 h-2.5 rounded-full cursor-default ${dotColor[valor] ?? 'bg-gray-400'}`} />
+        </TooltipTrigger>
+        <TooltipContent className="text-xs">{valor}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -449,10 +460,8 @@ function PropostasTable({
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger className="cursor-help underline decoration-dotted">Curva</TooltipTrigger>
-                    <TooltipContent className="max-w-64 text-xs">
-                      <p className="font-semibold">Curva ABC de Acesso ao Picking</p>
-                      <p>Classificação gerada pela equipe de TI com base na frequência de acesso ao slot de picking, não por volume de vendas.</p>
-                      <p className="mt-1 text-muted-foreground">Campos: QTACESSO_PICKING_PERIODO_90 · QT_DIAS · CLASSEVENDA_DIAS</p>
+                    <TooltipContent className="text-xs">
+                      CURVA ABC de Acesso ao PICKING
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -478,40 +487,40 @@ function PropostasTable({
               <TableHead className="text-right py-1.5">Sug.</TableHead>
               <TableHead className="text-right py-1.5">Δ</TableHead>
               <TableHead className="py-1.5">Status</TableHead>
-              <TableHead className="py-1.5 text-center">
+              <TableHead className="w-6 py-1.5 text-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted">GiroCap.</TooltipTrigger>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[10px]">GC</TooltipTrigger>
                     <TooltipContent className="max-w-56 text-xs">
-                      <p className="font-semibold">Giro e Capacidade</p>
+                      <p className="font-semibold">GiroCap. — Giro e Capacidade</p>
                       <p>Analisa se o Giro/Dia é ≥ à capacidade atual. Indica risco de ruptura de estoque.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="py-1.5 text-center">
+              <TableHead className="w-6 py-1.5 text-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted">GPRepos.</TooltipTrigger>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[10px]">GP</TooltipTrigger>
                     <TooltipContent className="max-w-56 text-xs">
-                      <p className="font-semibold">Giro e Ponto de Reposição</p>
+                      <p className="font-semibold">GPRepos. — Giro e Ponto de Reposição</p>
                       <p>Analisa se o Giro/Dia é ≥ ao ponto de reposição. Indica que o produto é reposto antes de zerar.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="py-1.5 text-center">
+              <TableHead className="w-6 py-1.5 text-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted">CMEN2DDV</TooltipTrigger>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[10px]">C2D</TooltipTrigger>
                     <TooltipContent className="max-w-56 text-xs">
-                      <p className="font-semibold">Capacidade Menor que 2 DDVs</p>
+                      <p className="font-semibold">CMEN2DDV — Capacidade Menor que 2 DDVs</p>
                       <p>Analisa se a capacidade suporta pelo menos 2 dias de venda. Abaixo disso o risco de ruptura é alto.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="w-28 py-1.5">Ações</TableHead>
+              <TableHead className="w-36 py-1.5">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -542,7 +551,7 @@ function PropostasTable({
                 <TableCell className="py-1 text-center"><IndicadorBadge valor={p._ind.capDias2} /></TableCell>
                 <TableCell className="py-1">
                   {(p.status === 'pendente' || p.status === 'calibrado') && (
-                    <div className="flex gap-1 flex-wrap">
+                    <div className="flex gap-1 items-center">
                       {p.status === 'pendente' && (
                         <>
                           <Button
@@ -660,14 +669,23 @@ export default function SpDashboard() {
   const [motivoSel,     setMotivoSel]     = useState<string>('')
 
   // ── Dialog de ignorar produto ──────────────────────────────────────────────
-  const [ignorarId,     setIgnorarId]     = useState<number | null>(null)
-  const [ignorarMotivo, setIgnorarMotivo] = useState<string>('')
+  const [ignorarId,    setIgnorarId]    = useState<number | null>(null)
+  const [ignorarTipo,  setIgnorarTipo]  = useState<string>('')
 
   // ── Queries base ──────────────────────────────────────────────────────────
   const { data: motivosRejeicao = [] } = useQuery<{ id: number; codigo: number; descricao: string }[]>({
     queryKey: ['sp-motivos-rejeicao'],
     queryFn: async () => {
       const r = await fetch('/api/sp/propostas/motivos-rejeicao', { headers })
+      if (!r.ok) throw new Error()
+      return r.json()
+    },
+  })
+
+  const { data: tiposIgnorado = [] } = useQuery<{ id: number; codigo: number; descricao: string }[]>({
+    queryKey: ['sp-tipos-ignorado'],
+    queryFn: async () => {
+      const r = await fetch('/api/sp/ignorados/tipos', { headers })
       if (!r.ok) throw new Error()
       return r.json()
     },
@@ -837,11 +855,11 @@ export default function SpDashboard() {
 
   // ── Ignorar produto (adiciona à lista de ignorados) ──────────────────────
   const ignorarMutation = useMutation({
-    mutationFn: async ({ id, motivo }: { id: number; motivo: string }) => {
+    mutationFn: async ({ id, tipoId }: { id: number; tipoId: number }) => {
       const r = await fetch(`/api/sp/propostas/${id}/ignorar`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ motivo: motivo || undefined }),
+        body: JSON.stringify({ tipo_ignorado_id: tipoId }),
       })
       if (!r.ok) throw new Error((await r.json()).error ?? 'Erro ao ignorar')
     },
@@ -849,7 +867,7 @@ export default function SpDashboard() {
     onSuccess: () => {
       toast.success('Produto ignorado — não gerará proposta na próxima calibragem')
       setIgnorarId(null)
-      setIgnorarMotivo('')
+      setIgnorarTipo('')
       invalidateAll()
     },
     onError: (e: Error) => toast.error(e.message),
@@ -857,8 +875,8 @@ export default function SpDashboard() {
   })
 
   function confirmarIgnorar() {
-    if (!ignorarId) return
-    ignorarMutation.mutate({ id: ignorarId, motivo: ignorarMotivo })
+    if (!ignorarId || !ignorarTipo) return
+    ignorarMutation.mutate({ id: ignorarId, tipoId: Number(ignorarTipo) })
   }
 
   // ── Aprovar selecionados (filtrados) ──────────────────────────────────────
@@ -1026,7 +1044,7 @@ export default function SpDashboard() {
               onAprovar={id => aprovarMutation.mutate(id)}
               onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
               onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
-              onIgnorar={id => { setIgnorarId(id); setIgnorarMotivo('') }}
+              onIgnorar={id => { setIgnorarId(id); setIgnorarTipo('') }}
               onAprovarLote={ids => aprovarSelecionadosMutation.mutate(ids)}
               loteLoading={aprovarSelecionadosMutation.isPending}
               loadingId={loadingId}
@@ -1044,7 +1062,7 @@ export default function SpDashboard() {
               onAprovar={id => aprovarMutation.mutate(id)}
               onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
               onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
-              onIgnorar={id => { setIgnorarId(id); setIgnorarMotivo('') }}
+              onIgnorar={id => { setIgnorarId(id); setIgnorarTipo('') }}
               onAprovarLote={ids => aprovarSelecionadosMutation.mutate(ids)}
               loteLoading={aprovarSelecionadosMutation.isPending}
               loadingId={loadingId}
@@ -1187,7 +1205,7 @@ export default function SpDashboard() {
       </Dialog>
 
       {/* ── Dialog: Ignorar produto ───────────────────────────────────────── */}
-      <Dialog open={!!ignorarId} onOpenChange={open => { if (!open) { setIgnorarId(null); setIgnorarMotivo('') } }}>
+      <Dialog open={!!ignorarId} onOpenChange={open => { if (!open) { setIgnorarId(null); setIgnorarTipo('') } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Ignorar produto</DialogTitle>
@@ -1198,21 +1216,26 @@ export default function SpDashboard() {
               Você pode reativá-lo a qualquer momento em <strong>Produtos Ignorados</strong>.
             </p>
             <div className="space-y-1">
-              <label className="text-xs font-medium">Motivo (opcional)</label>
-              <Input
-                className="h-8 text-xs"
-                placeholder="Ex: produto em revisão de fornecedor..."
-                value={ignorarMotivo}
-                onChange={e => setIgnorarMotivo(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && confirmarIgnorar()}
-              />
+              <label className="text-xs font-medium">Tipo de ignorado</label>
+              <Select value={ignorarTipo} onValueChange={setIgnorarTipo}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Selecione o tipo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tiposIgnorado.map(t => (
+                    <SelectItem key={t.id} value={String(t.id)} className="text-xs">
+                      {t.descricao}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setIgnorarId(null); setIgnorarMotivo('') }}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setIgnorarId(null); setIgnorarTipo('') }}>Cancelar</Button>
             <Button
               variant="secondary"
-              disabled={ignorarMutation.isPending}
+              disabled={ignorarMutation.isPending || !ignorarTipo}
               onClick={confirmarIgnorar}
             >
               <EyeOff className="h-3.5 w-3.5 mr-1.5" />
