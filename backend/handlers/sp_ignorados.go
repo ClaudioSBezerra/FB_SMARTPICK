@@ -1,0 +1,120 @@
+package handlers
+
+// sp_ignorados.go — CRUD de produtos ignorados na calibragem
+//
+// GET    /api/sp/ignorados?cd_id=X  → lista produtos ignorados do CD
+// DELETE /api/sp/ignorados/{id}     → reativa o produto (remove da lista)
+
+import (
+	"database/sql"
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+type IgnoradoResponse struct {
+	ID          int64   `json:"id"`
+	CdID        int     `json:"cd_id"`
+	CodProd     int     `json:"codprod"`
+	CodFilial   int     `json:"cod_filial"`
+	Produto     *string `json:"produto"`
+	Motivo      *string `json:"motivo"`
+	IgnoradoPor *string `json:"ignorado_por,omitempty"`
+	CreatedAt   string  `json:"created_at"`
+}
+
+// SpIgnoradosHandler lista e remove produtos ignorados.
+// GET    /api/sp/ignorados?cd_id=X
+// DELETE /api/sp/ignorados/{id}
+func SpIgnoradosHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Verifica se há ID no path → DELETE (reativar)
+		rawPath := strings.TrimPrefix(r.URL.Path, "/api/sp/ignorados")
+		rawPath = strings.TrimPrefix(rawPath, "/")
+		if rawPath != "" {
+			if r.Method != http.MethodDelete {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if !spCtx.CanApprove() {
+				http.Error(w, "Forbidden: gestor_geral+ para reativar produto", http.StatusForbidden)
+				return
+			}
+			ignoradoID, err := strconv.ParseInt(rawPath, 10, 64)
+			if err != nil {
+				http.Error(w, "ID inválido", http.StatusBadRequest)
+				return
+			}
+			res, err := db.Exec(`
+				DELETE FROM smartpick.sp_ignorados
+				WHERE id = $1 AND empresa_id = $2
+			`, ignoradoID, spCtx.EmpresaID)
+			if err != nil {
+				http.Error(w, "Erro ao reativar produto: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			n, _ := res.RowsAffected()
+			if n == 0 {
+				http.Error(w, "Produto ignorado não encontrado", http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"message": "Produto reativado com sucesso"})
+			return
+		}
+
+		// GET — lista
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		cdIDStr := r.URL.Query().Get("cd_id")
+		query := `
+			SELECT i.id, i.cd_id, i.codprod, i.cod_filial, i.produto, i.motivo,
+			       u.full_name,
+			       TO_CHAR(i.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+			FROM smartpick.sp_ignorados i
+			LEFT JOIN public.users u ON u.id = i.ignorado_por
+			WHERE i.empresa_id = $1
+		`
+		args := []interface{}{spCtx.EmpresaID}
+		if cdIDStr != "" {
+			query += " AND i.cd_id = $2"
+			args = append(args, cdIDStr)
+		}
+		query += " ORDER BY i.created_at DESC"
+
+		rows, err := db.Query(query, args...)
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var lista []IgnoradoResponse
+		for rows.Next() {
+			var item IgnoradoResponse
+			if err := rows.Scan(
+				&item.ID, &item.CdID, &item.CodProd, &item.CodFilial,
+				&item.Produto, &item.Motivo, &item.IgnoradoPor, &item.CreatedAt,
+			); err != nil {
+				continue
+			}
+			lista = append(lista, item)
+		}
+		if lista == nil {
+			lista = []IgnoradoResponse{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(lista)
+	}
+}

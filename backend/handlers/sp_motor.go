@@ -51,11 +51,14 @@ type enderecoDB struct {
 	ClasseVenda     string
 	ClasseVendaDias *int     // CLASSEVENDA_DIAS do CSV — usado diretamente na fórmula
 	Capacidade      *int
+	NormaPalete     *int     // NORMA_PALETE — arredonda sugestão para múltiplo de palete
 	MedVendaCx      *float64
 	MedVendaDias    *float64
 	MedDiasEstoque  *float64
 	MedVendaCxAA    *float64
 	UnidadeMaster   *int
+	QtAcesso90      *int     // QTACESSO_PICKING_PERIODO_90 — acessos ao picking em 90 dias
+	QtDias          *int     // QT_DIAS — dias do período de análise
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -71,7 +74,9 @@ func nilIfEmptyStr(s string) interface{} {
 // POST /api/sp/motor/calibrar
 // Body: { "job_id": "uuid" }
 //
-// Fórmula aplicada (corrigida): sugestão = ceil( ceil(giroDia/unidadeMaster) × diasClasse × fatorSeguranca )
+// Fórmula aplicada: sugestão = ceil( ceil(giro/master) × diasClasse × fator ) → múltiplo de norma_palete
+// Giro primário: QTACESSO_PICKING_PERIODO_90 / QT_DIAS (Curva ABC de Acesso ao Picking)
+// Fallbacks:     MED_VENDA_DIAS → MED_VENDA_DIAS_CX×master → MED_VENDA_CX_AA×master
 func SpMotorCalibrarHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -174,10 +179,14 @@ func loadMotorParams(db *sql.DB, cdID int) (*motorParams, error) {
 }
 
 func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params *motorParams) (gerado, erros int) {
+	// Carrega produtos ignorados para este CD (skip sem gerar proposta)
+	ignorados := carregarIgnorados(db, empresaID, cdID)
+
 	rows, err := db.Query(`
 		SELECT id, cod_filial, codprod, COALESCE(produto,''), rua, predio, apto,
-		       COALESCE(classe_venda,''), classe_venda_dias, capacidade,
-		       med_venda_cx, med_venda_dias, med_dias_estoque, med_venda_cx_aa, unidade_master
+		       COALESCE(classe_venda,''), classe_venda_dias, capacidade, norma_palete,
+		       med_venda_cx, med_venda_dias, med_dias_estoque, med_venda_cx_aa, unidade_master,
+		       qt_acesso_90, qt_dias
 		FROM smartpick.sp_enderecos
 		WHERE job_id = $1
 	`, jobID)
@@ -189,15 +198,16 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 
 	const batchSize = 200
 	type proposta struct {
-		EnderecoID         int64
-		CodFilial          int
-		CodProd            int
-		Produto            string
-		Rua, Predio, Apto  *int
-		ClasseVenda        string
-		CapacidadeAtual    *int
-		Sugestao           int
-		Justificativa      string
+		EnderecoID        int64
+		CodFilial         int
+		CodProd           int
+		Produto           string
+		Rua, Predio, Apto *int
+		ClasseVenda       string
+		CapacidadeAtual   *int
+		Sugestao          int
+		Justificativa     string
+		Status            string // 'pendente' | 'calibrado'
 	}
 
 	var batch []proposta
@@ -218,8 +228,8 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 			INSERT INTO smartpick.sp_propostas
 			  (job_id, endereco_id, empresa_id, cd_id,
 			   cod_filial, codprod, produto, rua, predio, apto,
-			   classe_venda, capacidade_atual, sugestao_calibragem, justificativa)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+			   classe_venda, capacidade_atual, sugestao_calibragem, justificativa, status)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		`)
 		if err != nil {
 			erros += len(batch)
@@ -232,7 +242,7 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 			_, execErr := stmt.Exec(
 				jobID, p.EnderecoID, empresaID, cdID,
 				p.CodFilial, p.CodProd, p.Produto, p.Rua, p.Predio, p.Apto,
-				nilIfEmptyStr(p.ClasseVenda), p.CapacidadeAtual, p.Sugestao, p.Justificativa,
+				nilIfEmptyStr(p.ClasseVenda), p.CapacidadeAtual, p.Sugestao, p.Justificativa, p.Status,
 			)
 			if execErr != nil {
 				log.Printf("[Motor] erro ao inserir proposta: %v", execErr)
@@ -250,15 +260,31 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 		if err := rows.Scan(
 			&e.ID, &e.CodFilial, &e.CodProd, &e.Produto,
 			&e.Rua, &e.Predio, &e.Apto, &e.ClasseVenda,
-			&e.ClasseVendaDias, &e.Capacidade,
+			&e.ClasseVendaDias, &e.Capacidade, &e.NormaPalete,
 			&e.MedVendaCx, &e.MedVendaDias,
 			&e.MedDiasEstoque, &e.MedVendaCxAA, &e.UnidadeMaster,
+			&e.QtAcesso90, &e.QtDias,
 		); err != nil {
 			erros++
 			continue
 		}
 
+		// Produto ignorado: não gera proposta neste ciclo
+		if ignorados[fmt.Sprintf("%d:%d", e.CodProd, e.CodFilial)] {
+			continue
+		}
+
 		sugestao, justificativa := calcularSugestao(e, params)
+
+		// Determina status: calibrado se dentro de 5% da capacidade atual (≥95% assertividade)
+		status := "pendente"
+		if e.Capacidade != nil && *e.Capacidade > 0 {
+			diff := math.Abs(float64(sugestao-*e.Capacidade)) / float64(*e.Capacidade)
+			if diff <= 0.05 {
+				status = "calibrado"
+			}
+		}
+
 		batch = append(batch, proposta{
 			EnderecoID:      e.ID,
 			CodFilial:       e.CodFilial,
@@ -271,6 +297,7 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 			CapacidadeAtual: e.Capacidade,
 			Sugestao:        sugestao,
 			Justificativa:   justificativa,
+			Status:          status,
 		})
 
 		if len(batch) >= batchSize {
@@ -281,28 +308,54 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 	return
 }
 
+// carregarIgnorados retorna um set de "codprod:cod_filial" ignorados para o CD.
+func carregarIgnorados(db *sql.DB, empresaID string, cdID int) map[string]bool {
+	rows, err := db.Query(`
+		SELECT codprod, cod_filial FROM smartpick.sp_ignorados
+		WHERE empresa_id = $1 AND cd_id = $2
+	`, empresaID, cdID)
+	if err != nil {
+		log.Printf("[Motor] aviso: não foi possível carregar ignorados: %v", err)
+		return map[string]bool{}
+	}
+	defer rows.Close()
+	m := map[string]bool{}
+	for rows.Next() {
+		var cod, filial int
+		if rows.Scan(&cod, &filial) == nil {
+			m[fmt.Sprintf("%d:%d", cod, filial)] = true
+		}
+	}
+	return m
+}
+
 // calcularSugestao aplica a fórmula WMS de calibragem e retorna (sugestão, justificativa).
 //
-// Fórmula: sugestão = ceil(giroDia / unidadeMaster) × diasClasse
+// Giro (prioridade):
+//   1. QTACESSO_PICKING_PERIODO_90 / QT_DIAS  ← Curva ABC de Acesso ao Picking (JC)
+//   2. MED_VENDA_DIAS                          ← média de vendas diária em unidades
+//   3. MED_VENDA_DIAS_CX × unidadeMaster       ← fallback caixas
+//   4. MED_VENDA_DIAS_CX_ANOANT_MESSEG × master ← fallback ano anterior
 //
-//   giroDia      = MED_VENDA_DIAS (unidades/dia) — preferido
-//                  fallback: MED_VENDA_DIAS_CX × unidadeMaster (se só caixas disponível)
-//                  fallback: MED_VENDA_DIAS_CX_ANOANT_MESSEG × unidadeMaster
-//   unidadeMaster = QTUNITCX do CSV (unidades por caixa); padrão 1 se ausente
-//   diasClasse   = CLASSEVENDA_DIAS do CSV; fallback: parâmetros do motor por curva
+// Fórmula: sugestão = ceil( ceil(giro / master) × diasClasse × fator )
+//   depois: arredonda para múltiplo de norma_palete (se norma_palete > 1)
+//   depois: aplica mínimo absoluto e regra Curva A nunca reduz
 func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 	curva := strings.ToUpper(e.ClasseVenda)
-
-	// ── 1. Giro diário em UNIDADES ──────────────────────────────────────────
-	var giroDia float64
-	var fonteGiro string
 
 	unidadeMaster := 1
 	if e.UnidadeMaster != nil && *e.UnidadeMaster > 1 {
 		unidadeMaster = *e.UnidadeMaster
 	}
 
+	// ── 1. Giro diário ────────────────────────────────────────────────────────
+	var giroDia float64
+	var fonteGiro string
+
 	switch {
+	case e.QtAcesso90 != nil && *e.QtAcesso90 > 0 && e.QtDias != nil && *e.QtDias > 0:
+		giroDia = float64(*e.QtAcesso90) / float64(*e.QtDias)
+		fonteGiro = "ACESSO_PICKING/DIA"
 	case e.MedVendaDias != nil && *e.MedVendaDias > 0:
 		giroDia = *e.MedVendaDias
 		fonteGiro = "MED_VENDA_DIAS"
@@ -314,7 +367,7 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 		fonteGiro = "MED_VENDA_CX_AA×master"
 	}
 
-	// ── 2. Dias da classe de venda ──────────────────────────────────────────
+	// ── 2. Dias da classe ─────────────────────────────────────────────────────
 	var diasClasse int
 	var fonteDias string
 
@@ -322,7 +375,6 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 		diasClasse = *e.ClasseVendaDias
 		fonteDias = "CSV"
 	} else {
-		// Fallback: parâmetros configurados no motor
 		switch curva {
 		case "A":
 			diasClasse = p.CurvaAMaxEst
@@ -334,36 +386,46 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 		fonteDias = "params"
 	}
 
-	// ── 3. Fórmula: ceil( ceil(giroDia / unidadeMaster) × diasClasse × fatorSeguranca ) ──
+	// ── 3. Fórmula base ───────────────────────────────────────────────────────
 	caixasGiro := int(math.Ceil(giroDia / float64(unidadeMaster)))
-	sugestao := int(math.Ceil(float64(caixasGiro*diasClasse) * p.FatorSeguranca))
+	formulaBase := int(math.Ceil(float64(caixasGiro*diasClasse) * p.FatorSeguranca))
+	sugestao := formulaBase
 
-	// ── 4. Mínimo absoluto ──────────────────────────────────────────────────
+	// ── 4. Mínimo absoluto ────────────────────────────────────────────────────
 	if sugestao < p.MinCapacidade {
 		sugestao = p.MinCapacidade
 	}
 
-	// ── 5. Curva A: nunca reduz ─────────────────────────────────────────────
+	// ── 5. Norma Palete: arredonda para múltiplo de norma_palete ─────────────
+	var notaNorma string
+	if e.NormaPalete != nil && *e.NormaPalete > 1 {
+		np := *e.NormaPalete
+		if sugestao%np != 0 {
+			sugestao = ((sugestao / np) + 1) * np
+			notaNorma = fmt.Sprintf(" →↑%dcx/palete=%d", np, sugestao)
+		}
+	}
+
+	// ── 6. Curva A: nunca reduz ───────────────────────────────────────────────
 	capAtual := 0
 	if e.Capacidade != nil {
 		capAtual = *e.Capacidade
 	}
-	if curva == "A" && p.CurvaANuncaReduz && sugestao < capAtual {
+	mantidaCurvaA := curva == "A" && p.CurvaANuncaReduz && sugestao < capAtual
+	if mantidaCurvaA {
 		sugestao = capAtual
 	}
 
-	formulaResult := int(math.Ceil(float64(caixasGiro*diasClasse) * p.FatorSeguranca))
+	// ── 7. Justificativa ──────────────────────────────────────────────────────
+	base := fmt.Sprintf(
+		"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) × %.2f(seg) = %d cx%s",
+		curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaBase, notaNorma,
+	)
 	var justificativa string
-	if curva == "A" && p.CurvaANuncaReduz && sugestao == capAtual && formulaResult < capAtual {
-		justificativa = fmt.Sprintf(
-			"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) × %.2f(seg) = %d cx → mantida em %d cx [Curva A nunca reduz]",
-			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaResult, sugestao,
-		)
+	if mantidaCurvaA {
+		justificativa = base + fmt.Sprintf(" → mantida em %d cx [Curva A nunca reduz]", sugestao)
 	} else {
-		justificativa = fmt.Sprintf(
-			"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) × %.2f(seg) = %d cx",
-			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, sugestao,
-		)
+		justificativa = base
 	}
 
 	return sugestao, justificativa

@@ -66,6 +66,7 @@ type PropostasResumo struct {
 	FaltaPendente    int `json:"falta_pendente"`
 	EspacoPendente   int `json:"espaco_pendente"`
 	CalibradoTotal   int `json:"calibrado_total"`
+	IgnoradoTotal    int `json:"ignorado_total"`
 	CurvaAMantida    int `json:"curva_a_mantida"`
 }
 
@@ -141,7 +142,9 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 		case "espaco":
 			query += " AND p.delta < 0"
 		case "calibrado":
-			query += " AND p.delta = 0 AND (p.classe_venda != 'A' OR p.justificativa NOT LIKE '%mantida%')"
+			query += " AND p.status = 'calibrado'"
+		case "ignorado":
+			query += " AND p.status = 'ignorado'"
 		case "curva_a_mantida":
 			query += " AND p.classe_venda = 'A' AND p.delta = 0 AND p.justificativa LIKE '%mantida%'"
 		}
@@ -218,20 +221,22 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 
 		query := `
 			SELECT
-				COUNT(*) FILTER (WHERE status = 'pendente')   AS total_pendente,
-				COUNT(*) FILTER (WHERE status = 'aprovada')   AS total_aprovada,
-				COUNT(*) FILTER (WHERE status = 'rejeitada')  AS total_rejeitada,
+				COUNT(*) FILTER (WHERE status = 'pendente')             AS total_pendente,
+				COUNT(*) FILTER (WHERE status = 'aprovada')             AS total_aprovada,
+				COUNT(*) FILTER (WHERE status = 'rejeitada')            AS total_rejeitada,
 				COUNT(*) FILTER (WHERE status = 'pendente' AND delta > 0) AS falta_pendente,
 				COUNT(*) FILTER (WHERE status = 'pendente' AND delta < 0) AS espaco_pendente,
-				COUNT(*) FILTER (WHERE delta = 0 AND (classe_venda != 'A' OR justificativa NOT LIKE '%mantida%')) AS calibrado_total,
-			COUNT(*) FILTER (WHERE classe_venda = 'A' AND delta = 0 AND justificativa LIKE '%mantida%') AS curva_a_mantida
+				COUNT(*) FILTER (WHERE status = 'calibrado')            AS calibrado_total,
+				COUNT(*) FILTER (WHERE status = 'ignorado')             AS ignorado_total,
+				COUNT(*) FILTER (WHERE classe_venda = 'A' AND delta = 0 AND justificativa LIKE '%mantida%') AS curva_a_mantida
 			FROM smartpick.sp_propostas
 			` + filter
 
 		var resumo PropostasResumo
 		err := db.QueryRow(query, args...).Scan(
 			&resumo.TotalPendente, &resumo.TotalAprovada, &resumo.TotalRejeitada,
-			&resumo.FaltaPendente, &resumo.EspacoPendente, &resumo.CalibradoTotal, &resumo.CurvaAMantida,
+			&resumo.FaltaPendente, &resumo.EspacoPendente, &resumo.CalibradoTotal,
+			&resumo.IgnoradoTotal, &resumo.CurvaAMantida,
 		)
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
@@ -285,6 +290,8 @@ func SpPropostaItemHandler(db *sql.DB) http.HandlerFunc {
 			mudarStatusProposta(db, spCtx, propostaID, "aprovada", nil, w)
 		case r.Method == http.MethodPost && action == "rejeitar":
 			mudarStatusProposta(db, spCtx, propostaID, "rejeitada", r, w)
+		case r.Method == http.MethodPost && action == "ignorar":
+			ignorarProposta(db, spCtx, propostaID, w, r)
 		default:
 			http.Error(w, "Not found", http.StatusNotFound)
 		}
@@ -358,6 +365,80 @@ func mudarStatusProposta(db *sql.DB, spCtx *SmartPickContext, id int64, novoStat
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Status atualizado para " + novoStatus})
+}
+
+// ignorarProposta adiciona o produto na lista de ignorados e marca a proposta como 'ignorado'.
+// POST /api/sp/propostas/{id}/ignorar
+// Body (opcional): { "motivo": "texto livre" }
+func ignorarProposta(db *sql.DB, spCtx *SmartPickContext, id int64, w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Motivo string `json:"motivo"`
+	}
+	json.NewDecoder(r.Body).Decode(&body) // ignora erro — motivo é opcional
+
+	// Busca dados da proposta para popular sp_ignorados
+	var cdID, codprod, codFilial int
+	var produto string
+	err := db.QueryRow(`
+		SELECT cd_id, codprod, cod_filial, COALESCE(produto,'')
+		FROM smartpick.sp_propostas
+		WHERE id = $1 AND empresa_id = $2 AND status IN ('pendente','calibrado')
+	`, id, spCtx.EmpresaID).Scan(&cdID, &codprod, &codFilial, &produto)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Proposta não encontrada ou não está pendente/calibrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Erro ao buscar proposta: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, "Erro ao iniciar transação", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// Insere em sp_ignorados (ON CONFLICT — atualiza motivo e responsável)
+	_, err = tx.Exec(`
+		INSERT INTO smartpick.sp_ignorados
+		  (empresa_id, cd_id, codprod, cod_filial, produto, motivo, ignorado_por)
+		VALUES ($1,$2,$3,$4,$5,$6,$7::uuid)
+		ON CONFLICT (empresa_id, cd_id, codprod, cod_filial)
+		DO UPDATE SET motivo = EXCLUDED.motivo, ignorado_por = EXCLUDED.ignorado_por, created_at = now()
+	`, spCtx.EmpresaID, cdID, codprod, codFilial, produto, nilIfEmpty(body.Motivo), spCtx.UserID)
+	if err != nil {
+		http.Error(w, "Erro ao registrar ignorado: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Marca proposta como 'ignorado'
+	_, err = tx.Exec(`
+		UPDATE smartpick.sp_propostas
+		SET status = 'ignorado', aprovado_por = $1::uuid, aprovado_em = $2
+		WHERE id = $3 AND empresa_id = $4
+	`, spCtx.UserID, time.Now().UTC(), id, spCtx.EmpresaID)
+	if err != nil {
+		http.Error(w, "Erro ao atualizar proposta: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Erro ao confirmar operação", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Produto ignorado com sucesso"})
+}
+
+// nilIfEmpty é uma versão local para string (evita dependência cruzada com csv_worker).
+func nilIfEmpty(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // ─── Motivos de Rejeição ─────────────────────────────────────────────────────

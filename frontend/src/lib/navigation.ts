@@ -20,6 +20,7 @@ export const modules: Record<string, ModuleConfig> = {
     tabs: [
       { label: 'Urgência — Falta',  path: '/dashboard/urgencia/falta' },
       { label: 'Urgência — Espaço', path: '/dashboard/urgencia/espaco' },
+      { label: 'Produtos Ignorados', path: '/dashboard/ignorados' },
     ],
   },
   upload: {

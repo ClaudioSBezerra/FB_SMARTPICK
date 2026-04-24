@@ -17,7 +17,7 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2 } from 'lucide-react'
+import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, EyeOff } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { BatchStatusBar } from '@/components/BatchStatusBar'
 
@@ -62,6 +62,7 @@ interface Resumo {
   falta_pendente: number
   espaco_pendente: number
   calibrado_total: number
+  ignorado_total: number
   curva_a_mantida: number
 }
 
@@ -93,12 +94,15 @@ function AcaoBadge({ delta }: { delta: number }) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    pendente:  'bg-yellow-100 text-yellow-800',
-    aprovada:  'bg-green-100 text-green-800',
-    rejeitada: 'bg-red-100 text-red-800',
+    pendente:   'bg-yellow-100 text-yellow-800',
+    aprovada:   'bg-green-100 text-green-800',
+    rejeitada:  'bg-red-100 text-red-800',
+    calibrado:  'bg-blue-100 text-blue-800',
+    ignorado:   'bg-gray-100 text-gray-500',
   }
   const label: Record<string, string> = {
     pendente: 'Pendente', aprovada: 'Aprovada', rejeitada: 'Rejeitada',
+    calibrado: 'Calibrado', ignorado: 'Ignorado',
   }
   return (
     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${map[status] ?? 'bg-gray-100'}`}>
@@ -199,12 +203,13 @@ function SugestaoCell({
 // ─── Tabela de propostas ──────────────────────────────────────────────────────
 
 function PropostasTable({
-  propostas, onAprovar, onRejeitar, onEditar, onAprovarLote, loadingId, loteLoading,
+  propostas, onAprovar, onRejeitar, onEditar, onIgnorar, onAprovarLote, loadingId, loteLoading,
 }: {
   propostas: Proposta[]
   onAprovar: (id: number) => void
   onRejeitar: (id: number) => void
   onEditar: (id: number, valor: number) => void
+  onIgnorar?: (id: number) => void
   onAprovarLote?: (ids: number[]) => void
   loadingId: number | null
   loteLoading?: boolean
@@ -440,12 +445,35 @@ function PropostasTable({
           <TableHeader>
             <TableRow className="text-[11px]">
               <TableHead className="w-[72px] py-1.5">Depto/Seção</TableHead>
-              <TableHead className="w-7 py-1.5">Curva</TableHead>
+              <TableHead className="w-7 py-1.5">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted">Curva</TooltipTrigger>
+                    <TooltipContent className="max-w-64 text-xs">
+                      <p className="font-semibold">Curva ABC de Acesso ao Picking</p>
+                      <p>Classificação gerada pela equipe de TI com base na frequência de acesso ao slot de picking, não por volume de vendas.</p>
+                      <p className="mt-1 text-muted-foreground">Campos: QTACESSO_PICKING_PERIODO_90 · QT_DIAS · CLASSEVENDA_DIAS</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </TableHead>
               <TableHead className="py-1.5 max-w-[120px]">Produto</TableHead>
               <TableHead className="py-1.5">Cód.</TableHead>
               <TableHead className="py-1.5">Ender.</TableHead>
               <TableHead className="text-right py-1.5">Cap.</TableHead>
-              <TableHead className="text-right py-1.5">Giro/dia</TableHead>
+              <TableHead className="text-right py-1.5">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted">Giro/dia</TooltipTrigger>
+                    <TooltipContent className="max-w-64 text-xs">
+                      <p className="font-semibold">Quantidade de Acesso / Dia</p>
+                      <p>Número de acessos ao slot de picking por dia no período analisado.</p>
+                      <p className="mt-1 text-muted-foreground">Fórmula: QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS</p>
+                      <p className="text-muted-foreground">Fallback: MED_VENDA_DIAS → MED_VENDA_DIAS_CX</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </TableHead>
               <TableHead className="text-right py-1.5">Méd.Vda</TableHead>
               <TableHead className="text-right py-1.5">Sug.</TableHead>
               <TableHead className="text-right py-1.5">Δ</TableHead>
@@ -513,24 +541,47 @@ function PropostasTable({
                 <TableCell className="py-1 text-center"><IndicadorBadge valor={p._ind.giroPR} /></TableCell>
                 <TableCell className="py-1 text-center"><IndicadorBadge valor={p._ind.capDias2} /></TableCell>
                 <TableCell className="py-1">
-                  {p.status === 'pendente' && (
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm" variant="outline"
-                        className="h-6 text-[10px] text-green-700 border-green-200 hover:bg-green-50 px-1.5"
-                        disabled={loadingId === p.id}
-                        onClick={() => onAprovar(p.id)}
-                      >
-                        <Check className="h-3 w-3 mr-0.5" />Aprovar
-                      </Button>
-                      <Button
-                        size="sm" variant="outline"
-                        className="h-6 text-[10px] text-red-600 border-red-200 hover:bg-red-50 px-1.5"
-                        disabled={loadingId === p.id}
-                        onClick={() => onRejeitar(p.id)}
-                      >
-                        <ThumbsDown className="h-3 w-3" />
-                      </Button>
+                  {(p.status === 'pendente' || p.status === 'calibrado') && (
+                    <div className="flex gap-1 flex-wrap">
+                      {p.status === 'pendente' && (
+                        <>
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-6 text-[10px] text-green-700 border-green-200 hover:bg-green-50 px-1.5"
+                            disabled={loadingId === p.id}
+                            onClick={() => onAprovar(p.id)}
+                          >
+                            <Check className="h-3 w-3 mr-0.5" />Aprovar
+                          </Button>
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-6 text-[10px] text-red-600 border-red-200 hover:bg-red-50 px-1.5"
+                            disabled={loadingId === p.id}
+                            onClick={() => onRejeitar(p.id)}
+                          >
+                            <ThumbsDown className="h-3 w-3" />
+                          </Button>
+                        </>
+                      )}
+                      {onIgnorar && (
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm" variant="outline"
+                                className="h-6 text-[10px] text-gray-500 border-gray-200 hover:bg-gray-50 px-1.5"
+                                disabled={loadingId === p.id}
+                                onClick={() => onIgnorar(p.id)}
+                              >
+                                <EyeOff className="h-3 w-3" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="text-xs">
+                              Ignorar — não gera proposta na próxima carga
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     </div>
                   )}
                 </TableCell>
@@ -607,6 +658,10 @@ export default function SpDashboard() {
   // ── Dialog de motivo de rejeição ──────────────────────────────────────────
   const [rejeitarId,    setRejeitarId]    = useState<number | null>(null)
   const [motivoSel,     setMotivoSel]     = useState<string>('')
+
+  // ── Dialog de ignorar produto ──────────────────────────────────────────────
+  const [ignorarId,     setIgnorarId]     = useState<number | null>(null)
+  const [ignorarMotivo, setIgnorarMotivo] = useState<string>('')
 
   // ── Queries base ──────────────────────────────────────────────────────────
   const { data: motivosRejeicao = [] } = useQuery<{ id: number; codigo: number; descricao: string }[]>({
@@ -780,6 +835,32 @@ export default function SpDashboard() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Ignorar produto (adiciona à lista de ignorados) ──────────────────────
+  const ignorarMutation = useMutation({
+    mutationFn: async ({ id, motivo }: { id: number; motivo: string }) => {
+      const r = await fetch(`/api/sp/propostas/${id}/ignorar`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: motivo || undefined }),
+      })
+      if (!r.ok) throw new Error((await r.json()).error ?? 'Erro ao ignorar')
+    },
+    onMutate: ({ id }) => setLoadingId(id),
+    onSuccess: () => {
+      toast.success('Produto ignorado — não gerará proposta na próxima calibragem')
+      setIgnorarId(null)
+      setIgnorarMotivo('')
+      invalidateAll()
+    },
+    onError: (e: Error) => toast.error(e.message),
+    onSettled: () => setLoadingId(null),
+  })
+
+  function confirmarIgnorar() {
+    if (!ignorarId) return
+    ignorarMutation.mutate({ id: ignorarId, motivo: ignorarMotivo })
+  }
+
   // ── Aprovar selecionados (filtrados) ──────────────────────────────────────
   const aprovarSelecionadosMutation = useMutation({
     mutationFn: async (ids: number[]) => {
@@ -945,6 +1026,7 @@ export default function SpDashboard() {
               onAprovar={id => aprovarMutation.mutate(id)}
               onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
               onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
+              onIgnorar={id => { setIgnorarId(id); setIgnorarMotivo('') }}
               onAprovarLote={ids => aprovarSelecionadosMutation.mutate(ids)}
               loteLoading={aprovarSelecionadosMutation.isPending}
               loadingId={loadingId}
@@ -962,6 +1044,7 @@ export default function SpDashboard() {
               onAprovar={id => aprovarMutation.mutate(id)}
               onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
               onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
+              onIgnorar={id => { setIgnorarId(id); setIgnorarMotivo('') }}
               onAprovarLote={ids => aprovarSelecionadosMutation.mutate(ids)}
               loteLoading={aprovarSelecionadosMutation.isPending}
               loadingId={loadingId}
@@ -1098,6 +1181,42 @@ export default function SpDashboard() {
               onClick={confirmarRejeicao}
             >
               {rejeitarMutation.isPending ? 'Rejeitando...' : 'Confirmar rejeição'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Ignorar produto ───────────────────────────────────────── */}
+      <Dialog open={!!ignorarId} onOpenChange={open => { if (!open) { setIgnorarId(null); setIgnorarMotivo('') } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Ignorar produto</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-xs text-muted-foreground">
+              Este produto não gerará proposta de ajuste nem de redução nas próximas calibragens.
+              Você pode reativá-lo a qualquer momento em <strong>Produtos Ignorados</strong>.
+            </p>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Motivo (opcional)</label>
+              <Input
+                className="h-8 text-xs"
+                placeholder="Ex: produto em revisão de fornecedor..."
+                value={ignorarMotivo}
+                onChange={e => setIgnorarMotivo(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && confirmarIgnorar()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIgnorarId(null); setIgnorarMotivo('') }}>Cancelar</Button>
+            <Button
+              variant="secondary"
+              disabled={ignorarMutation.isPending}
+              onClick={confirmarIgnorar}
+            >
+              <EyeOff className="h-3.5 w-3.5 mr-1.5" />
+              {ignorarMutation.isPending ? 'Ignorando...' : 'Confirmar'}
             </Button>
           </DialogFooter>
         </DialogContent>

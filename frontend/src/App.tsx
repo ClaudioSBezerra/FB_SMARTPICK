@@ -6,6 +6,7 @@ import AdminUsers from './pages/AdminUsers'
 import SpUsuarios from './pages/SpUsuarios'
 import SpAmbiente from './pages/SpAmbiente'
 import SpUploadCSV from './pages/SpUploadCSV'
+import SpIgnorados from './pages/SpIgnorados'
 import SpDashboard from './pages/SpDashboard'
 import SpGerarPDF from './pages/SpGerarPDF'
 import SpHistorico from './pages/SpHistorico'
@@ -142,6 +143,9 @@ function AppLayout() {
               {/* Dashboard de Urgência (Epic 5) */}
               <Route path="/dashboard/urgencia/falta"  element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
               <Route path="/dashboard/urgencia/espaco" element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
+
+              {/* Produtos Ignorados */}
+              <Route path="/dashboard/ignorados" element={<ProtectedRoute><SpIgnorados /></ProtectedRoute>} />
 
               {/* Upload CSV (Epic 4) */}
               <Route path="/upload/csv" element={<ProtectedRoute><SpUploadCSV /></ProtectedRoute>} />
