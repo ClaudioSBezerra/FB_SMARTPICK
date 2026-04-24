@@ -15,7 +15,7 @@ package services
 //   4. Insere em sp_enderecos (batch por transação)
 //   5. Marca job como 'done' (ou 'failed' em caso de erro)
 //
-// Separadores CSV (Calibragem_WMS_v2.csv):
+// Separadores CSV (Calibragem_WMS_v3.csv):
 //   delimitador: ';'
 //   decimal:     ',' (ex: "10,86" → 10.86)
 //   encoding:    UTF-8 com BOM (bytes 0xEF 0xBB 0xBF removidos)
@@ -106,8 +106,9 @@ type csvCols struct {
 	codProd, produto, embalagem, qtUnitCx, foraLinha int
 	rua, predio, apto                               int
 	capacidade, normaPalete, pontoRep               int
+	participacao, acumulado                         int
 	classeVenda, classeDias                         int
-	giroDia, acesso90                               int
+	giroDia, acesso90, qtMovPicking90               int
 	qtDias, qtProd, qtProdCx                        int
 	medVendaCx, medVendaDias, medDiasEst, medVendaCxAA int
 }
@@ -139,14 +140,17 @@ func detectCols(header []string) csvCols {
 		rua:          get("RUA"),
 		predio:       get("PREDIO"),
 		apto:         get("APTO"),
-		capacidade:   get("CAPACIDADE"),
-		normaPalete:  get("NORMA_PALETE"),
-		pontoRep:     get("PONTOREPOSICAO"),
-		classeVenda:  get("CLASSEVENDA"),
+		capacidade:      get("CAPACIDADE"),
+		normaPalete:     get("NORMA_PALETE"),
+		pontoRep:        get("PONTOREPOSICAO"),
+		participacao:    get("PARTICIPACAO"),
+		acumulado:       get("ACUMULADO"),
+		classeVenda:     get("CLASSEVENDA"),
 		classeDias:   get("CLASSEVENDA_DIAS"),
-		giroDia:      get("QTGIRODIA_SISTEMA"),
-		acesso90:     get("QTACESSO_PICKING_PERIODO_90"),
-		qtDias:       get("QT_DIAS"),
+		giroDia:         get("QTGIRODIA_SISTEMA"),
+		acesso90:        get("QTACESSO_PICKING_PERIODO_90"),
+		qtMovPicking90:  get("QT_MOV_PICKING_90"),
+		qtDias:          get("QT_DIAS"),
 		qtProd:       get("QT_PROD"),
 		qtProdCx:     get("QT_PROD_CX"),
 		medVendaCx:   get("MED_VENDA_DIAS_CX"),
@@ -221,12 +225,15 @@ func parseAndInsertCSV(db *sql.DB, jobID, filePath, _ string, filialID int) (ok,
 			INSERT INTO smartpick.sp_enderecos (
 				job_id, filial_id, cod_filial, codepto, departamento, codsec, secao,
 				codprod, produto, embalagem, fora_linha, rua, predio, apto,
-				capacidade, norma_palete, ponto_reposicao, classe_venda, classe_venda_dias,
-				qt_giro_dia, qt_acesso_90, qt_dias, qt_prod, qt_prod_cx,
+				capacidade, norma_palete, ponto_reposicao,
+				participacao, acumulado,
+				classe_venda, classe_venda_dias,
+				qt_giro_dia, qt_acesso_90, qt_mov_picking_90, qt_dias, qt_prod, qt_prod_cx,
 				med_venda_cx, med_venda_dias, med_dias_estoque, med_venda_cx_aa, unidade_master
 			) VALUES (
 				$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-				$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
+				$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,
+				$28,$29,$30,$31,$32
 			)
 		`)
 		if stmtErr != nil {
@@ -326,35 +333,38 @@ func rowToArgs(jobID string, filialID int, row []string, cols csvCols) []any {
 	}
 
 	return []any{
-		jobID,                      // $1  job_id
-		filialID,                   // $2  filial_id
-		codFilialVal,               // $3  cod_filial
-		parseInt(cols.codEpto),     // $4  codepto
-		get(cols.departamento),     // $5  departamento
-		parseInt(cols.codSec),      // $6  codsec
-		get(cols.secao),            // $7  secao
-		parseInt(cols.codProd),     // $8  codprod
-		get(cols.produto),          // $9  produto
-		get(cols.embalagem),        // $10 embalagem
-		foraLinha,                  // $11 fora_linha
-		parseInt(cols.rua),         // $12 rua
-		parseInt(cols.predio),      // $13 predio
-		parseInt(cols.apto),        // $14 apto
-		parseInt(cols.capacidade),  // $15 capacidade
-		parseInt(cols.normaPalete), // $16 norma_palete
-		parseInt(cols.pontoRep),    // $17 ponto_reposicao
-		nilIfEmpty(classeVenda),    // $18 classe_venda
-		parseInt(cols.classeDias),  // $19 classe_venda_dias
-		parseFloat(cols.giroDia),   // $20 qt_giro_dia
-		parseInt(cols.acesso90),    // $21 qt_acesso_90
-		parseInt(cols.qtDias),      // $22 qt_dias
-		parseInt(cols.qtProd),      // $23 qt_prod
-		parseInt(cols.qtProdCx),    // $24 qt_prod_cx
-		parseFloat(cols.medVendaCx),  // $25 med_venda_cx
-		parseFloat(cols.medVendaDias), // $26 med_venda_dias
-		parseFloat(cols.medDiasEst),  // $27 med_dias_estoque
-		parseFloat(cols.medVendaCxAA), // $28 med_venda_cx_aa
-		parseInt(cols.qtUnitCx),    // $29 unidade_master (QTUNITCX; nil quando ausente)
+		jobID,                         // $1  job_id
+		filialID,                      // $2  filial_id
+		codFilialVal,                  // $3  cod_filial
+		parseInt(cols.codEpto),        // $4  codepto
+		get(cols.departamento),        // $5  departamento
+		parseInt(cols.codSec),         // $6  codsec
+		get(cols.secao),               // $7  secao
+		parseInt(cols.codProd),        // $8  codprod
+		get(cols.produto),             // $9  produto
+		get(cols.embalagem),           // $10 embalagem
+		foraLinha,                     // $11 fora_linha
+		parseInt(cols.rua),            // $12 rua
+		parseInt(cols.predio),         // $13 predio
+		parseInt(cols.apto),           // $14 apto
+		parseInt(cols.capacidade),     // $15 capacidade
+		parseInt(cols.normaPalete),    // $16 norma_palete
+		parseInt(cols.pontoRep),       // $17 ponto_reposicao
+		parseFloat(cols.participacao), // $18 participacao  (% participação nas vendas)
+		parseFloat(cols.acumulado),    // $19 acumulado     (% acumulada — corte ABC)
+		nilIfEmpty(classeVenda),       // $20 classe_venda
+		parseInt(cols.classeDias),     // $21 classe_venda_dias
+		parseFloat(cols.giroDia),      // $22 qt_giro_dia
+		parseInt(cols.acesso90),       // $23 qt_acesso_90
+		parseInt(cols.qtMovPicking90), // $24 qt_mov_picking_90 (peças/cx movimentadas em 90 dias)
+		parseInt(cols.qtDias),         // $25 qt_dias
+		parseInt(cols.qtProd),         // $26 qt_prod
+		parseInt(cols.qtProdCx),       // $27 qt_prod_cx
+		parseFloat(cols.medVendaCx),   // $28 med_venda_cx
+		parseFloat(cols.medVendaDias), // $29 med_venda_dias
+		parseFloat(cols.medDiasEst),   // $30 med_dias_estoque
+		parseFloat(cols.medVendaCxAA), // $31 med_venda_cx_aa
+		parseInt(cols.qtUnitCx),       // $32 unidade_master (QTUNITCX; nil quando ausente)
 	}
 }
 
