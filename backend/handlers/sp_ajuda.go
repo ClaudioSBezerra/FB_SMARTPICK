@@ -123,7 +123,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		}
 		messages = append(messages, req.Messages...)
 
-		// Modelo primário (free tier Z.AI). Em 429, faz retry com o fallback.
+		// Modelo pago glm-4.5-air ($0.20/$1.10 por 1M tokens) — mais estável que tier free
 		buildPayload := func(model string) []byte {
 			b, _ := json.Marshal(mistralRequest{
 				Model:       model,
@@ -133,7 +133,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 			})
 			return b
 		}
-		payload := buildPayload("glm-4.7-flash")
+		payload := buildPayload("glm-4.5-air")
 
 		httpReq, err := http.NewRequest("POST", "https://api.z.ai/api/paas/v4/chat/completions", bytes.NewReader(payload))
 		if err != nil {
@@ -169,17 +169,38 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Em 429, tenta o modelo de fallback glm-4.5-flash (mesmo padrão do FB_APU01)
-		// Sem sleep — o nginx do Hostinger tem timeout de proxy curto (~30s)
+		// Detecta erros específicos da Z.AI no body do 429
+		isOverload := false
+		isRateLimit := false
 		if resp.StatusCode == http.StatusTooManyRequests {
-			log.Printf("[ajuda] 429 em glm-4.7-flash (body=%s), retry imediato com glm-4.5-flash", string(raw))
-			resp, raw, err = doRequest(buildPayload("glm-4.5-flash"))
+			var errCheck struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			_ = json.Unmarshal(raw, &errCheck)
+			switch errCheck.Error.Code {
+			case "1305": // Service temporarily overloaded
+				isOverload = true
+			case "1113": // Insufficient balance
+				// já tratado abaixo
+			default:
+				isRateLimit = true
+			}
+		}
+
+		// Em sobrecarga (1305) ou rate limit, tenta uma vez com glm-4.6 (modelo pago alternativo)
+		if isOverload || isRateLimit {
+			log.Printf("[ajuda] 429 em glm-4.5-air (body=%s), retry com glm-4.6", string(raw))
+			resp, raw, err = doRequest(buildPayload("glm-4.6"))
 			if err != nil {
 				log.Printf("[ajuda] erro de transporte no retry: %v", err)
-				http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				w.Write([]byte(`{"error":"Serviço de IA momentaneamente indisponível. Tente novamente em alguns segundos."}`))
 				return
 			}
-			log.Printf("[ajuda] retry glm-4.5-flash status=%d body=%s", resp.StatusCode, string(raw))
+			log.Printf("[ajuda] retry glm-4.6 status=%d body=%s", resp.StatusCode, string(raw))
 		}
 
 		writeErr := func(msg string) {
