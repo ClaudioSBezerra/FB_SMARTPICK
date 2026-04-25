@@ -458,6 +458,20 @@ func main() {
 	// ── SmartPick — Assistente de Treinamento ───────────────────────────────
 	http.HandleFunc("/api/sp/ajuda/chat", withSP(handlers.SpAjudaChatHandler, ""))
 
+	// ── SmartPick — Resumos Executivos Semanais ─────────────────────────────
+	http.HandleFunc("/api/sp/relatorios",        withSP(handlers.SpResumosHandler, "gestor_filial"))
+	http.HandleFunc("/api/sp/relatorios/",       withSP(func(db *sql.DB) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/gerar") {
+				handlers.SpResumoGerarHandler(db)(w, r)
+				return
+			}
+			handlers.SpResumoItemHandler(db)(w, r)
+		}
+	}, "gestor_filial"))
+	http.HandleFunc("/api/sp/admin/destinatarios",  withSP(handlers.SpDestinatariosHandler, "admin_fbtax"))
+	http.HandleFunc("/api/sp/admin/destinatarios/", withSP(handlers.SpDestinatariosHandler, "admin_fbtax"))
+
 	// ── SmartPick — Admin / Manutenção ───────────────────────────────────────
 	http.HandleFunc("/api/sp/admin/limpar-calibragem",   withSP(handlers.SpLimparCalibragemHandler, "admin_fbtax"))
 	http.HandleFunc("/api/sp/admin/purgar-csv-antigos", withSP(handlers.SpPurgarCsvAntigosHandler, "gestor_geral"))

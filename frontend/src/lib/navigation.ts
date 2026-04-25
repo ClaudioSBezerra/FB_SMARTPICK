@@ -55,6 +55,7 @@ export const modules: Record<string, ModuleConfig> = {
     label: 'Painel de Resultados',
     tabs: [
       { label: 'Resultados e Métricas 4 Ciclos', path: '/resultados' },
+      { label: 'Resumos Executivos (IA)',        path: '/resumos' },
     ],
   },
   // ── Administração (gestor_filial+ — oculto para admin) ───────────────────
@@ -89,6 +90,7 @@ export function getActiveModule(pathname: string): string {
   if (pathname.startsWith('/pdf')) return 'pdf'
   if (pathname.startsWith('/reincidencia')) return 'reincidencia'
   if (pathname.startsWith('/resultados')) return 'resultados'
+  if (pathname.startsWith('/resumos'))    return 'resultados'
   if (pathname.startsWith('/gestao')) return 'gestao'
   if (pathname.startsWith('/config')) return 'config'
   return 'dashboard'

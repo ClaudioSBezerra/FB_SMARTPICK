@@ -12,6 +12,7 @@ import SpGerarPDF from './pages/SpGerarPDF'
 import SpHistorico from './pages/SpHistorico'
 import SpReincidencia from './pages/SpReincidencia'
 import SpResultados from './pages/SpResultados'
+import SpResumoExecutivo from './pages/SpResumoExecutivo'
 import SpAuditLog from './pages/SpAuditLog'
 import SpEmpresasBloqueio from './pages/SpEmpresasBloqueio'
 import SpUsoSistema from './pages/SpUsoSistema'
@@ -167,6 +168,9 @@ function AppLayout() {
 
               {/* Painel de Resultados (Epic 9) */}
               <Route path="/resultados" element={<ProtectedRoute><SpResultados /></ProtectedRoute>} />
+
+              {/* Resumo Executivo Semanal (IA) */}
+              <Route path="/resumos" element={<ProtectedRoute><SpResumoExecutivo /></ProtectedRoute>} />
 
               {/* PDF (Epic 6) */}
               <Route path="/pdf/gerar" element={<ProtectedRoute><SpGerarPDF /></ProtectedRoute>} />
