@@ -1016,8 +1016,6 @@ export default function SpDashboard() {
 
       {hasFilters && (
         <Tabs value={activeTab} onValueChange={v => setActiveTab(v)}>
-          <div>
-
           {/* ── Aba: Ampliar Slot ───────────────────────────────────────── */}
           <TabsContent value="falta" className="space-y-3">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
