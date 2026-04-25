@@ -123,7 +123,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		messages = append(messages, req.Messages...)
 
 		payload, _ := json.Marshal(mistralRequest{
-			Model:       "glm-4-flash",
+			Model:       "glm-4.5-air",
 			Messages:    messages,
 			MaxTokens:   1024,
 			Temperature: 0.3,
