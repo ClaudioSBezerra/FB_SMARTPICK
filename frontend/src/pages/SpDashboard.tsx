@@ -947,17 +947,29 @@ export default function SpDashboard() {
           </div>
         )}
 
-        {/* Badges de urgência — visíveis assim que o resumo carregar */}
+        {/* Badges de resumo — visíveis assim que o resumo carregar */}
         {resumo && (
           <>
             <div className="border rounded-lg px-3 py-1.5 bg-red-50 min-w-[90px] text-center">
-              <span className="text-xs font-medium text-red-600 block leading-tight">Urgência Falta</span>
+              <span className="text-xs font-medium text-red-600 block leading-tight">Ampliar Slot</span>
               <span className="font-bold text-red-700 text-xl leading-tight">{resumo.falta_pendente}</span>
             </div>
             <div className="border rounded-lg px-3 py-1.5 bg-yellow-50 min-w-[90px] text-center">
-              <span className="text-xs font-medium text-yellow-700 block leading-tight">Urgência Espaço</span>
+              <span className="text-xs font-medium text-yellow-700 block leading-tight">Reduzir Slot</span>
               <span className="font-bold text-yellow-700 text-xl leading-tight">{resumo.espaco_pendente}</span>
             </div>
+            {resumo.calibrado_total > 0 && (
+              <div className="border rounded-lg px-3 py-1.5 bg-blue-50 min-w-[90px] text-center">
+                <span className="text-xs font-medium text-blue-600 block leading-tight">Já Calibrados</span>
+                <span className="font-bold text-blue-700 text-xl leading-tight">{resumo.calibrado_total}</span>
+              </div>
+            )}
+            {resumo.curva_a_mantida > 0 && (
+              <div className="border rounded-lg px-3 py-1.5 bg-amber-50 min-w-[90px] text-center">
+                <span className="text-xs font-medium text-amber-700 block leading-tight">Curva A — Revisar</span>
+                <span className="font-bold text-amber-700 text-xl leading-tight">{resumo.curva_a_mantida}</span>
+              </div>
+            )}
             <div className="border rounded-lg px-3 py-1.5 bg-gray-50 min-w-[90px] text-center">
               <span className="text-xs font-medium text-gray-500 block leading-tight">Prod. Ignorados</span>
               <span className="font-bold text-gray-600 text-xl leading-tight">{resumo.ignorado_total}</span>
@@ -970,36 +982,9 @@ export default function SpDashboard() {
         </Button>
       </div>
 
-      {/* Barra de lote + cards de detalhe lado a lado */}
+      {/* Barra de lote */}
       {resumo && (
-        <div className="flex gap-4 items-start flex-wrap">
-          <div className="flex-1 min-w-[280px]">
-            <BatchStatusBar resumo={resumo} />
-          </div>
-
-          <div className="flex gap-2 flex-wrap shrink-0">
-            <div className="border rounded-lg px-3 py-1.5 bg-red-50 min-w-[80px] text-center">
-              <span className="text-xs font-medium text-red-600 block leading-tight">Ampliar Slot</span>
-              <span className="font-bold text-red-700 text-lg leading-tight">{resumo.falta_pendente}</span>
-            </div>
-            <div className="border rounded-lg px-3 py-1.5 bg-yellow-50 min-w-[80px] text-center">
-              <span className="text-xs font-medium text-yellow-700 block leading-tight">Reduzir Slot</span>
-              <span className="font-bold text-yellow-700 text-lg leading-tight">{resumo.espaco_pendente}</span>
-            </div>
-            {resumo.calibrado_total > 0 && (
-              <div className="border rounded-lg px-3 py-1.5 bg-blue-50 min-w-[80px] text-center">
-                <span className="text-xs font-medium text-blue-600 block leading-tight">Já Calibrados</span>
-                <span className="font-bold text-blue-700 text-lg leading-tight">{resumo.calibrado_total}</span>
-              </div>
-            )}
-            {resumo.curva_a_mantida > 0 && (
-              <div className="border rounded-lg px-3 py-1.5 bg-amber-50 min-w-[80px] text-center">
-                <span className="text-xs font-medium text-amber-700 block leading-tight">Curva A</span>
-                <span className="font-bold text-amber-700 text-lg leading-tight">{resumo.curva_a_mantida}</span>
-              </div>
-            )}
-          </div>
-        </div>
+        <BatchStatusBar resumo={resumo} />
       )}
 
       {!hasFilters && (
