@@ -13,6 +13,7 @@ import SpHistorico from './pages/SpHistorico'
 import SpReincidencia from './pages/SpReincidencia'
 import SpResultados from './pages/SpResultados'
 import SpResumoExecutivo from './pages/SpResumoExecutivo'
+import SpDestinatarios from './pages/SpDestinatarios'
 import SpAuditLog from './pages/SpAuditLog'
 import SpEmpresasBloqueio from './pages/SpEmpresasBloqueio'
 import SpUsoSistema from './pages/SpUsoSistema'
@@ -188,6 +189,7 @@ function AppLayout() {
               <Route path="/config/audit-log"   element={<MasterRoute><SpAuditLog /></MasterRoute>} />
               <Route path="/config/empresas-bloqueio" element={<MasterRoute><SpEmpresasBloqueio /></MasterRoute>} />
               <Route path="/config/uso"         element={<MasterRoute><SpUsoSistema /></MasterRoute>} />
+              <Route path="/config/destinatarios" element={<MasterRoute><SpDestinatarios /></MasterRoute>} />
 
               {/* Redirecionamentos de rotas antigas */}
               <Route path="/config/parametros-motor" element={<Navigate to="/gestao/regras" replace />} />

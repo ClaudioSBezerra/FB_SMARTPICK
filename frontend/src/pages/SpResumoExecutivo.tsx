@@ -5,7 +5,7 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
-import { Sparkles, Loader2, Mail, FileText, ChevronRight } from 'lucide-react'
+import { Sparkles, Loader2, Mail, FileText, ChevronRight, Send } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface SpFilial { id: number; cod_filial: number; nome: string }
@@ -145,6 +145,21 @@ export default function SpResumoExecutivo() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const enviarMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await fetch(`/api/sp/relatorios/${id}/enviar`, { method: 'POST', headers })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error ?? 'Erro ao enviar')
+      return data as { enviados: string[]; total: number }
+    },
+    onSuccess: data => {
+      toast.success(`Enviado para ${data.total} destinatário(s)`)
+      qc.invalidateQueries({ queryKey: ['sp-resumos'] })
+      qc.invalidateQueries({ queryKey: ['sp-resumo-item'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   // Auto-seleciona o resumo mais recente quando carrega a lista
   useEffect(() => {
     if (resumos.length && !resumoSel) setResumoSel(resumos[0].id)
@@ -247,13 +262,32 @@ export default function SpResumoExecutivo() {
             {detalhe && (
               <div className="border rounded-lg bg-white">
                 {/* Cabeçalho */}
-                <div className="border-b p-4">
-                  <h2 className="text-base font-semibold">
-                    Resumo Executivo — {detalhe.dados.cd_nome}
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    {detalhe.dados.filial_nome} · período {new Date(detalhe.periodo_inicio).toLocaleDateString('pt-BR')} a {new Date(detalhe.periodo_fim).toLocaleDateString('pt-BR')}
-                  </p>
+                <div className="border-b p-4 flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-semibold">
+                      Resumo Executivo — {detalhe.dados.cd_nome}
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      {detalhe.dados.filial_nome} · período {new Date(detalhe.periodo_inicio).toLocaleDateString('pt-BR')} a {new Date(detalhe.periodo_fim).toLocaleDateString('pt-BR')}
+                    </p>
+                    {detalhe.enviado_em && (
+                      <p className="text-[11px] text-green-700 flex items-center gap-1 mt-1">
+                        <Mail className="h-3 w-3" /> Enviado em {new Date(detalhe.enviado_em).toLocaleString('pt-BR')}
+                      </p>
+                    )}
+                  </div>
+                  {isMaster && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={enviarMutation.isPending}
+                      onClick={() => enviarMutation.mutate(detalhe.id)}
+                    >
+                      {enviarMutation.isPending
+                        ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Enviando…</>
+                        : <><Send className="h-3.5 w-3.5 mr-1" />{detalhe.enviado_em ? 'Reenviar' : 'Enviar por email'}</>}
+                    </Button>
+                  )}
                 </div>
 
                 {/* KPI strip */}

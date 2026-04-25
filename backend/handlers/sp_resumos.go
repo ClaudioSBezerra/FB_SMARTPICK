@@ -280,3 +280,42 @@ func SpResumoGerarHandler(db *sql.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]int{"id": id})
 	}
 }
+
+// SpResumoEnviarHandler — POST /api/sp/relatorios/{id}/enviar (master)
+//   envia o resumo por email aos destinatários ativos do CD
+func SpResumoEnviarHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+
+		// Path: /api/sp/relatorios/{id}/enviar
+		path := strings.TrimPrefix(r.URL.Path, "/api/sp/relatorios/")
+		path = strings.TrimSuffix(path, "/enviar")
+		id, _ := strconv.Atoi(strings.Trim(path, "/"))
+		if id == 0 {
+			http.Error(w, `{"error":"id obrigatório"}`, http.StatusBadRequest)
+			return
+		}
+
+		enviados, err := services.EnviarResumoPorEmail(db, id)
+		erroMsg := ""
+		if err != nil {
+			erroMsg = err.Error()
+		}
+		if len(enviados) > 0 {
+			_ = services.MarcarEnviado(db, id, enviados, erroMsg)
+		}
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"enviados": enviados,
+			"total":    len(enviados),
+		})
+	}
+}

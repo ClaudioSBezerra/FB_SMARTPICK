@@ -198,6 +198,7 @@ func main() {
 	handlers.ValidateJWTSecret()
 	initDBAsync()
 	go services.StartCSVWorker(getDB)
+	services.StartResumoWorker(getDB)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -462,11 +463,14 @@ func main() {
 	http.HandleFunc("/api/sp/relatorios",        withSP(handlers.SpResumosHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/relatorios/",       withSP(func(db *sql.DB) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasSuffix(r.URL.Path, "/gerar") {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/gerar"):
 				handlers.SpResumoGerarHandler(db)(w, r)
-				return
+			case strings.HasSuffix(r.URL.Path, "/enviar"):
+				handlers.SpResumoEnviarHandler(db)(w, r)
+			default:
+				handlers.SpResumoItemHandler(db)(w, r)
 			}
-			handlers.SpResumoItemHandler(db)(w, r)
 		}
 	}, "gestor_filial"))
 	http.HandleFunc("/api/sp/admin/destinatarios",  withSP(handlers.SpDestinatariosHandler, "admin_fbtax"))

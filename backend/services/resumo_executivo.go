@@ -301,12 +301,218 @@ func SalvarRelatorio(db *sql.DB, kpis *KPIsResumoExecutivo, narrativa string, cr
 
 // MarcarEnviado atualiza o relatório com os destinatários e timestamp de envio
 func MarcarEnviado(db *sql.DB, relatorioID int, enviadoPara []string, erroEnvio string) error {
+	// Postgres TEXT[] literal: '{a@b.com,c@d.com}'
 	_, err := db.Exec(`
 		UPDATE smartpick.sp_relatorios_semanais
 		   SET enviado_em = NOW(), enviado_para = $2, erro_envio = NULLIF($3, '')
 		 WHERE id = $1
 	`, relatorioID, "{"+strings.Join(enviadoPara, ",")+"}", erroEnvio)
 	return err
+}
+
+// EnviarResumoPorEmail busca destinatários ativos do CD e envia o relatório
+// retornando lista de emails enviados e mensagem de erro (se houver).
+// Reaproveita GetEmailConfig + sendMailSSL do email.go.
+func EnviarResumoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
+	// Carrega o relatório
+	var (
+		cdID                   int
+		periodoIni, periodoFim string
+		dadosJSON, narrativa   string
+	)
+	err := db.QueryRow(`
+		SELECT cd_id,
+		       to_char(periodo_inicio, 'DD/MM/YYYY'),
+		       to_char(periodo_fim, 'DD/MM/YYYY'),
+		       dados_json::text, narrativa_md
+		  FROM smartpick.sp_relatorios_semanais
+		 WHERE id = $1
+	`, relatorioID).Scan(&cdID, &periodoIni, &periodoFim, &dadosJSON, &narrativa)
+	if err != nil {
+		return nil, fmt.Errorf("relatório não encontrado: %w", err)
+	}
+
+	var kpis KPIsResumoExecutivo
+	if err := json.Unmarshal([]byte(dadosJSON), &kpis); err != nil {
+		return nil, fmt.Errorf("parse dados_json: %w", err)
+	}
+
+	// Lista de destinatários ativos do CD
+	rows, err := db.Query(`
+		SELECT email, nome_completo
+		  FROM smartpick.sp_destinatarios_resumo
+		 WHERE cd_id = $1 AND ativo = TRUE
+	`, cdID)
+	if err != nil {
+		return nil, fmt.Errorf("listar destinatários: %w", err)
+	}
+	defer rows.Close()
+
+	type destinatario struct{ Email, Nome string }
+	var destinos []destinatario
+	for rows.Next() {
+		var d destinatario
+		if rows.Scan(&d.Email, &d.Nome) == nil {
+			destinos = append(destinos, d)
+		}
+	}
+	if len(destinos) == 0 {
+		return nil, fmt.Errorf("nenhum destinatário ativo cadastrado para o CD %d", cdID)
+	}
+
+	cfg := GetEmailConfig()
+	if cfg.Password == "" {
+		return nil, fmt.Errorf("SMTP não configurado")
+	}
+
+	subject := fmt.Sprintf("SmartPick - Resumo Executivo %s (%s)", kpis.CdNome, periodoFim)
+	html := buildResumoHTML(&kpis, narrativa, periodoIni, periodoFim)
+	plain := buildResumoPlainText(&kpis, narrativa, periodoIni, periodoFim)
+
+	enviados := []string{}
+	for _, d := range destinos {
+		boundary := fmt.Sprintf("rs_%d", time.Now().UnixNano())
+		var msg strings.Builder
+		fmt.Fprintf(&msg, "From: %s\r\n", cfg.From)
+		fmt.Fprintf(&msg, "To: %s <%s>\r\n", d.Nome, d.Email)
+		fmt.Fprintf(&msg, "Subject: %s\r\n", subject)
+		msg.WriteString("MIME-Version: 1.0\r\n")
+		fmt.Fprintf(&msg, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", boundary)
+		// plain
+		fmt.Fprintf(&msg, "--%s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", boundary, plain)
+		// html
+		fmt.Fprintf(&msg, "--%s\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n", boundary, html)
+		fmt.Fprintf(&msg, "--%s--\r\n", boundary)
+
+		var sendErr error
+		if cfg.Port == 465 {
+			sendErr = sendMailSSL(cfg, []string{d.Email}, []byte(msg.String()))
+		} else {
+			sendErr = fmt.Errorf("porta SMTP %d não suportada (somente 465)", cfg.Port)
+		}
+		if sendErr != nil {
+			log.Printf("[resumo] erro envio para %s: %v", d.Email, sendErr)
+			continue
+		}
+		enviados = append(enviados, d.Email)
+	}
+
+	if len(enviados) == 0 {
+		return nil, fmt.Errorf("falha ao enviar para todos os %d destinatários", len(destinos))
+	}
+	return enviados, nil
+}
+
+// ── Renderização do email ─────────────────────────────────────────────────────
+
+func buildResumoHTML(k *KPIsResumoExecutivo, narrativa, periodoIni, periodoFim string) string {
+	narrativaHTML := convertMarkdownToHTML(narrativa)
+
+	var sb strings.Builder
+	sb.WriteString(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+body{font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:680px;margin:0 auto;background:#f4f4f8}
+.wrap{padding:20px}
+.hdr{background:#2d3748;color:#fff;padding:18px 22px;border-radius:8px 8px 0 0;text-align:center}
+.hdr-logo{font-size:20px;font-weight:700}
+.hdr-sub{font-size:13px;color:#cbd5e0;margin-top:4px}
+.body{background:#fff;padding:22px;border-radius:0 0 8px 8px}
+.info-box{background:#ebf8ff;border-left:4px solid #3182ce;padding:10px 14px;margin:0 0 18px;border-radius:0 6px 6px 0;font-size:12px;color:#2c5282}
+.sec{margin:18px 0}
+.sec-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#718096;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:12px}
+.kpi-table{width:100%;border-collapse:separate;border-spacing:6px}
+.kpi-cell{border:1px solid #e2e8f0;border-radius:6px;padding:10px;text-align:center;background:#f7fafc}
+.kpi-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#718096}
+.kpi-val{font-size:18px;font-weight:700;color:#2d3748;margin:2px 0}
+.ai-box{background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;padding:18px;margin:18px 0}
+.ai-label{font-size:11px;font-weight:700;text-transform:uppercase;color:#a0aec0;margin-bottom:10px}
+table.dt{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+table.dt th{background:#4a5568;color:#fff;padding:6px 10px;text-align:left;font-size:11px}
+table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
+.footer{text-align:center;padding:14px;color:#a0aec0;font-size:11px}
+</style></head><body><div class="wrap">`)
+
+	fmt.Fprintf(&sb, `<div class="hdr"><div class="hdr-logo">SmartPick</div><div class="hdr-sub">Resumo Executivo Semanal &mdash; %s</div></div>`, k.CdNome)
+
+	sb.WriteString(`<div class="body">`)
+	fmt.Fprintf(&sb, `<div class="info-box"><strong>CD:</strong> %s &nbsp;|&nbsp; <strong>Filial:</strong> %s &nbsp;|&nbsp; <strong>Per&iacute;odo:</strong> %s a %s</div>`,
+		k.CdNome, k.FilialNome, periodoIni, periodoFim)
+
+	// KPIs principais
+	sb.WriteString(`<div class="sec"><div class="sec-title">Resumo da Semana</div><table class="kpi-table"><tr>`)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Propostas Geradas</div><div class="kpi-val">%d</div></td>`, k.TotalPropostas)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Aprovadas</div><div class="kpi-val" style="color:#16a34a">%d</div></td>`, k.TotalAprovadas)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Rejeitadas</div><div class="kpi-val" style="color:#dc2626">%d</div></td>`, k.TotalRejeitadas)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Pendentes</div><div class="kpi-val" style="color:#ca8a04">%d</div></td>`, k.TotalPendentes)
+	sb.WriteString(`</tr><tr>`)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Ampliar Slot</div><div class="kpi-val" style="color:#dc2626">%d</div></td>`, k.Ampliar)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Reduzir Slot</div><div class="kpi-val" style="color:#ca8a04">%d</div></td>`, k.Reduzir)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Calibrados</div><div class="kpi-val" style="color:#2563eb">%d</div></td>`, k.Calibrados)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Curva A Revisar</div><div class="kpi-val" style="color:#d97706">%d</div></td>`, k.CurvaARevisar)
+	sb.WriteString(`</tr><tr>`)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Taxa Aprovação</div><div class="kpi-val">%.0f%%</div></td>`, k.TaxaAprovacaoPct)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Compliance</div><div class="kpi-val">%.0f%%</div></td>`, k.TaxaCompliancePct)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Ignorados</div><div class="kpi-val">%d</div></td>`, k.TotalIgnorados)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Alertas Críticos</div><div class="kpi-val" style="color:#dc2626">%d</div></td>`,
+		k.AlertasUrgencia+k.AlertasAjustar+k.AlertasCapMenor)
+	sb.WriteString(`</tr></table></div>`)
+
+	// Narrativa IA
+	sb.WriteString(`<div class="ai-box"><div class="ai-label">&#129302; An&aacute;lise da Intelig&ecirc;ncia Artificial</div>`)
+	sb.WriteString(narrativaHTML)
+	sb.WriteString(`</div>`)
+
+	// Top motivos rejeição
+	if len(k.TopMotivosRejeicao) > 0 {
+		sb.WriteString(`<div class="sec"><div class="sec-title">Top motivos de rejei&ccedil;&atilde;o</div><table class="dt"><thead><tr><th>Motivo</th><th style="text-align:right">Qtd</th></tr></thead><tbody>`)
+		for _, m := range k.TopMotivosRejeicao {
+			fmt.Fprintf(&sb, `<tr><td>%s</td><td style="text-align:right">%d</td></tr>`, m.Label, m.Valor)
+		}
+		sb.WriteString(`</tbody></table></div>`)
+	}
+
+	// Top produtos críticos
+	if len(k.TopProdutosCriticos) > 0 {
+		sb.WriteString(`<div class="sec"><div class="sec-title">Top produtos cr&iacute;ticos (Curva A)</div><table class="dt"><thead><tr><th>C&oacute;d.</th><th>Produto</th><th>Depto</th><th style="text-align:right">&Delta;</th></tr></thead><tbody>`)
+		for _, p := range k.TopProdutosCriticos {
+			color := "#16a34a"
+			signal := ""
+			if p.Delta > 0 {
+				color = "#dc2626"
+				signal = "+"
+			} else if p.Delta < 0 {
+				color = "#ca8a04"
+			}
+			fmt.Fprintf(&sb, `<tr><td>%d</td><td>%s</td><td>%s</td><td style="text-align:right;color:%s;font-weight:600">%s%d CX</td></tr>`,
+				p.CodProd, p.Produto, p.Departamento, color, signal, p.Delta)
+		}
+		sb.WriteString(`</tbody></table></div>`)
+	}
+
+	appURL := os.Getenv("APP_URL")
+	if appURL == "" {
+		appURL = "https://smartpick.fbtax.cloud"
+	}
+	fmt.Fprintf(&sb, `<div style="text-align:center;margin:22px 0"><a href="%s/resumos" style="display:inline-block;padding:10px 24px;background:#2d3748;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;font-size:13px">Acessar Painel Completo</a></div>`, appURL)
+
+	sb.WriteString(`</div><div class="footer">&copy; SmartPick &mdash; Calibragem Inteligente de Picking</div></div></body></html>`)
+	return sb.String()
+}
+
+func buildResumoPlainText(k *KPIsResumoExecutivo, narrativa, periodoIni, periodoFim string) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "SmartPick - Resumo Executivo Semanal\n\nCD: %s\nFilial: %s\nPeriodo: %s a %s\n\n", k.CdNome, k.FilialNome, periodoIni, periodoFim)
+	sb.WriteString("=== RESUMO DA SEMANA ===\n")
+	fmt.Fprintf(&sb, "Propostas geradas: %d\n", k.TotalPropostas)
+	fmt.Fprintf(&sb, "  - Aprovadas:  %d\n", k.TotalAprovadas)
+	fmt.Fprintf(&sb, "  - Rejeitadas: %d\n", k.TotalRejeitadas)
+	fmt.Fprintf(&sb, "  - Pendentes:  %d\n", k.TotalPendentes)
+	fmt.Fprintf(&sb, "Ampliar slot: %d | Reduzir slot: %d | Calibrados: %d | Curva A revisar: %d\n", k.Ampliar, k.Reduzir, k.Calibrados, k.CurvaARevisar)
+	fmt.Fprintf(&sb, "Taxa de aprovacao: %.0f%% | Compliance: %.0f%% | Ignorados: %d\n\n", k.TaxaAprovacaoPct, k.TaxaCompliancePct, k.TotalIgnorados)
+
+	sb.WriteString("=== ANALISE DA IA ===\n")
+	sb.WriteString(narrativa)
+	sb.WriteString("\n\n---\n(c) SmartPick\n")
+	return sb.String()
 }
 
 // ── Orquestração: gerar + (opcionalmente) enviar ─────────────────────────────
