@@ -83,31 +83,13 @@ function ClasseBadge({ classe }: { classe: string | null }) {
   )
 }
 
-function CurvaCell({ classe, participacao, justificativa }: { classe: string | null; participacao: number | null; justificativa: string | null }) {
-  const labelMap: Record<string, string> = { A: 'Alto Giro', B: 'Médio Giro', C: 'Baixo Giro' }
-  const label = classe ? labelMap[classe] : null
+function CurvaCell({ classe, participacao }: { classe: string | null; participacao: number | null }) {
+  if (!classe) return <span className="text-muted-foreground text-xs">—</span>
+  const colors: Record<string, string> = { A: 'text-red-700', B: 'text-yellow-700', C: 'text-green-700' }
   return (
-    <TooltipProvider delayDuration={150}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex flex-col items-start gap-0.5 cursor-default">
-            <ClasseBadge classe={classe} />
-            {participacao != null && (
-              <span className="text-[10px] text-muted-foreground leading-none font-mono">
-                {participacao.toFixed(2)}%
-              </span>
-            )}
-          </div>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-72 text-xs space-y-1">
-          {label && <p className="font-semibold">Curva {classe} — {label}</p>}
-          {participacao != null && <p className="text-muted-foreground">Participação na curva ABC: {participacao.toFixed(4)}%</p>}
-          {justificativa
-            ? <p className="font-mono text-[11px] leading-snug">{justificativa}</p>
-            : <p className="text-muted-foreground">Sem justificativa</p>}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <span className={`text-sm font-bold whitespace-nowrap ${colors[classe] ?? 'text-gray-700'}`}>
+      {classe}{participacao != null ? ` – ${participacao.toFixed(2)}%` : ''}
+    </span>
   )
 }
 
@@ -147,12 +129,12 @@ function AlertasCell({ giroCap, giroPR, capDias2 }: { giroCap: string | null; gi
 }
 
 function AcaoBadge({ delta }: { delta: number }) {
-  if (delta === 0) return <span className="text-xs text-green-600 font-medium">OK</span>
+  if (delta === 0) return <span className="text-sm text-green-600 font-semibold">OK</span>
   if (delta > 0) return (
-    <span className="text-xs text-red-600 font-semibold">+{delta} cx</span>
+    <span className="text-sm text-red-600 font-bold">+{delta} CX</span>
   )
   return (
-    <span className="text-xs text-yellow-700 font-semibold">{delta} cx</span>
+    <span className="text-sm text-yellow-700 font-bold">{delta} CX</span>
   )
 }
 
@@ -165,7 +147,7 @@ function StatusBadge({ status }: { status: string }) {
     ignorado:   'bg-gray-100 text-gray-500',
   }
   const label: Record<string, string> = {
-    pendente: 'Pendente', aprovada: 'Aprovada', rejeitada: 'Rejeitada',
+    pendente: 'Pend.', aprovada: 'Aprovada', rejeitada: 'Rejeitada',
     calibrado: 'Calibrado', ignorado: 'Ignorado',
   }
   return (
@@ -216,7 +198,7 @@ function IndicadorBadge({ valor }: { valor: string | null }) {
 
 function EnderecoCell({ rua, predio, apto }: { rua: number | null; predio: number | null; apto: number | null }) {
   const parts = [rua, predio, apto].filter(v => v != null)
-  return <span className="text-xs font-mono">{parts.length ? parts.join('-') : '—'}</span>
+  return <span className="text-xs font-mono text-muted-foreground">{parts.length ? parts.join('-') : '—'}</span>
 }
 
 // ─── Inline edit cell ─────────────────────────────────────────────────────────
@@ -521,8 +503,8 @@ function PropostasTable({
             <TableRow className="text-xs">
               <TableHead className="py-2 w-[88px]">Depto / Seção</TableHead>
               <TableHead className="py-2">Produto</TableHead>
-              <TableHead className="py-2 w-[130px]">Cód. / Endereço</TableHead>
-              <TableHead className="w-[58px] py-2">
+              <TableHead className="py-2 w-[180px]">Cód. · Endereço</TableHead>
+              <TableHead className="w-[100px] py-2">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger className="cursor-help underline decoration-dotted">Curva</TooltipTrigger>
@@ -542,9 +524,8 @@ function PropostasTable({
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="text-right py-2 w-[52px]">Sug.</TableHead>
-              <TableHead className="text-right py-2 w-[48px]">Δ</TableHead>
-              <TableHead className="py-2 w-[82px]">Status</TableHead>
+              <TableHead className="py-2 w-[110px]">Sug. / Δ</TableHead>
+              <TableHead className="py-2 w-[72px]">Status</TableHead>
               <TableHead className="w-[50px] py-2 text-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
@@ -564,19 +545,24 @@ function PropostasTable({
                   <div className="text-[11px] text-muted-foreground truncate" title={p.secao ?? ''}>{p.secao || '—'}</div>
                 </TableCell>
                 <TableCell className="py-1.5 font-medium truncate" title={p.produto ?? ''}>{p.produto || '—'}</TableCell>
-                <TableCell className="py-1.5 w-[130px]">
-                  <div className="font-mono text-[11px]">{p.codprod}</div>
-                  <div className="text-[11px] text-muted-foreground"><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></div>
+                <TableCell className="py-1.5 w-[180px]">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-mono text-xs font-medium">{p.codprod}</span>
+                    <span className="text-muted-foreground text-[10px]">·</span>
+                    <EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} />
+                  </div>
                 </TableCell>
-                <TableCell className="py-1.5"><CurvaCell classe={p.classe_venda} participacao={p.participacao} justificativa={p.justificativa} /></TableCell>
+                <TableCell className="py-1.5 w-[100px]"><CurvaCell classe={p.classe_venda} participacao={p.participacao} /></TableCell>
                 <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
                 <TableCell className="py-1 text-right text-muted-foreground">
                   {p.giro_dia_cx != null ? p.giro_dia_cx.toFixed(1) : '—'}
                 </TableCell>
-                <TableCell className="py-1 text-right">
-                  <SugestaoCell proposta={p} onSave={onEditar} />
+                <TableCell className="py-1 w-[110px]">
+                  <div className="flex items-center gap-2">
+                    <SugestaoCell proposta={p} onSave={onEditar} />
+                    <AcaoBadge delta={p.delta} />
+                  </div>
                 </TableCell>
-                <TableCell className="py-1 text-right"><AcaoBadge delta={p.delta} /></TableCell>
                 <TableCell className="py-1"><StatusBadge status={p.status} /></TableCell>
                 <TableCell className="py-1 text-center">
                   <AlertasCell giroCap={p._ind.giroCap} giroPR={p._ind.giroPR} capDias2={p._ind.capDias2} />
