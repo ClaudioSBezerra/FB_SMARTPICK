@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 )
@@ -229,6 +231,9 @@ type mistralResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	// Mistral retorna erros no formato plano, não aninhado
+	Message string `json:"message,omitempty"`
+	// Fallback para formato OpenAI-style
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
@@ -292,21 +297,51 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		defer resp.Body.Close()
 
 		raw, _ := io.ReadAll(resp.Body)
-		var mistralResp mistralResponse
-		if err := json.Unmarshal(raw, &mistralResp); err != nil {
-			http.Error(w, `{"error":"Resposta inesperada do assistente"}`, http.StatusBadGateway)
+
+		writeErr := func(msg string) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprintf(w, `{"error":%q}`, msg)
+		}
+
+		// Se o status HTTP não for 200, extrai a mensagem de erro da API
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("[ajuda] Mistral API status %d: %s", resp.StatusCode, string(raw))
+			var errBody map[string]interface{}
+			if json.Unmarshal(raw, &errBody) == nil {
+				if msg, ok := errBody["message"].(string); ok && msg != "" {
+					writeErr("Erro da API: " + msg)
+					return
+				}
+			}
+			writeErr(fmt.Sprintf("Erro da API (status %d)", resp.StatusCode))
 			return
 		}
 
+		var mistralResp mistralResponse
+		if err := json.Unmarshal(raw, &mistralResp); err != nil {
+			log.Printf("[ajuda] parse error: %v — body: %s", err, string(raw))
+			writeErr("Resposta inesperada do assistente")
+			return
+		}
+
+		// Erros no formato plano Mistral ({"message": "..."})
+		if mistralResp.Message != "" && len(mistralResp.Choices) == 0 {
+			log.Printf("[ajuda] Mistral error message: %s", mistralResp.Message)
+			writeErr("Erro da API: " + mistralResp.Message)
+			return
+		}
+
+		// Erros no formato OpenAI-style ({"error": {"message": "..."}})
 		if mistralResp.Error != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadGateway)
-			json.NewEncoder(w).Encode(map[string]string{"error": mistralResp.Error.Message})
+			log.Printf("[ajuda] Mistral error: %s", mistralResp.Error.Message)
+			writeErr("Erro da API: " + mistralResp.Error.Message)
 			return
 		}
 
 		if len(mistralResp.Choices) == 0 {
-			http.Error(w, `{"error":"Sem resposta do assistente"}`, http.StatusBadGateway)
+			log.Printf("[ajuda] empty choices — body: %s", string(raw))
+			writeErr("Assistente não retornou resposta")
 			return
 		}
 
