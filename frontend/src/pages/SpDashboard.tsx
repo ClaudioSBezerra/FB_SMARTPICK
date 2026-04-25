@@ -953,33 +953,48 @@ export default function SpDashboard() {
           </div>
         )}
 
-        {/* Badges de resumo — visíveis assim que o resumo carregar */}
+        {/* Badges clicáveis — navegam e filtram a aba correspondente */}
         {resumo && (
           <>
-            <div className="border rounded-lg px-3 py-1.5 bg-red-50 min-w-[90px] text-center">
-              <span className="text-xs font-medium text-red-600 block leading-tight">Ampliar Slot</span>
-              <span className="font-bold text-red-700 text-xl leading-tight">{resumo.falta_pendente}</span>
-            </div>
-            <div className="border rounded-lg px-3 py-1.5 bg-yellow-50 min-w-[90px] text-center">
-              <span className="text-xs font-medium text-yellow-700 block leading-tight">Reduzir Slot</span>
-              <span className="font-bold text-yellow-700 text-xl leading-tight">{resumo.espaco_pendente}</span>
-            </div>
+            <button
+              onClick={() => { setActiveTab('falta'); navigate('/dashboard/ampliar') }}
+              className={`border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all ${activeTab === 'falta' ? 'bg-red-100 border-red-400 ring-2 ring-red-300' : 'bg-red-50 hover:bg-red-100'}`}
+            >
+              <span className="text-sm font-semibold text-red-600 block leading-tight">Ampliar Slot</span>
+              <span className="font-bold text-red-700 text-2xl leading-tight">{resumo.falta_pendente}</span>
+            </button>
+            <button
+              onClick={() => { setActiveTab('espaco'); navigate('/dashboard/reduzir') }}
+              className={`border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all ${activeTab === 'espaco' ? 'bg-yellow-100 border-yellow-400 ring-2 ring-yellow-300' : 'bg-yellow-50 hover:bg-yellow-100'}`}
+            >
+              <span className="text-sm font-semibold text-yellow-700 block leading-tight">Reduzir Slot</span>
+              <span className="font-bold text-yellow-700 text-2xl leading-tight">{resumo.espaco_pendente}</span>
+            </button>
             {resumo.calibrado_total > 0 && (
-              <div className="border rounded-lg px-3 py-1.5 bg-blue-50 min-w-[90px] text-center">
-                <span className="text-xs font-medium text-blue-600 block leading-tight">Já Calibrados</span>
-                <span className="font-bold text-blue-700 text-xl leading-tight">{resumo.calibrado_total}</span>
-              </div>
+              <button
+                onClick={() => { setActiveTab('calibrado'); navigate('/dashboard/calibrados') }}
+                className={`border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all ${activeTab === 'calibrado' ? 'bg-blue-100 border-blue-400 ring-2 ring-blue-300' : 'bg-blue-50 hover:bg-blue-100'}`}
+              >
+                <span className="text-sm font-semibold text-blue-600 block leading-tight">Já Calibrados</span>
+                <span className="font-bold text-blue-700 text-2xl leading-tight">{resumo.calibrado_total}</span>
+              </button>
             )}
             {resumo.curva_a_mantida > 0 && (
-              <div className="border rounded-lg px-3 py-1.5 bg-amber-50 min-w-[90px] text-center">
-                <span className="text-xs font-medium text-amber-700 block leading-tight">Curva A — Revisar</span>
-                <span className="font-bold text-amber-700 text-xl leading-tight">{resumo.curva_a_mantida}</span>
-              </div>
+              <button
+                onClick={() => { setActiveTab('curva_a_mantida'); navigate('/dashboard/curva-a') }}
+                className={`border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all ${activeTab === 'curva_a_mantida' ? 'bg-amber-100 border-amber-400 ring-2 ring-amber-300' : 'bg-amber-50 hover:bg-amber-100'}`}
+              >
+                <span className="text-sm font-semibold text-amber-700 block leading-tight">Curva A — Revisar</span>
+                <span className="font-bold text-amber-700 text-2xl leading-tight">{resumo.curva_a_mantida}</span>
+              </button>
             )}
-            <div className="border rounded-lg px-3 py-1.5 bg-gray-50 min-w-[90px] text-center">
-              <span className="text-xs font-medium text-gray-500 block leading-tight">Prod. Ignorados</span>
-              <span className="font-bold text-gray-600 text-xl leading-tight">{resumo.ignorado_total}</span>
-            </div>
+            <button
+              onClick={() => navigate('/dashboard/ignorados')}
+              className="border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all bg-gray-50 hover:bg-gray-100"
+            >
+              <span className="text-sm font-semibold text-gray-500 block leading-tight">Prod. Ignorados</span>
+              <span className="font-bold text-gray-600 text-2xl leading-tight">{resumo.ignorado_total}</span>
+            </button>
           </>
         )}
 
@@ -1000,54 +1015,8 @@ export default function SpDashboard() {
       )}
 
       {hasFilters && (
-        <Tabs value={activeTab} onValueChange={v => {
-          setActiveTab(v)
-          const pathMap: Record<string, string> = {
-            falta:          '/dashboard/ampliar',
-            espaco:         '/dashboard/reduzir',
-            calibrado:      '/dashboard/calibrados',
-            curva_a_mantida:'/dashboard/curva-a',
-          }
-          if (pathMap[v]) navigate(pathMap[v])
-        }}>
-          <div className="flex items-center justify-between">
-            <TabsList>
-              <TabsTrigger value="falta">
-                Ampliar Slot
-                {resumo && resumo.falta_pendente > 0 && (
-                  <span className="ml-1.5 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
-                    {resumo.falta_pendente}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="espaco">
-                Reduzir Slot
-                {resumo && resumo.espaco_pendente > 0 && (
-                  <span className="ml-1.5 bg-yellow-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
-                    {resumo.espaco_pendente}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="calibrado">
-                <CheckCircle2 className="h-3.5 w-3.5 mr-1 text-blue-500" />
-                Já Calibrados
-                {resumo && resumo.calibrado_total > 0 && (
-                  <span className="ml-1.5 bg-blue-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
-                    {resumo.calibrado_total}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="curva_a_mantida">
-                <AlertTriangle className="h-3.5 w-3.5 mr-1 text-amber-500" />
-                Curva A — Revisar
-                {resumo && resumo.curva_a_mantida > 0 && (
-                  <span className="ml-1.5 bg-amber-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
-                    {resumo.curva_a_mantida}
-                  </span>
-                )}
-              </TabsTrigger>
-            </TabsList>
-          </div>
+        <Tabs value={activeTab} onValueChange={v => setActiveTab(v)}>
+          <div>
 
           {/* ── Aba: Ampliar Slot ───────────────────────────────────────── */}
           <TabsContent value="falta" className="space-y-3">
