@@ -96,7 +96,7 @@ export function AjudaChat() {
     // Envia apenas as últimas 10 mensagens para não crescer demais
     const apiMessages = history
       .filter(m => m.role !== 'assistant' || m !== WELCOME)
-      .slice(-10)
+      .slice(-6)
       .map(m => ({ role: m.role, content: m.content }))
 
     try {
