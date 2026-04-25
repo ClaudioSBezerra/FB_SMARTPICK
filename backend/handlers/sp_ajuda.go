@@ -133,7 +133,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 			})
 			return b
 		}
-		payload := buildPayload("glm-4.5-air")
+		payload := buildPayload("glm-4.7-flash")
 
 		httpReq, err := http.NewRequest("POST", "https://api.z.ai/api/paas/v4/chat/completions", bytes.NewReader(payload))
 		if err != nil {
@@ -189,10 +189,10 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// Em sobrecarga (1305) ou rate limit, tenta uma vez com glm-4.6 (modelo pago alternativo)
+		// Em sobrecarga (1305) ou rate limit, tenta o glm-4.5-flash (free fallback)
 		if isOverload || isRateLimit {
-			log.Printf("[ajuda] 429 em glm-4.5-air (body=%s), retry com glm-4.6", string(raw))
-			resp, raw, err = doRequest(buildPayload("glm-4.6"))
+			log.Printf("[ajuda] 429 em glm-4.7-flash (body=%s), retry com glm-4.5-flash", string(raw))
+			resp, raw, err = doRequest(buildPayload("glm-4.5-flash"))
 			if err != nil {
 				log.Printf("[ajuda] erro de transporte no retry: %v", err)
 				w.Header().Set("Content-Type", "application/json")
@@ -200,7 +200,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 				w.Write([]byte(`{"error":"Serviço de IA momentaneamente indisponível. Tente novamente em alguns segundos."}`))
 				return
 			}
-			log.Printf("[ajuda] retry glm-4.6 status=%d body=%s", resp.StatusCode, string(raw))
+			log.Printf("[ajuda] retry glm-4.5-flash status=%d body=%s", resp.StatusCode, string(raw))
 		}
 
 		writeErr := func(msg string) {
