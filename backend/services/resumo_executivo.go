@@ -69,6 +69,9 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		PeriodoInicio: inicio.Format("2006-01-02"),
 		PeriodoFim:    fim.Format("2006-01-02"),
 	}
+	// Limite superior do range (exclusivo) — fim do dia. Usado nas queries
+	// como `created_at < $3` para incluir o dia inteiro do fim.
+	fimExclusivo := fim.AddDate(0, 0, 1)
 
 	// Nome do CD e filial
 	if err := db.QueryRow(`
@@ -89,8 +92,8 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		  COUNT(*) FILTER (WHERE status = 'pendente')
 		  FROM smartpick.sp_propostas
 		 WHERE cd_id = $1
-		   AND created_at >= $2 AND created_at < $3 + INTERVAL '1 day'
-	`, cdID, inicio, fim).Scan(&k.TotalPropostas, &k.TotalAprovadas, &k.TotalRejeitadas, &k.TotalPendentes); err != nil {
+		   AND created_at >= $2 AND created_at < $3
+	`, cdID, inicio, fimExclusivo).Scan(&k.TotalPropostas, &k.TotalAprovadas, &k.TotalRejeitadas, &k.TotalPendentes); err != nil {
 		log.Printf("[resumo] erro totais: %v", err)
 	}
 
@@ -105,8 +108,8 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		  COUNT(*) FILTER (WHERE delta = 0)
 		  FROM smartpick.sp_propostas
 		 WHERE cd_id = $1
-		   AND created_at >= $2 AND created_at < $3 + INTERVAL '1 day'
-	`, cdID, inicio, fim).Scan(&k.Ampliar, &k.Reduzir, &k.Calibrados)
+		   AND created_at >= $2 AND created_at < $3
+	`, cdID, inicio, fimExclusivo).Scan(&k.Ampliar, &k.Reduzir, &k.Calibrados)
 
 	// Curva A com sugestão de redução mantida pendente (proxy de "Curva A Revisar")
 	_ = db.QueryRow(`
@@ -115,8 +118,8 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		   AND classe_venda = 'A'
 		   AND delta < 0
 		   AND status = 'pendente'
-		   AND created_at >= $2 AND created_at < $3 + INTERVAL '1 day'
-	`, cdID, inicio, fim).Scan(&k.CurvaARevisar)
+		   AND created_at >= $2 AND created_at < $3
+	`, cdID, inicio, fimExclusivo).Scan(&k.CurvaARevisar)
 
 	// Taxa de aprovação e compliance
 	if k.TotalPropostas > 0 {
@@ -133,11 +136,11 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		  FROM smartpick.sp_propostas p
 	     LEFT JOIN smartpick.sp_tipo_rejeicao mr ON mr.id = p.motivo_rejeicao_id
 		 WHERE p.cd_id = $1 AND p.status = 'rejeitada'
-		   AND p.created_at >= $2 AND p.created_at < $3 + INTERVAL '1 day'
+		   AND p.created_at >= $2 AND p.created_at < $3
 		 GROUP BY mr.descricao
 		 ORDER BY qtd DESC
 		 LIMIT 5
-	`, cdID, inicio, fim)
+	`, cdID, inicio, fimExclusivo)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -154,11 +157,11 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		  FROM smartpick.sp_propostas p
 		  JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
 		 WHERE p.cd_id = $1 AND p.status = 'pendente'
-		   AND p.created_at >= $2 AND p.created_at < $3 + INTERVAL '1 day'
+		   AND p.created_at >= $2 AND p.created_at < $3
 		 GROUP BY e.departamento
 		 ORDER BY qtd DESC
 		 LIMIT 5
-	`, cdID, inicio, fim)
+	`, cdID, inicio, fimExclusivo)
 	if err == nil {
 		defer rows2.Close()
 		for rows2.Next() {
@@ -175,11 +178,11 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		  FROM smartpick.sp_propostas p
 		  JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
 		 WHERE p.cd_id = $1 AND p.status = 'pendente'
-		   AND p.created_at >= $2 AND p.created_at < $3 + INTERVAL '1 day'
+		   AND p.created_at >= $2 AND p.created_at < $3
 		   AND p.classe_venda = 'A'
 		 ORDER BY ABS(p.delta) DESC
 		 LIMIT 10
-	`, cdID, inicio, fim)
+	`, cdID, inicio, fimExclusivo)
 	if err == nil {
 		defer rows3.Close()
 		for rows3.Next() {
