@@ -271,6 +271,7 @@ function PropostasTable({
   loadingId: number | null
   loteLoading?: boolean
 }) {
+  const [filterSearch,   setFilterSearch]   = useState('')
   const [filterDepto,    setFilterDepto]    = useState('')
   const [filterSecao,    setFilterSecao]    = useState('')
   const [filterEnder,    setFilterEnder]    = useState('')
@@ -307,6 +308,12 @@ function PropostasTable({
 
   const filtered = useMemo(() =>
     rows.filter(r => {
+      if (filterSearch) {
+        const q = filterSearch.toLowerCase()
+        const matchCode = String(r.codprod).includes(q)
+        const matchDesc = r.produto?.toLowerCase().includes(q) ?? false
+        if (!matchCode && !matchDesc) return false
+      }
       if (filterDepto && r.departamento !== filterDepto) return false
       if (filterSecao && r.secao !== filterSecao) return false
       if (filterEnder && !r._end.startsWith(filterEnder)) return false
@@ -315,10 +322,10 @@ function PropostasTable({
       if (filterCapDias && r._ind.capDias2 !== filterCapDias) return false
       return true
     }),
-    [rows, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias],
+    [rows, filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias],
   )
 
-  const hasFilters = filterDepto || filterSecao || filterEnder || filterGiroCap || filterGiroPR || filterCapDias
+  const hasFilters = filterSearch || filterDepto || filterSecao || filterEnder || filterGiroCap || filterGiroPR || filterCapDias
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
@@ -330,12 +337,18 @@ function PropostasTable({
   // M5 fix: reset usa hash estável (length + primeiro id) em vez da referência
   // do array, evitando volta à página 1 em refetches cuja data é idêntica.
   const propostasKey = `${propostas.length}:${propostas[0]?.id ?? ''}`
-  useEffect(() => { setPage(1) }, [filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, propostasKey])
+  useEffect(() => { setPage(1) }, [filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, propostasKey])
 
   return (
     <div className="space-y-2">
       {/* ── Filtros ── */}
       <div className="flex flex-wrap gap-2 items-center">
+        <Input
+          placeholder="Código ou descrição do produto..."
+          value={filterSearch}
+          onChange={e => setFilterSearch(e.target.value)}
+          className="h-7 text-xs w-56"
+        />
         <Select value={filterDepto || 'all'} onValueChange={v => { setFilterDepto(v === 'all' ? '' : v); setFilterSecao('') }}>
           <SelectTrigger className="h-7 text-xs w-44"><SelectValue placeholder="Departamento" /></SelectTrigger>
           <SelectContent>
@@ -418,7 +431,7 @@ function PropostasTable({
         {hasFilters && (
           <button
             className="text-[11px] text-muted-foreground hover:text-foreground underline"
-            onClick={() => { setFilterDepto(''); setFilterSecao(''); setFilterEnder(''); setFilterGiroCap(''); setFilterGiroPR(''); setFilterCapDias('') }}
+            onClick={() => { setFilterSearch(''); setFilterDepto(''); setFilterSecao(''); setFilterEnder(''); setFilterGiroCap(''); setFilterGiroPR(''); setFilterCapDias('') }}
           >
             limpar filtros
           </button>
