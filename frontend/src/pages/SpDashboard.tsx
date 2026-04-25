@@ -515,10 +515,11 @@ function PropostasTable({
         <Table>
           <TableHeader>
             <TableRow className="text-[11px]">
-              <TableHead className="py-1.5 max-w-[150px]">Produto</TableHead>
-              <TableHead className="py-1.5 w-[60px]">Cód.</TableHead>
-              <TableHead className="py-1.5 w-[70px]">Ender.</TableHead>
-              <TableHead className="w-[52px] py-1.5">
+              <TableHead className="py-1.5 w-[90px]">Depto / Seção</TableHead>
+              <TableHead className="py-1.5">Produto</TableHead>
+              <TableHead className="py-1.5 w-[64px]">Cód.</TableHead>
+              <TableHead className="py-1.5 w-[66px]">Ender.</TableHead>
+              <TableHead className="w-[54px] py-1.5">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger className="cursor-help underline decoration-dotted">Curva</TooltipTrigger>
@@ -526,8 +527,8 @@ function PropostasTable({
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="text-right py-1.5 w-[48px]">Cap.</TableHead>
-              <TableHead className="text-right py-1.5 w-[60px]">
+              <TableHead className="text-right py-1.5 w-[44px]">Cap.</TableHead>
+              <TableHead className="text-right py-1.5 w-[58px]">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger className="cursor-help underline decoration-dotted">Giro/dia</TooltipTrigger>
@@ -538,25 +539,28 @@ function PropostasTable({
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="text-right py-1.5 w-[52px]">Sug.</TableHead>
-              <TableHead className="text-right py-1.5 w-[48px]">Δ</TableHead>
+              <TableHead className="text-right py-1.5 w-[50px]">Sug.</TableHead>
+              <TableHead className="text-right py-1.5 w-[44px]">Δ</TableHead>
               <TableHead className="py-1.5 w-[80px]">Status</TableHead>
-              <TableHead className="w-[52px] py-1.5 text-center">
+              <TableHead className="w-[48px] py-1.5 text-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger className="cursor-help underline decoration-dotted text-[10px]">⚠ Aler.</TooltipTrigger>
-                    <TooltipContent className="text-xs">GiroCap · GPRepos · CMEN2DDV — passe o mouse na linha para ver</TooltipContent>
+                    <TooltipContent className="text-xs">GiroCap · GPRepos · CMEN2DDV — passe o mouse para ver</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="py-1.5 w-[60px] text-[10px] text-muted-foreground">Depto</TableHead>
               <TableHead className="w-36 py-1.5">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paged.map(p => (
               <TableRow key={p.id} className={`text-[11px] ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
-                <TableCell className="py-1 max-w-[150px] truncate" title={p.produto}>{p.produto || '—'}</TableCell>
+                <TableCell className="py-1 w-[90px]">
+                  <div className="text-[10px] font-medium truncate" title={p.departamento ?? ''}>{p.departamento || '—'}</div>
+                  <div className="text-[10px] text-muted-foreground truncate" title={p.secao ?? ''}>{p.secao || '—'}</div>
+                </TableCell>
+                <TableCell className="py-1 text-xs font-medium truncate" title={p.produto ?? ''}>{p.produto || '—'}</TableCell>
                 <TableCell className="py-1 font-mono text-[10px]">{p.codprod}</TableCell>
                 <TableCell className="py-1"><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
                 <TableCell className="py-1"><CurvaCell classe={p.classe_venda} justificativa={p.justificativa} /></TableCell>
@@ -571,9 +575,6 @@ function PropostasTable({
                 <TableCell className="py-1"><StatusBadge status={p.status} /></TableCell>
                 <TableCell className="py-1 text-center">
                   <AlertasCell giroCap={p._ind.giroCap} giroPR={p._ind.giroPR} capDias2={p._ind.capDias2} />
-                </TableCell>
-                <TableCell className="py-1 text-[10px] text-muted-foreground truncate max-w-[60px]" title={`${p.departamento ?? ''} / ${p.secao ?? ''}`}>
-                  {p.departamento ? p.departamento.slice(0, 8) : '—'}
                 </TableCell>
                 <TableCell className="py-1">
                   {(p.status === 'pendente' || p.status === 'calibrado') && (
