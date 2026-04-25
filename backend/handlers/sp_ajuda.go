@@ -172,12 +172,14 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		// Em 429, tenta o modelo de fallback glm-4.5-flash (mesmo padrão do FB_APU01)
 		// Sem sleep — o nginx do Hostinger tem timeout de proxy curto (~30s)
 		if resp.StatusCode == http.StatusTooManyRequests {
-			log.Printf("[ajuda] 429 em glm-4.7-flash, retry imediato com glm-4.5-flash")
+			log.Printf("[ajuda] 429 em glm-4.7-flash (body=%s), retry imediato com glm-4.5-flash", string(raw))
 			resp, raw, err = doRequest(buildPayload("glm-4.5-flash"))
 			if err != nil {
+				log.Printf("[ajuda] erro de transporte no retry: %v", err)
 				http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
 				return
 			}
+			log.Printf("[ajuda] retry glm-4.5-flash status=%d body=%s", resp.StatusCode, string(raw))
 		}
 
 		writeErr := func(msg string) {
@@ -188,7 +190,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 
 		// Se o status HTTP não for 200, extrai a mensagem de erro da API
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("[ajuda] Z.AI API status %d: %s", resp.StatusCode, string(raw))
+			log.Printf("[ajuda] Z.AI API FALHOU final status=%d body=%s", resp.StatusCode, string(raw))
 
 			// Tenta extrair código + mensagem da resposta de erro
 			var errBody struct {
