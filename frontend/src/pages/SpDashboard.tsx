@@ -53,6 +53,7 @@ interface Proposta {
   giro_dia_cx: number | null
   med_venda_cx: number | null
   ponto_reposicao: number | null
+  participacao: number | null
 }
 
 interface Resumo {
@@ -82,9 +83,7 @@ function ClasseBadge({ classe }: { classe: string | null }) {
   )
 }
 
-function CurvaCell({ classe, justificativa }: { classe: string | null; justificativa: string | null }) {
-  const diasMatch = justificativa?.match(/(\d+) dias/)
-  const dias = diasMatch ? diasMatch[1] : null
+function CurvaCell({ classe, participacao, justificativa }: { classe: string | null; participacao: number | null; justificativa: string | null }) {
   const labelMap: Record<string, string> = { A: 'Alto Giro', B: 'Médio Giro', C: 'Baixo Giro' }
   const label = classe ? labelMap[classe] : null
   return (
@@ -93,11 +92,16 @@ function CurvaCell({ classe, justificativa }: { classe: string | null; justifica
         <TooltipTrigger asChild>
           <div className="flex flex-col items-start gap-0.5 cursor-default">
             <ClasseBadge classe={classe} />
-            {dias && <span className="text-[10px] text-muted-foreground leading-none">{dias}d</span>}
+            {participacao != null && (
+              <span className="text-[10px] text-muted-foreground leading-none font-mono">
+                {participacao.toFixed(2)}%
+              </span>
+            )}
           </div>
         </TooltipTrigger>
         <TooltipContent className="max-w-72 text-xs space-y-1">
           {label && <p className="font-semibold">Curva {classe} — {label}</p>}
+          {participacao != null && <p className="text-muted-foreground">Participação na curva ABC: {participacao.toFixed(4)}%</p>}
           {justificativa
             ? <p className="font-mono text-[11px] leading-snug">{justificativa}</p>
             : <p className="text-muted-foreground">Sem justificativa</p>}
@@ -514,21 +518,20 @@ function PropostasTable({
       ) : (
         <Table>
           <TableHeader>
-            <TableRow className="text-[11px]">
-              <TableHead className="py-1.5 w-[90px]">Depto / Seção</TableHead>
-              <TableHead className="py-1.5">Produto</TableHead>
-              <TableHead className="py-1.5 w-[64px]">Cód.</TableHead>
-              <TableHead className="py-1.5 w-[66px]">Ender.</TableHead>
-              <TableHead className="w-[54px] py-1.5">
+            <TableRow className="text-xs">
+              <TableHead className="py-2 w-[88px]">Depto / Seção</TableHead>
+              <TableHead className="py-2">Produto</TableHead>
+              <TableHead className="py-2 w-[130px]">Cód. / Endereço</TableHead>
+              <TableHead className="w-[58px] py-2">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger className="cursor-help underline decoration-dotted">Curva</TooltipTrigger>
-                    <TooltipContent className="text-xs">CURVA ABC de Acesso ao PICKING — letra + dias utilizados na fórmula</TooltipContent>
+                    <TooltipContent className="text-xs">CURVA ABC de Acesso ao PICKING — letra + % participação</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="text-right py-1.5 w-[44px]">Cap.</TableHead>
-              <TableHead className="text-right py-1.5 w-[58px]">
+              <TableHead className="text-right py-2 w-[46px]">Cap.</TableHead>
+              <TableHead className="text-right py-2 w-[62px]">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger className="cursor-help underline decoration-dotted">Giro/dia</TooltipTrigger>
@@ -539,31 +542,33 @@ function PropostasTable({
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="text-right py-1.5 w-[50px]">Sug.</TableHead>
-              <TableHead className="text-right py-1.5 w-[44px]">Δ</TableHead>
-              <TableHead className="py-1.5 w-[80px]">Status</TableHead>
-              <TableHead className="w-[48px] py-1.5 text-center">
+              <TableHead className="text-right py-2 w-[52px]">Sug.</TableHead>
+              <TableHead className="text-right py-2 w-[48px]">Δ</TableHead>
+              <TableHead className="py-2 w-[82px]">Status</TableHead>
+              <TableHead className="w-[50px] py-2 text-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[10px]">⚠ Aler.</TooltipTrigger>
-                    <TooltipContent className="text-xs">GiroCap · GPRepos · CMEN2DDV — passe o mouse para ver</TooltipContent>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted">⚠ Aler.</TooltipTrigger>
+                    <TooltipContent className="text-xs">GiroCap · GPRepos · CMEN2DDV</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="w-36 py-1.5">Ações</TableHead>
+              <TableHead className="w-36 py-2">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paged.map(p => (
-              <TableRow key={p.id} className={`text-[11px] ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
-                <TableCell className="py-1 w-[90px]">
-                  <div className="text-[10px] font-medium truncate" title={p.departamento ?? ''}>{p.departamento || '—'}</div>
-                  <div className="text-[10px] text-muted-foreground truncate" title={p.secao ?? ''}>{p.secao || '—'}</div>
+              <TableRow key={p.id} className={`text-xs ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
+                <TableCell className="py-1.5 w-[88px]">
+                  <div className="text-[11px] font-medium truncate" title={p.departamento ?? ''}>{p.departamento || '—'}</div>
+                  <div className="text-[11px] text-muted-foreground truncate" title={p.secao ?? ''}>{p.secao || '—'}</div>
                 </TableCell>
-                <TableCell className="py-1 text-xs font-medium truncate" title={p.produto ?? ''}>{p.produto || '—'}</TableCell>
-                <TableCell className="py-1 font-mono text-[10px]">{p.codprod}</TableCell>
-                <TableCell className="py-1"><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
-                <TableCell className="py-1"><CurvaCell classe={p.classe_venda} justificativa={p.justificativa} /></TableCell>
+                <TableCell className="py-1.5 font-medium truncate" title={p.produto ?? ''}>{p.produto || '—'}</TableCell>
+                <TableCell className="py-1.5 w-[130px]">
+                  <div className="font-mono text-[11px]">{p.codprod}</div>
+                  <div className="text-[11px] text-muted-foreground"><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></div>
+                </TableCell>
+                <TableCell className="py-1.5"><CurvaCell classe={p.classe_venda} participacao={p.participacao} justificativa={p.justificativa} /></TableCell>
                 <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
                 <TableCell className="py-1 text-right text-muted-foreground">
                   {p.giro_dia_cx != null ? p.giro_dia_cx.toFixed(1) : '—'}

@@ -54,9 +54,10 @@ type PropostaResponse struct {
 	EditadoPor         *string   `json:"editado_por,omitempty"`
 	EditadoEm          *string   `json:"editado_em,omitempty"`
 	CreatedAt          string    `json:"created_at"`
-	GiroDiaCx          *float64  `json:"giro_dia_cx,omitempty"` // qt_giro_dia / unidade_master
-	MedVendaCx         *float64  `json:"med_venda_cx,omitempty"`     // MED_VENDA_DIAS_CX
-	PontoReposicao     *int      `json:"ponto_reposicao,omitempty"`  // PONTOREPOSICAO
+	GiroDiaCx          *float64  `json:"giro_dia_cx,omitempty"`
+	MedVendaCx         *float64  `json:"med_venda_cx,omitempty"`
+	PontoReposicao     *int      `json:"ponto_reposicao,omitempty"`
+	Participacao       *float64  `json:"participacao,omitempty"` // % participação na curva ABC
 }
 
 type PropostasResumo struct {
@@ -113,7 +114,8 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			            THEN ROUND(e.qt_giro_dia / e.unidade_master, 2)
 			            ELSE NULL END,
 			       e.med_venda_cx,
-			       e.ponto_reposicao
+			       e.ponto_reposicao,
+			       e.participacao
 			FROM smartpick.sp_propostas p
 			LEFT JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
 			WHERE p.empresa_id = $1
@@ -170,7 +172,7 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 				&p.Status, &p.AprovadoPor, &p.AprovadoEm,
 				&p.SugestaoEditada, &p.EditadoPor, &p.EditadoEm,
 				&p.CreatedAt, &p.GiroDiaCx,
-				&p.MedVendaCx, &p.PontoReposicao,
+				&p.MedVendaCx, &p.PontoReposicao, &p.Participacao,
 			); err != nil {
 				continue
 			}
