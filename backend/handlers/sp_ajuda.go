@@ -123,7 +123,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		messages = append(messages, req.Messages...)
 
 		payload, _ := json.Marshal(mistralRequest{
-			Model:       "glm-4.5",
+			Model:       "glm-4-flash",
 			Messages:    messages,
 			MaxTokens:   1024,
 			Temperature: 0.3,
@@ -137,14 +137,42 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
 
-		resp, err := ajudaHTTPClient.Do(httpReq)
+		// Função auxiliar para fazer a requisição (permite retry em 429)
+		doRequest := func() (*http.Response, []byte, error) {
+			req, err := http.NewRequest("POST", "https://api.z.ai/api/paas/v4/chat/completions", bytes.NewReader(payload))
+			if err != nil {
+				return nil, nil, err
+			}
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+			req.Header.Set("Content-Type", "application/json")
+			r, err := ajudaHTTPClient.Do(req)
+			if err != nil {
+				return nil, nil, err
+			}
+			defer r.Body.Close()
+			body, _ := io.ReadAll(r.Body)
+			return r, body, nil
+		}
+
+		// Suprime o httpReq inicial (não usado mais — substituído por doRequest)
+		_ = httpReq
+
+		resp, raw, err := doRequest()
 		if err != nil {
 			http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
 			return
 		}
-		defer resp.Body.Close()
 
-		raw, _ := io.ReadAll(resp.Body)
+		// Retry uma vez em 429 (rate limit do plano LITE)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			log.Printf("[ajuda] 429 recebido, aguardando 2s e tentando novamente")
+			time.Sleep(2 * time.Second)
+			resp, raw, err = doRequest()
+			if err != nil {
+				http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
+				return
+			}
+		}
 
 		writeErr := func(msg string) {
 			w.Header().Set("Content-Type", "application/json")
