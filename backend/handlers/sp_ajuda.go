@@ -154,15 +154,31 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 
 		// Se o status HTTP não for 200, extrai a mensagem de erro da API
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("[ajuda] Mistral API status %d: %s", resp.StatusCode, string(raw))
+			log.Printf("[ajuda] Z.AI API status %d: %s", resp.StatusCode, string(raw))
 			var errBody map[string]interface{}
 			if json.Unmarshal(raw, &errBody) == nil {
-				if msg, ok := errBody["message"].(string); ok && msg != "" {
-					writeErr("Erro da API: " + msg)
-					return
+				// Tenta vários campos comuns de erro
+				for _, field := range []string{"message", "error", "msg", "detail"} {
+					if v, ok := errBody[field]; ok {
+						if s, ok := v.(string); ok && s != "" {
+							writeErr(fmt.Sprintf("Erro da API (%d): %s", resp.StatusCode, s))
+							return
+						}
+						if m, ok := v.(map[string]interface{}); ok {
+							if msg, ok := m["message"].(string); ok && msg != "" {
+								writeErr(fmt.Sprintf("Erro da API (%d): %s", resp.StatusCode, msg))
+								return
+							}
+						}
+					}
 				}
 			}
-			writeErr(fmt.Sprintf("Erro da API (status %d)", resp.StatusCode))
+			// Fallback: retorna corpo bruto truncado para diagnóstico
+			snippet := string(raw)
+			if len(snippet) > 300 {
+				snippet = snippet[:300]
+			}
+			writeErr(fmt.Sprintf("Erro da API (%d): %s", resp.StatusCode, snippet))
 			return
 		}
 
