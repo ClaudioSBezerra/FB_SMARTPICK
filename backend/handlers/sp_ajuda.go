@@ -135,7 +135,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		}
 		payload := buildPayload("glm-4.5-air")
 
-		httpReq, err := http.NewRequest("POST", "https://api.z.ai/api/paas/v4/chat/completions", bytes.NewReader(payload))
+		httpReq, err := http.NewRequest("POST", "https://api.z.ai/api/coding/paas/v4/chat/completions", bytes.NewReader(payload))
 		if err != nil {
 			http.Error(w, `{"error":"Erro interno"}`, http.StatusInternalServerError)
 			return
@@ -145,7 +145,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 
 		// Função auxiliar para fazer a requisição (permite retry com modelo alternativo)
 		doRequest := func(body []byte) (*http.Response, []byte, error) {
-			req, err := http.NewRequest("POST", "https://api.z.ai/api/paas/v4/chat/completions", bytes.NewReader(body))
+			req, err := http.NewRequest("POST", "https://api.z.ai/api/coding/paas/v4/chat/completions", bytes.NewReader(body))
 			if err != nil {
 				return nil, nil, err
 			}
