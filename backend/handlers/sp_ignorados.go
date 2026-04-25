@@ -99,19 +99,62 @@ func SpIgnoradosHandler(db *sql.DB) http.HandlerFunc {
 				http.Error(w, "ID inválido", http.StatusBadRequest)
 				return
 			}
-			res, err := db.Exec(`
-				DELETE FROM smartpick.sp_ignorados
-				WHERE id = $1 AND empresa_id = $2
-			`, ignoradoID, spCtx.EmpresaID)
+
+			// Em transação: deleta o registro de ignorados E
+			// volta o status das propostas correspondentes de 'ignorado' para 'pendente'
+			tx, err := db.Begin()
 			if err != nil {
-				http.Error(w, "Erro ao reativar produto: "+err.Error(), http.StatusInternalServerError)
+				http.Error(w, "Erro ao iniciar transação", http.StatusInternalServerError)
 				return
 			}
-			n, _ := res.RowsAffected()
-			if n == 0 {
+			defer tx.Rollback()
+
+			// Captura a chave (cd_id, codprod, cod_filial) antes do delete
+			var cdID, codprod, codFilial int
+			err = tx.QueryRow(`
+				SELECT cd_id, codprod, cod_filial
+				  FROM smartpick.sp_ignorados
+				 WHERE id = $1 AND empresa_id = $2
+			`, ignoradoID, spCtx.EmpresaID).Scan(&cdID, &codprod, &codFilial)
+			if err == sql.ErrNoRows {
 				http.Error(w, "Produto ignorado não encontrado", http.StatusNotFound)
 				return
 			}
+			if err != nil {
+				http.Error(w, "Erro ao buscar registro: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			if _, err = tx.Exec(`
+				DELETE FROM smartpick.sp_ignorados
+				 WHERE id = $1 AND empresa_id = $2
+			`, ignoradoID, spCtx.EmpresaID); err != nil {
+				http.Error(w, "Erro ao reativar produto: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			// Restaura status das propostas com status='ignorado' do mesmo produto/CD/filial
+			// para 'pendente' e limpa os campos de aprovação que foram preenchidos no ignorar.
+			if _, err = tx.Exec(`
+				UPDATE smartpick.sp_propostas
+				   SET status = 'pendente',
+				       aprovado_por = NULL,
+				       aprovado_em  = NULL
+				 WHERE empresa_id = $1
+				   AND cd_id      = $2
+				   AND codprod    = $3
+				   AND cod_filial = $4
+				   AND status     = 'ignorado'
+			`, spCtx.EmpresaID, cdID, codprod, codFilial); err != nil {
+				http.Error(w, "Erro ao restaurar propostas: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			if err := tx.Commit(); err != nil {
+				http.Error(w, "Erro ao confirmar operação", http.StatusInternalServerError)
+				return
+			}
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"message": "Produto reativado com sucesso"})
 			return
