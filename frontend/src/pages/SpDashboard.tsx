@@ -82,6 +82,66 @@ function ClasseBadge({ classe }: { classe: string | null }) {
   )
 }
 
+function CurvaCell({ classe, justificativa }: { classe: string | null; justificativa: string | null }) {
+  const diasMatch = justificativa?.match(/(\d+) dias/)
+  const dias = diasMatch ? diasMatch[1] : null
+  const labelMap: Record<string, string> = { A: 'Alto Giro', B: 'Médio Giro', C: 'Baixo Giro' }
+  const label = classe ? labelMap[classe] : null
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex flex-col items-start gap-0.5 cursor-default">
+            <ClasseBadge classe={classe} />
+            {dias && <span className="text-[10px] text-muted-foreground leading-none">{dias}d</span>}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-72 text-xs space-y-1">
+          {label && <p className="font-semibold">Curva {classe} — {label}</p>}
+          {justificativa
+            ? <p className="font-mono text-[11px] leading-snug">{justificativa}</p>
+            : <p className="text-muted-foreground">Sem justificativa</p>}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+function AlertasCell({ giroCap, giroPR, capDias2 }: { giroCap: string | null; giroPR: string | null; capDias2: string | null }) {
+  const dot = (val: string | null, label: string, okColor = 'bg-green-500') => {
+    if (!val) return <span className="w-2 h-2 rounded-full bg-gray-200 inline-block" title="Sem dado" />
+    const colors: Record<string, string> = {
+      OK: okColor, Urgencia: 'bg-red-500', Ajustar: 'bg-orange-500', 'CAP Menor': 'bg-yellow-400',
+    }
+    return (
+      <span
+        className={`w-2 h-2 rounded-full inline-block ${colors[val] ?? 'bg-gray-300'}`}
+        title={`${label}: ${val}`}
+      />
+    )
+  }
+  const hasIssue = giroCap === 'Urgencia' || giroPR === 'Ajustar' || capDias2 === 'CAP Menor'
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className={`flex gap-1 items-center cursor-default px-1 py-0.5 rounded ${hasIssue ? 'bg-red-50' : ''}`}>
+            {dot(giroCap,  'GiroCap',  'bg-green-500')}
+            {dot(giroPR,   'GPRepos',  'bg-green-500')}
+            {dot(capDias2, 'CMEN2DDV', 'bg-green-500')}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent className="text-xs space-y-1 max-w-64">
+          <p className="font-semibold">Indicadores</p>
+          <p><span className="font-medium">GiroCap:</span> {giroCap ?? '—'} — Giro/dia ≥ capacidade atual</p>
+          <p><span className="font-medium">GPRepos:</span> {giroPR ?? '—'} — Giro/dia ≥ ponto de reposição</p>
+          <p><span className="font-medium">CMEN2DDV:</span> {capDias2 ?? '—'} — Capacidade &lt; 2 dias de venda</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 function AcaoBadge({ delta }: { delta: number }) {
   if (delta === 0) return <span className="text-xs text-green-600 font-medium">OK</span>
   if (delta > 0) return (
@@ -455,100 +515,66 @@ function PropostasTable({
         <Table>
           <TableHeader>
             <TableRow className="text-[11px]">
-              <TableHead className="w-[72px] py-1.5">Depto/Seção</TableHead>
-              <TableHead className="w-7 py-1.5">
+              <TableHead className="py-1.5 max-w-[150px]">Produto</TableHead>
+              <TableHead className="py-1.5 w-[60px]">Cód.</TableHead>
+              <TableHead className="py-1.5 w-[70px]">Ender.</TableHead>
+              <TableHead className="w-[52px] py-1.5">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger className="cursor-help underline decoration-dotted">Curva</TooltipTrigger>
-                    <TooltipContent className="text-xs">
-                      CURVA ABC de Acesso ao PICKING
-                    </TooltipContent>
+                    <TooltipContent className="text-xs">CURVA ABC de Acesso ao PICKING — letra + dias utilizados na fórmula</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="py-1.5 max-w-[120px]">Produto</TableHead>
-              <TableHead className="py-1.5">Cód.</TableHead>
-              <TableHead className="py-1.5">Ender.</TableHead>
-              <TableHead className="text-right py-1.5">Cap.</TableHead>
-              <TableHead className="text-right py-1.5">
+              <TableHead className="text-right py-1.5 w-[48px]">Cap.</TableHead>
+              <TableHead className="text-right py-1.5 w-[60px]">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger className="cursor-help underline decoration-dotted">Giro/dia</TooltipTrigger>
                     <TooltipContent className="max-w-64 text-xs">
-                      <p className="font-semibold">Quantidade de Acesso / Dia</p>
-                      <p>Número de acessos ao slot de picking por dia no período analisado.</p>
-                      <p className="mt-1 text-muted-foreground">Fórmula: QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS</p>
-                      <p className="text-muted-foreground">Fallback: MED_VENDA_DIAS → MED_VENDA_DIAS_CX</p>
+                      <p className="font-semibold">Acessos ao picking / dia</p>
+                      <p className="text-muted-foreground">QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS · Fallback: MED_VENDA_DIAS</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="text-right py-1.5">Méd.Vda</TableHead>
-              <TableHead className="text-right py-1.5">Sug.</TableHead>
-              <TableHead className="text-right py-1.5">Δ</TableHead>
-              <TableHead className="py-1.5">Status</TableHead>
-              <TableHead className="w-6 py-1.5 text-center">
+              <TableHead className="text-right py-1.5 w-[52px]">Sug.</TableHead>
+              <TableHead className="text-right py-1.5 w-[48px]">Δ</TableHead>
+              <TableHead className="py-1.5 w-[80px]">Status</TableHead>
+              <TableHead className="w-[52px] py-1.5 text-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[10px]">GC</TooltipTrigger>
-                    <TooltipContent className="max-w-56 text-xs">
-                      <p className="font-semibold">GiroCap. — Giro e Capacidade</p>
-                      <p>Analisa se o Giro/Dia é ≥ à capacidade atual. Indica risco de ruptura de estoque.</p>
-                    </TooltipContent>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[10px]">⚠ Aler.</TooltipTrigger>
+                    <TooltipContent className="text-xs">GiroCap · GPRepos · CMEN2DDV — passe o mouse na linha para ver</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="w-6 py-1.5 text-center">
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[10px]">GP</TooltipTrigger>
-                    <TooltipContent className="max-w-56 text-xs">
-                      <p className="font-semibold">GPRepos. — Giro e Ponto de Reposição</p>
-                      <p>Analisa se o Giro/Dia é ≥ ao ponto de reposição. Indica que o produto é reposto antes de zerar.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </TableHead>
-              <TableHead className="w-6 py-1.5 text-center">
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[10px]">C2D</TooltipTrigger>
-                    <TooltipContent className="max-w-56 text-xs">
-                      <p className="font-semibold">CMEN2DDV — Capacidade Menor que 2 DDVs</p>
-                      <p>Analisa se a capacidade suporta pelo menos 2 dias de venda. Abaixo disso o risco de ruptura é alto.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </TableHead>
+              <TableHead className="py-1.5 w-[60px] text-[10px] text-muted-foreground">Depto</TableHead>
               <TableHead className="w-36 py-1.5">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paged.map(p => (
               <TableRow key={p.id} className={`text-[11px] ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
-                <TableCell className="py-1 leading-tight">
-                  <div className="text-[10px] font-medium truncate max-w-[76px]" title={p.departamento ?? ''}>{p.departamento || '—'}</div>
-                  <div className="text-[10px] text-muted-foreground truncate max-w-[76px]" title={p.secao ?? ''}>{p.secao || '—'}</div>
-                </TableCell>
-                <TableCell className="py-1"><ClasseBadge classe={p.classe_venda} /></TableCell>
-                <TableCell className="py-1 max-w-[120px] truncate" title={p.produto}>{p.produto || '—'}</TableCell>
-                <TableCell className="py-1 font-mono">{p.codprod}</TableCell>
+                <TableCell className="py-1 max-w-[150px] truncate" title={p.produto}>{p.produto || '—'}</TableCell>
+                <TableCell className="py-1 font-mono text-[10px]">{p.codprod}</TableCell>
                 <TableCell className="py-1"><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
+                <TableCell className="py-1"><CurvaCell classe={p.classe_venda} justificativa={p.justificativa} /></TableCell>
                 <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
                 <TableCell className="py-1 text-right text-muted-foreground">
                   {p.giro_dia_cx != null ? p.giro_dia_cx.toFixed(1) : '—'}
-                </TableCell>
-                <TableCell className="py-1 text-right text-muted-foreground">
-                  {p.med_venda_cx != null ? p.med_venda_cx.toFixed(1) : '—'}
                 </TableCell>
                 <TableCell className="py-1 text-right">
                   <SugestaoCell proposta={p} onSave={onEditar} />
                 </TableCell>
                 <TableCell className="py-1 text-right"><AcaoBadge delta={p.delta} /></TableCell>
                 <TableCell className="py-1"><StatusBadge status={p.status} /></TableCell>
-                <TableCell className="py-1 text-center"><IndicadorBadge valor={p._ind.giroCap} /></TableCell>
-                <TableCell className="py-1 text-center"><IndicadorBadge valor={p._ind.giroPR} /></TableCell>
-                <TableCell className="py-1 text-center"><IndicadorBadge valor={p._ind.capDias2} /></TableCell>
+                <TableCell className="py-1 text-center">
+                  <AlertasCell giroCap={p._ind.giroCap} giroPR={p._ind.giroPR} capDias2={p._ind.capDias2} />
+                </TableCell>
+                <TableCell className="py-1 text-[10px] text-muted-foreground truncate max-w-[60px]" title={`${p.departamento ?? ''} / ${p.secao ?? ''}`}>
+                  {p.departamento ? p.departamento.slice(0, 8) : '—'}
+                </TableCell>
                 <TableCell className="py-1">
                   {(p.status === 'pendente' || p.status === 'calibrado') && (
                     <div className="flex gap-1 items-center">
@@ -953,60 +979,46 @@ export default function SpDashboard() {
           </div>
         )}
 
-        {/* Badges clicáveis — navegam e filtram a aba correspondente */}
-        {resumo && (
-          <>
-            <button
-              onClick={() => { setActiveTab('falta'); navigate('/dashboard/ampliar') }}
-              className={`border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all ${activeTab === 'falta' ? 'bg-red-100 border-red-400 ring-2 ring-red-300' : 'bg-red-50 hover:bg-red-100'}`}
-            >
-              <span className="text-sm font-semibold text-red-600 block leading-tight">Ampliar Slot</span>
-              <span className="font-bold text-red-700 text-2xl leading-tight">{resumo.falta_pendente}</span>
-            </button>
-            <button
-              onClick={() => { setActiveTab('espaco'); navigate('/dashboard/reduzir') }}
-              className={`border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all ${activeTab === 'espaco' ? 'bg-yellow-100 border-yellow-400 ring-2 ring-yellow-300' : 'bg-yellow-50 hover:bg-yellow-100'}`}
-            >
-              <span className="text-sm font-semibold text-yellow-700 block leading-tight">Reduzir Slot</span>
-              <span className="font-bold text-yellow-700 text-2xl leading-tight">{resumo.espaco_pendente}</span>
-            </button>
-            {resumo.calibrado_total > 0 && (
-              <button
-                onClick={() => { setActiveTab('calibrado'); navigate('/dashboard/calibrados') }}
-                className={`border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all ${activeTab === 'calibrado' ? 'bg-blue-100 border-blue-400 ring-2 ring-blue-300' : 'bg-blue-50 hover:bg-blue-100'}`}
-              >
-                <span className="text-sm font-semibold text-blue-600 block leading-tight">Já Calibrados</span>
-                <span className="font-bold text-blue-700 text-2xl leading-tight">{resumo.calibrado_total}</span>
-              </button>
-            )}
-            {resumo.curva_a_mantida > 0 && (
-              <button
-                onClick={() => { setActiveTab('curva_a_mantida'); navigate('/dashboard/curva-a') }}
-                className={`border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all ${activeTab === 'curva_a_mantida' ? 'bg-amber-100 border-amber-400 ring-2 ring-amber-300' : 'bg-amber-50 hover:bg-amber-100'}`}
-              >
-                <span className="text-sm font-semibold text-amber-700 block leading-tight">Curva A — Revisar</span>
-                <span className="font-bold text-amber-700 text-2xl leading-tight">{resumo.curva_a_mantida}</span>
-              </button>
-            )}
-            <button
-              onClick={() => navigate('/dashboard/ignorados')}
-              className="border rounded-lg px-4 py-2 min-w-[100px] text-center cursor-pointer transition-all bg-gray-50 hover:bg-gray-100"
-            >
-              <span className="text-sm font-semibold text-gray-500 block leading-tight">Prod. Ignorados</span>
-              <span className="font-bold text-gray-600 text-2xl leading-tight">{resumo.ignorado_total}</span>
-            </button>
-          </>
-        )}
-
         <Button size="sm" variant="outline" onClick={() => { refetchFalta(); refetchEspaco(); refetchCalibrado(); refetchCurvaA() }}>
           <RefreshCw className="h-3.5 w-3.5 mr-1" /> Atualizar
         </Button>
       </div>
 
-      {/* Barra de lote */}
-      {resumo && (
-        <BatchStatusBar resumo={resumo} />
-      )}
+      {/* KPI strip — navegação + resumo de progresso numa faixa compacta */}
+      {resumo && (() => {
+        const total = resumo.total_pendente + resumo.total_aprovada + resumo.total_rejeitada
+        const pctConcluido = total > 0 ? Math.round(((resumo.total_aprovada + resumo.total_rejeitada) / total) * 100) : 0
+        type KpiItem = { key: string; label: string; value: number; tab: string; path: string; active: string; base: string; ring: string }
+        const kpis: KpiItem[] = [
+          { key: 'falta',     label: 'Ampliar Slot',    value: resumo.falta_pendente,   tab: 'falta',           path: '/dashboard/ampliar',    active: 'bg-red-100 border-red-400 ring-red-200',    base: 'bg-white hover:bg-red-50 border-red-200',    ring: 'ring-2' },
+          { key: 'espaco',    label: 'Reduzir Slot',    value: resumo.espaco_pendente,  tab: 'espaco',          path: '/dashboard/reduzir',    active: 'bg-yellow-100 border-yellow-400 ring-yellow-200', base: 'bg-white hover:bg-yellow-50 border-yellow-200', ring: 'ring-2' },
+          { key: 'calibrado', label: 'Já Calibrados',   value: resumo.calibrado_total,  tab: 'calibrado',       path: '/dashboard/calibrados', active: 'bg-blue-100 border-blue-400 ring-blue-200',  base: 'bg-white hover:bg-blue-50 border-blue-200',  ring: 'ring-2' },
+          { key: 'curva_a',   label: 'Curva A — Revisar', value: resumo.curva_a_mantida, tab: 'curva_a_mantida', path: '/dashboard/curva-a',    active: 'bg-amber-100 border-amber-400 ring-amber-200', base: 'bg-white hover:bg-amber-50 border-amber-200', ring: 'ring-2' },
+          { key: 'ignorados', label: 'Prod. Ignorados', value: resumo.ignorado_total,   tab: '',                path: '/dashboard/ignorados',  active: 'bg-gray-100 border-gray-400 ring-gray-200',  base: 'bg-white hover:bg-gray-50 border-gray-200',  ring: '' },
+        ]
+        const numColors: Record<string, string> = {
+          falta: 'text-red-700', espaco: 'text-yellow-700', calibrado: 'text-blue-700', curva_a: 'text-amber-700', ignorados: 'text-gray-600',
+        }
+        return (
+          <div className="flex items-center gap-2 flex-wrap">
+            {kpis.filter(k => k.value > 0 || k.key === 'falta' || k.key === 'espaco').map(k => (
+              <button
+                key={k.key}
+                onClick={() => { if (k.tab) { setActiveTab(k.tab); navigate(k.path) } else navigate(k.path) }}
+                className={`border rounded-lg px-3 py-1.5 text-center cursor-pointer transition-all ${(k.tab && activeTab === k.tab) ? `${k.active} ${k.ring}` : k.base}`}
+              >
+                <span className="text-[11px] font-medium text-muted-foreground block leading-tight whitespace-nowrap">{k.label}</span>
+                <span className={`font-bold text-lg leading-tight ${numColors[k.key]}`}>{k.value.toLocaleString('pt-BR')}</span>
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground border rounded-lg px-3 py-1.5 bg-white">
+              <span className="text-green-700 font-medium">✓ {resumo.total_aprovada.toLocaleString('pt-BR')} aprovadas</span>
+              <span className="text-red-600 font-medium">✗ {resumo.total_rejeitada.toLocaleString('pt-BR')} rejeitadas</span>
+              <span className="font-semibold text-foreground">{pctConcluido}% concluído</span>
+            </div>
+          </div>
+        )
+      })()}
 
       {!hasFilters && (
         <p className="text-xs text-muted-foreground">
