@@ -9,7 +9,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
+
+var ajudaHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 const smartpickSystemPrompt = `Você é o assistente de treinamento do SmartPick (sistema de calibragem de slots de picking para CDs). Responda sempre em português do Brasil, de forma direta e prática.
 
@@ -134,7 +137,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
 
-		resp, err := http.DefaultClient.Do(httpReq)
+		resp, err := ajudaHTTPClient.Do(httpReq)
 		if err != nil {
 			http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
 			return
