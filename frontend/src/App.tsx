@@ -138,14 +138,20 @@ function AppLayout() {
         <main className="flex-1 overflow-auto">
           <div className="p-4">
             <Routes>
-              <Route path="/" element={<Navigate to="/dashboard/urgencia/falta" replace />} />
+              <Route path="/" element={<Navigate to="/dashboard/ampliar" replace />} />
 
-              {/* Dashboard de Urgência (Epic 5) */}
-              <Route path="/dashboard/urgencia/falta"  element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
-              <Route path="/dashboard/urgencia/espaco" element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
+              {/* Painel de Calibragem */}
+              <Route path="/dashboard/ampliar"    element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
+              <Route path="/dashboard/reduzir"    element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
+              <Route path="/dashboard/calibrados" element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
+              <Route path="/dashboard/curva-a"    element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
 
               {/* Produtos Ignorados */}
               <Route path="/dashboard/ignorados" element={<ProtectedRoute><SpIgnorados /></ProtectedRoute>} />
+
+              {/* Redirecionamentos de rotas antigas do dashboard */}
+              <Route path="/dashboard/urgencia/falta"  element={<Navigate to="/dashboard/ampliar" replace />} />
+              <Route path="/dashboard/urgencia/espaco" element={<Navigate to="/dashboard/reduzir" replace />} />
 
               {/* Upload CSV (Epic 4) */}
               <Route path="/upload/csv" element={<ProtectedRoute><SpUploadCSV /></ProtectedRoute>} />

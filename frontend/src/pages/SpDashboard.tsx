@@ -651,8 +651,14 @@ export default function SpDashboard() {
   const navigate = useNavigate()
   const headers = { Authorization: `Bearer ${token}` }
 
-  // Aba ativa: falta/espaco são derivadas da URL; calibrado/curva_a_mantida são locais
-  const urlTab = location.pathname.endsWith('/espaco') ? 'espaco' : 'falta'
+  // Aba ativa derivada da URL
+  const urlTab = (() => {
+    const p = location.pathname
+    if (p.endsWith('/reduzir')    || p.endsWith('/espaco'))  return 'espaco'
+    if (p.endsWith('/calibrados'))                           return 'calibrado'
+    if (p.endsWith('/curva-a'))                              return 'curva_a_mantida'
+    return 'falta'
+  })()
   const [activeTab, setActiveTab] = useState<string>(urlTab)
 
   // Sincroniza quando o usuário navega via sidebar
@@ -996,7 +1002,13 @@ export default function SpDashboard() {
       {hasFilters && (
         <Tabs value={activeTab} onValueChange={v => {
           setActiveTab(v)
-          if (v === 'falta' || v === 'espaco') navigate(`/dashboard/urgencia/${v}`)
+          const pathMap: Record<string, string> = {
+            falta:          '/dashboard/ampliar',
+            espaco:         '/dashboard/reduzir',
+            calibrado:      '/dashboard/calibrados',
+            curva_a_mantida:'/dashboard/curva-a',
+          }
+          if (pathMap[v]) navigate(pathMap[v])
         }}>
           <div className="flex items-center justify-between">
             <TabsList>

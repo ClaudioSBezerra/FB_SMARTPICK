@@ -18,8 +18,10 @@ export const modules: Record<string, ModuleConfig> = {
   dashboard: {
     label: 'Painel de Calibragem',
     tabs: [
-      { label: 'Urgência — Falta',  path: '/dashboard/urgencia/falta' },
-      { label: 'Urgência — Espaço', path: '/dashboard/urgencia/espaco' },
+      { label: 'Ampliar Slot',       path: '/dashboard/ampliar' },
+      { label: 'Reduzir Slot',       path: '/dashboard/reduzir' },
+      { label: 'Já Calibrados',      path: '/dashboard/calibrados' },
+      { label: 'Curva A — Revisar',  path: '/dashboard/curva-a' },
       { label: 'Produtos Ignorados', path: '/dashboard/ignorados' },
     ],
   },
