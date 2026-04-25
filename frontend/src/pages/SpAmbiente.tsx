@@ -110,23 +110,29 @@ export default function SpAmbiente() {
   const [limparConfirm,  setLimparConfirm]  = useState('')
 
   // ── Simulador da fórmula ─────────────────────────────────────────────────────
-  const [showHelp,      setShowHelp]      = useState(true)
-  const [simGiro,       setSimGiro]       = useState(25)
-  const [simMaster,     setSimMaster]     = useState(6)
-  const [simCurva,      setSimCurva]      = useState<'A' | 'B' | 'C'>('B')
-  const [simDias,       setSimDias]       = useState(15)
-  const [simFator,      setSimFator]      = useState(1.10)
-  const [simCapAtual,   setSimCapAtual]   = useState(60)
-  const [simMinCap,     setSimMinCap]     = useState(1)
-  const [simNuncaReduz, setSimNuncaReduz] = useState(true)
+  const [showHelp,        setShowHelp]        = useState(true)
+  const [simGiro,         setSimGiro]         = useState(25)
+  const [simMaster,       setSimMaster]       = useState(6)
+  const [simCurva,        setSimCurva]        = useState<'A' | 'B' | 'C'>('B')
+  const [simDias,         setSimDias]         = useState(15)
+  const [simFator,        setSimFator]        = useState(1.10)
+  const [simCapAtual,     setSimCapAtual]     = useState(60)
+  const [simMinCap,       setSimMinCap]       = useState(1)
+  const [simNuncaReduz,   setSimNuncaReduz]   = useState(true)
+  const [simNormaPalete,  setSimNormaPalete]  = useState(0)
 
   // resultados do simulador (derivados — sem useMemo para manter simples)
   const simCaixasGiro   = Math.ceil(simGiro / Math.max(simMaster, 1))
   const simSugestaoRaw  = Math.ceil(simCaixasGiro * simDias * simFator)
   const simSugestaoMin  = Math.max(simSugestaoRaw, simMinCap)
-  const simCurvaALifted = simCurva === 'A' && simNuncaReduz && simSugestaoMin < simCapAtual
-  const simSugestaoFinal = simCurvaALifted ? simCapAtual : simSugestaoMin
+  const simNormaAplicada = simNormaPalete > 1 && simSugestaoMin % simNormaPalete !== 0
+  const simSugestaoNorma = simNormaAplicada
+    ? (Math.floor(simSugestaoMin / simNormaPalete) + 1) * simNormaPalete
+    : simSugestaoMin
+  const simCurvaALifted  = simCurva === 'A' && simNuncaReduz && simSugestaoNorma < simCapAtual
+  const simSugestaoFinal = simCurvaALifted ? simCapAtual : simSugestaoNorma
   const simDelta         = simSugestaoFinal - simCapAtual
+  const simCalibrado     = simCapAtual > 0 && Math.abs(simDelta) / simCapAtual <= 0.05
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const headers = { Authorization: `Bearer ${token}` }
@@ -385,12 +391,15 @@ export default function SpAmbiente() {
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fórmula</p>
                 <div className="bg-slate-900 text-green-400 rounded-md px-4 py-3 font-mono text-sm text-center">
-                  Sugestão = ⌈ ⌈ Giro_dia ÷ Unid/cx ⌉ × Dias_curva × Fator_seg ⌉
+                  Sugestão = ⌈ ⌈ Giro_dia ÷ Unid/cx ⌉ × Dias_curva × Fator_seg ⌉ → múltiplo Norma_Palete
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-start gap-2 text-xs">
                     <span className="font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded shrink-0">Giro_dia</span>
-                    <span className="text-muted-foreground">Média de vendas diárias em unidades — vem pré-calculado do CSV (MED_VENDA_DIAS)</span>
+                    <span className="text-muted-foreground">
+                      Acessos diários ao picking — <strong>primário:</strong> QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS
+                      (Curva ABC de Acesso gerada pelo WMS/JC)
+                    </span>
                   </div>
                   <div className="flex items-start gap-2 text-xs">
                     <span className="font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded shrink-0">Unid/cx</span>
@@ -403,6 +412,82 @@ export default function SpAmbiente() {
                   <div className="flex items-start gap-2 text-xs">
                     <span className="font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded shrink-0">Fator_seg</span>
                     <span className="text-muted-foreground">Margem de segurança configurada neste CD (ex: 1.10 = +10% sobre a média)</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-xs">
+                    <span className="font-mono bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded shrink-0">Norma_Palete</span>
+                    <span className="text-muted-foreground">
+                      Caixas por palete (NORMA_PALETE do CSV). Quando &gt; 1, a sugestão é arredondada
+                      para cima ao múltiplo mais próximo: ⌈n ÷ np⌉ × np
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Prioridade das fontes ───────────────────────────────────────── */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prioridade das fontes de dados (CSV)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Giro diário (unid/dia)</p>
+                    <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside">
+                      <li>QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS <span className="text-green-600 font-medium">(preferido — acesso ao picking)</span></li>
+                      <li>MED_VENDA_DIAS</li>
+                      <li>MED_VENDA_DIAS_CX × Unid/cx</li>
+                      <li>MED_VENDA_CX_ANOANT × Unid/cx</li>
+                    </ol>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Curva ABC</p>
+                    <p className="text-xs text-muted-foreground">
+                      Campo <span className="font-mono">CLASSEVENDA</span> preenchido pelo WMS/JC com base nos acessos
+                      ao picking (substitui a curva de venda).
+                      Exibida na coluna <em>Curva</em> do painel como <strong>Curva ABC de Acesso ao Picking</strong>.
+                    </p>
+                    <p className="text-xs font-medium mt-2">Dias da curva</p>
+                    <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside">
+                      <li>CLASSEVENDA_DIAS do CSV <span className="text-green-600 font-medium">(WMS decide)</span></li>
+                      <li>Parâmetros A/B/C configurados acima</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Regras especiais ────────────────────────────────────────────── */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Regras especiais</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-blue-50 border border-blue-100 rounded-md p-3 space-y-1">
+                    <p className="text-xs font-semibold text-blue-800">Calibrado (≥ 95% assertividade)</p>
+                    <p className="text-xs text-blue-700">
+                      Quando a sugestão calculada difere em até 5% da capacidade atual do slot,
+                      a proposta é marcada como <strong>Calibrado</strong> — não exige aprovação
+                      e sinaliza que o slot já está bem dimensionado.
+                    </p>
+                    <p className="text-xs font-mono text-blue-600">|sugestão − cap_atual| ÷ cap_atual ≤ 0.05</p>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-md p-3 space-y-1">
+                    <p className="text-xs font-semibold text-slate-700">Produtos Ignorados</p>
+                    <p className="text-xs text-muted-foreground">
+                      Produtos cadastrados na lista de <strong>Produtos Ignorados</strong> são pulados pelo motor
+                      a cada nova calibragem — nenhuma proposta é gerada para eles.
+                      O gestor pode reativá-los a qualquer momento na aba <em>Produtos Ignorados</em>.
+                    </p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-100 rounded-md p-3 space-y-1">
+                    <p className="text-xs font-semibold text-amber-800">Curva A — nunca reduz</p>
+                    <p className="text-xs text-amber-700">
+                      Quando ativado, produtos de Curva A não têm capacidade reduzida pelo motor:
+                      se a sugestão for menor que a capacidade atual, mantém-se a capacidade atual.
+                    </p>
+                  </div>
+                  <div className="bg-rose-50 border border-rose-100 rounded-md p-3 space-y-1">
+                    <p className="text-xs font-semibold text-rose-800">Norma Palete</p>
+                    <p className="text-xs text-rose-700">
+                      Garante que a sugestão final seja múltiplo exato do tamanho do palete,
+                      facilitando a reposição sem fracionamento. Aplicado após a fórmula base
+                      e o mínimo absoluto.
+                    </p>
+                    <p className="text-xs font-mono text-rose-600">sugestão = (⌊s ÷ np⌋ + 1) × np  (quando s não é múltiplo)</p>
                   </div>
                 </div>
               </div>
@@ -458,6 +543,13 @@ export default function SpAmbiente() {
                       onChange={e => setSimMinCap(+e.target.value)}
                       className="w-full h-8 border rounded px-2 text-sm" />
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Norma Palete (cx/pal.)</label>
+                    <input type="number" value={simNormaPalete} min={0}
+                      onChange={e => setSimNormaPalete(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm"
+                      placeholder="0 = não aplica" />
+                  </div>
                   <div className="flex items-end pb-1.5">
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                       <input type="checkbox" checked={simNuncaReduz}
@@ -468,88 +560,86 @@ export default function SpAmbiente() {
                 </div>
 
                 {/* Resultado passo a passo */}
-                <div className="bg-slate-50 border rounded-md p-3 font-mono text-xs space-y-1.5">
-                  <div className="flex gap-2">
-                    <span className="text-slate-400 w-4 shrink-0">1.</span>
-                    <span>
-                      caixas_giro = ⌈{simGiro} ÷ {simMaster}⌉ ={' '}
-                      <strong className="text-amber-700">{simCaixasGiro} cx/dia</strong>
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="text-slate-400 w-4 shrink-0">2.</span>
-                    <span>
-                      dias_curva = <strong className="text-green-700">{simDias} dias</strong>{' '}
-                      <span className="text-slate-400">(Curva {simCurva})</span>
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="text-slate-400 w-4 shrink-0">3.</span>
-                    <span>
-                      sugestão = ⌈{simCaixasGiro} × {simDias} × {simFator.toFixed(2)}⌉ ={' '}
-                      ⌈{(simCaixasGiro * simDias * simFator).toFixed(2)}⌉ ={' '}
-                      <strong className="text-blue-700">{simSugestaoRaw} cx</strong>
-                    </span>
-                  </div>
-                  {simSugestaoMin > simSugestaoRaw && (
-                    <div className="flex gap-2 text-amber-700">
-                      <span className="text-slate-400 w-4 shrink-0">4.</span>
-                      <span>
-                        cap. mínima aplicada: {simSugestaoRaw} →{' '}
-                        <strong>{simSugestaoMin} cx</strong>
-                      </span>
+                {(() => {
+                  let step = 1
+                  return (
+                    <div className="bg-slate-50 border rounded-md p-3 font-mono text-xs space-y-1.5">
+                      <div className="flex gap-2">
+                        <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
+                        <span>
+                          caixas_giro = ⌈{simGiro} ÷ {simMaster}⌉ ={' '}
+                          <strong className="text-amber-700">{simCaixasGiro} cx/dia</strong>
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
+                        <span>
+                          dias_curva = <strong className="text-green-700">{simDias} dias</strong>{' '}
+                          <span className="text-slate-400">(Curva {simCurva})</span>
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
+                        <span>
+                          sugestão = ⌈{simCaixasGiro} × {simDias} × {simFator.toFixed(2)}⌉ ={' '}
+                          ⌈{(simCaixasGiro * simDias * simFator).toFixed(2)}⌉ ={' '}
+                          <strong className="text-blue-700">{simSugestaoRaw} cx</strong>
+                        </span>
+                      </div>
+                      {simSugestaoMin > simSugestaoRaw && (
+                        <div className="flex gap-2 text-amber-700">
+                          <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
+                          <span>
+                            cap. mínima aplicada: {simSugestaoRaw} →{' '}
+                            <strong>{simSugestaoMin} cx</strong>
+                          </span>
+                        </div>
+                      )}
+                      {simNormaAplicada && (
+                        <div className="flex gap-2 text-rose-700">
+                          <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
+                          <span>
+                            norma palete (×{simNormaPalete}): {simSugestaoMin} →{' '}
+                            <strong>{simSugestaoNorma} cx</strong>
+                            <span className="text-slate-400 ml-1">(⌊{simSugestaoMin}÷{simNormaPalete}⌋+1)×{simNormaPalete}</span>
+                          </span>
+                        </div>
+                      )}
+                      {simCurvaALifted && (
+                        <div className="flex gap-2 text-amber-700">
+                          <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
+                          <span>
+                            Curva A nunca reduz: {simSugestaoNorma} →{' '}
+                            <strong>{simSugestaoFinal} cx</strong>
+                          </span>
+                        </div>
+                      )}
+                      <div className="border-t pt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <span className="text-slate-500">Sugestão final:</span>
+                        <strong className="text-base">{simSugestaoFinal} cx</strong>
+                        <span className="text-slate-400">|</span>
+                        <span className="text-slate-500">Cap. atual:</span>
+                        <strong>{simCapAtual} cx</strong>
+                        <span className="text-slate-400">|</span>
+                        <span className="text-slate-500">Delta:</span>
+                        <strong className={
+                          simDelta > 0 ? 'text-red-600'
+                          : simDelta < 0 ? 'text-amber-600'
+                          : 'text-green-600'
+                        }>
+                          {simDelta > 0 ? '+' : ''}{simDelta} cx
+                          {' — '}
+                          {simDelta > 0 ? 'FALTA (ampliar slot)' : simDelta < 0 ? 'Excesso (reduzir slot)' : 'OK'}
+                        </strong>
+                        {simCalibrado && (
+                          <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                            Calibrado (≤5%)
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  )}
-                  {simCurvaALifted && (
-                    <div className="flex gap-2 text-amber-700">
-                      <span className="text-slate-400 w-4 shrink-0">{simSugestaoMin > simSugestaoRaw ? '5.' : '4.'}</span>
-                      <span>
-                        Curva A nunca reduz: {simSugestaoMin} →{' '}
-                        <strong>{simSugestaoFinal} cx</strong>
-                      </span>
-                    </div>
-                  )}
-                  <div className="border-t pt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <span className="text-slate-500">Sugestão final:</span>
-                    <strong className="text-base">{simSugestaoFinal} cx</strong>
-                    <span className="text-slate-400">|</span>
-                    <span className="text-slate-500">Cap. atual:</span>
-                    <strong>{simCapAtual} cx</strong>
-                    <span className="text-slate-400">|</span>
-                    <span className="text-slate-500">Delta:</span>
-                    <strong className={
-                      simDelta > 0 ? 'text-red-600'
-                      : simDelta < 0 ? 'text-amber-600'
-                      : 'text-green-600'
-                    }>
-                      {simDelta > 0 ? '+' : ''}{simDelta} cx
-                      {' — '}
-                      {simDelta > 0 ? 'FALTA (ampliar slot)' : simDelta < 0 ? 'Excesso (reduzir slot)' : 'OK'}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Prioridade das fontes ───────────────────────────────────────── */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prioridade das fontes de dados (CSV)</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium">Giro diário (unid/dia)</p>
-                    <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside">
-                      <li>MED_VENDA_DIAS <span className="text-green-600 font-medium">(preferido)</span></li>
-                      <li>MED_VENDA_DIAS_CX × Unid/cx</li>
-                      <li>MED_VENDA_CX_ANOANT × Unid/cx</li>
-                    </ol>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium">Dias da curva</p>
-                    <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside">
-                      <li>CLASSEVENDA_DIAS do CSV <span className="text-green-600 font-medium">(WMS decide)</span></li>
-                      <li>Parâmetros A/B/C configurados acima</li>
-                    </ol>
-                  </div>
-                </div>
+                  )
+                })()}
               </div>
 
             </div>
