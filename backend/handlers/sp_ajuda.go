@@ -76,7 +76,8 @@ type mistralRequest struct {
 type mistralResponse struct {
 	Choices []struct {
 		Message struct {
-			Content string `json:"content"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
 		} `json:"message"`
 	} `json:"choices"`
 	// Mistral retorna erros no formato plano, não aninhado
@@ -122,12 +123,17 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		}
 		messages = append(messages, req.Messages...)
 
-		payload, _ := json.Marshal(mistralRequest{
-			Model:       "glm-4.5-air",
-			Messages:    messages,
-			MaxTokens:   1024,
-			Temperature: 0.3,
-		})
+		// Modelo primário (free tier Z.AI). Em 429, faz retry com o fallback.
+		buildPayload := func(model string) []byte {
+			b, _ := json.Marshal(mistralRequest{
+				Model:       model,
+				Messages:    messages,
+				MaxTokens:   1024,
+				Temperature: 0.3,
+			})
+			return b
+		}
+		payload := buildPayload("glm-4.7-flash")
 
 		httpReq, err := http.NewRequest("POST", "https://api.z.ai/api/paas/v4/chat/completions", bytes.NewReader(payload))
 		if err != nil {
@@ -137,9 +143,9 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
 
-		// Função auxiliar para fazer a requisição (permite retry em 429)
-		doRequest := func() (*http.Response, []byte, error) {
-			req, err := http.NewRequest("POST", "https://api.z.ai/api/paas/v4/chat/completions", bytes.NewReader(payload))
+		// Função auxiliar para fazer a requisição (permite retry com modelo alternativo)
+		doRequest := func(body []byte) (*http.Response, []byte, error) {
+			req, err := http.NewRequest("POST", "https://api.z.ai/api/paas/v4/chat/completions", bytes.NewReader(body))
 			if err != nil {
 				return nil, nil, err
 			}
@@ -150,24 +156,24 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 				return nil, nil, err
 			}
 			defer r.Body.Close()
-			body, _ := io.ReadAll(r.Body)
-			return r, body, nil
+			respBody, _ := io.ReadAll(r.Body)
+			return r, respBody, nil
 		}
 
 		// Suprime o httpReq inicial (não usado mais — substituído por doRequest)
 		_ = httpReq
 
-		resp, raw, err := doRequest()
+		resp, raw, err := doRequest(payload)
 		if err != nil {
 			http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
 			return
 		}
 
-		// Retry uma vez em 429 (rate limit do plano LITE)
+		// Em 429, tenta o modelo de fallback glm-4.5-flash (mesmo padrão do FB_APU01)
 		if resp.StatusCode == http.StatusTooManyRequests {
-			log.Printf("[ajuda] 429 recebido, aguardando 2s e tentando novamente")
+			log.Printf("[ajuda] 429 em glm-4.7-flash, retry com glm-4.5-flash")
 			time.Sleep(2 * time.Second)
-			resp, raw, err = doRequest()
+			resp, raw, err = doRequest(buildPayload("glm-4.5-flash"))
 			if err != nil {
 				http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
 				return
@@ -239,9 +245,13 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// GLM às vezes retorna o texto em reasoning_content em vez de content
+		reply := mistralResp.Choices[0].Message.Content
+		if reply == "" {
+			reply = mistralResp.Choices[0].Message.ReasoningContent
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"reply": mistralResp.Choices[0].Message.Content,
-		})
+		json.NewEncoder(w).Encode(map[string]string{"reply": reply})
 	}
 }
