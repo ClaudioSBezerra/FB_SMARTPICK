@@ -248,7 +248,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		apiKey := os.Getenv("MISTRAL_API_KEY")
+		apiKey := os.Getenv("ZAI_API_KEY")
 		if apiKey == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -275,13 +275,13 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		messages = append(messages, req.Messages...)
 
 		payload, _ := json.Marshal(mistralRequest{
-			Model:       "mistral-small-latest",
+			Model:       "glm-4.5-air",
 			Messages:    messages,
 			MaxTokens:   1024,
-			Temperature: 0.3, // mais determinístico para respostas de treinamento
+			Temperature: 0.3,
 		})
 
-		httpReq, err := http.NewRequest("POST", "https://api.mistral.ai/v1/chat/completions", bytes.NewReader(payload))
+		httpReq, err := http.NewRequest("POST", "https://api.z.ai/api/paas/v4/chat/completions", bytes.NewReader(payload))
 		if err != nil {
 			http.Error(w, `{"error":"Erro interno"}`, http.StatusInternalServerError)
 			return
