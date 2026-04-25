@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var ajudaHTTPClient = &http.Client{Timeout: 30 * time.Second}
+var ajudaHTTPClient = &http.Client{Timeout: 12 * time.Second}
 
 const smartpickSystemPrompt = `Você é o assistente de treinamento do SmartPick (sistema de calibragem de slots de picking para CDs). Responda sempre em português do Brasil, de forma direta e prática.
 
@@ -170,9 +170,9 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		}
 
 		// Em 429, tenta o modelo de fallback glm-4.5-flash (mesmo padrão do FB_APU01)
+		// Sem sleep — o nginx do Hostinger tem timeout de proxy curto (~30s)
 		if resp.StatusCode == http.StatusTooManyRequests {
-			log.Printf("[ajuda] 429 em glm-4.7-flash, retry com glm-4.5-flash")
-			time.Sleep(2 * time.Second)
+			log.Printf("[ajuda] 429 em glm-4.7-flash, retry imediato com glm-4.5-flash")
 			resp, raw, err = doRequest(buildPayload("glm-4.5-flash"))
 			if err != nil {
 				http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
