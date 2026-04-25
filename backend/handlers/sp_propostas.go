@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"fb_smartpick/services"
 )
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
@@ -58,6 +60,7 @@ type PropostaResponse struct {
 	MedVendaCx         *float64  `json:"med_venda_cx,omitempty"`
 	PontoReposicao     *int      `json:"ponto_reposicao,omitempty"`
 	Participacao       *float64  `json:"participacao,omitempty"` // % participação na curva ABC
+	Prioridade         int       `json:"prioridade"`              // score 0..100 calculado em runtime
 }
 
 type PropostasResumo struct {
@@ -176,6 +179,10 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			); err != nil {
 				continue
 			}
+			p.Prioridade = services.CalcularPrioridade(
+				p.ClasseVenda, p.Delta, p.CapacidadeAtual,
+				p.GiroDiaCx, p.MedVendaCx, p.PontoReposicao,
+			)
 			propostas = append(propostas, p)
 		}
 		if propostas == nil {

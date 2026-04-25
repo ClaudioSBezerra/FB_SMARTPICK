@@ -17,7 +17,7 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, EyeOff } from 'lucide-react'
+import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, EyeOff, Flame } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { BatchStatusBar } from '@/components/BatchStatusBar'
 
@@ -54,6 +54,7 @@ interface Proposta {
   med_venda_cx: number | null
   ponto_reposicao: number | null
   participacao: number | null
+  prioridade: number
 }
 
 interface Resumo {
@@ -81,6 +82,48 @@ function ClasseBadge({ classe }: { classe: string | null }) {
       {classe}
     </span>
   )
+}
+
+function PrioridadeCell({ score }: { score: number }) {
+  if (score >= 80) {
+    return (
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-700 text-white text-[11px] font-bold cursor-default">
+              <Flame className="h-3 w-3" />{score}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="text-xs">
+            <p className="font-semibold">Crítico — score {score}/100</p>
+            <p className="text-muted-foreground">Curva A + delta alto + alertas ativos. Atender com urgência.</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+  if (score >= 60) {
+    return (
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-orange-500 text-white text-[11px] font-semibold cursor-default">
+              {score}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="text-xs"><p>Alta prioridade — score {score}/100</p></TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+  if (score >= 40) {
+    return (
+      <span className="inline-flex px-1.5 py-0.5 rounded bg-yellow-200 text-yellow-900 text-[11px] font-medium">
+        {score}
+      </span>
+    )
+  }
+  return <span className="text-[11px] text-muted-foreground">{score}</span>
 }
 
 function CurvaCell({ classe, participacao }: { classe: string | null; participacao: number | null }) {
@@ -278,6 +321,7 @@ function PropostasTable({
   const [filterGiroCap,  setFilterGiroCap]  = useState('')
   const [filterGiroPR,   setFilterGiroPR]   = useState('')
   const [filterCapDias,  setFilterCapDias]  = useState('')
+  const [filterPrio,     setFilterPrio]     = useState('') // '' | 'critico' | 'alto' | 'medio'
   const [page, setPage] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
   const PAGE_SIZE = 100
@@ -320,12 +364,15 @@ function PropostasTable({
       if (filterGiroCap && r._ind.giroCap !== filterGiroCap) return false
       if (filterGiroPR  && r._ind.giroPR  !== filterGiroPR)  return false
       if (filterCapDias && r._ind.capDias2 !== filterCapDias) return false
+      if (filterPrio === 'critico' && r.prioridade < 80) return false
+      if (filterPrio === 'alto'    && r.prioridade < 60) return false
+      if (filterPrio === 'medio'   && r.prioridade < 40) return false
       return true
-    }),
-    [rows, filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias],
+    }).sort((a, b) => b.prioridade - a.prioridade),
+    [rows, filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, filterPrio],
   )
 
-  const hasFilters = filterSearch || filterDepto || filterSecao || filterEnder || filterGiroCap || filterGiroPR || filterCapDias
+  const hasFilters = filterSearch || filterDepto || filterSecao || filterEnder || filterGiroCap || filterGiroPR || filterCapDias || filterPrio
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
@@ -337,7 +384,7 @@ function PropostasTable({
   // M5 fix: reset usa hash estável (length + primeiro id) em vez da referência
   // do array, evitando volta à página 1 em refetches cuja data é idêntica.
   const propostasKey = `${propostas.length}:${propostas[0]?.id ?? ''}`
-  useEffect(() => { setPage(1) }, [filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, propostasKey])
+  useEffect(() => { setPage(1) }, [filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, filterPrio, propostasKey])
 
   return (
     <div className="space-y-2">
@@ -349,6 +396,15 @@ function PropostasTable({
           onChange={e => setFilterSearch(e.target.value)}
           className="h-7 text-xs w-56"
         />
+        <Select value={filterPrio || 'all'} onValueChange={v => setFilterPrio(v === 'all' ? '' : v)}>
+          <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Prioridade" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as prioridades</SelectItem>
+            <SelectItem value="critico">🔥 Críticos (≥80)</SelectItem>
+            <SelectItem value="alto">⚡ Alta (≥60)</SelectItem>
+            <SelectItem value="medio">⬆ Média (≥40)</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={filterDepto || 'all'} onValueChange={v => { setFilterDepto(v === 'all' ? '' : v); setFilterSecao('') }}>
           <SelectTrigger className="h-7 text-xs w-44"><SelectValue placeholder="Departamento" /></SelectTrigger>
           <SelectContent>
@@ -431,7 +487,7 @@ function PropostasTable({
         {hasFilters && (
           <button
             className="text-[11px] text-muted-foreground hover:text-foreground underline"
-            onClick={() => { setFilterSearch(''); setFilterDepto(''); setFilterSecao(''); setFilterEnder(''); setFilterGiroCap(''); setFilterGiroPR(''); setFilterCapDias('') }}
+            onClick={() => { setFilterSearch(''); setFilterDepto(''); setFilterSecao(''); setFilterEnder(''); setFilterGiroCap(''); setFilterGiroPR(''); setFilterCapDias(''); setFilterPrio('') }}
           >
             limpar filtros
           </button>
@@ -467,6 +523,7 @@ function PropostasTable({
               // L3 fix: data local (pt-BR em formato ISO) no nome do arquivo
               const today = new Date().toLocaleDateString('sv-SE')
               const data = filtered.map(r => ({
+                'Prioridade': r.prioridade,
                 'Departamento': r.departamento ?? '',
                 'Seção': r.secao ?? '',
                 'Curva': r.classe_venda ?? '',
@@ -514,6 +571,17 @@ function PropostasTable({
         <Table>
           <TableHeader>
             <TableRow className="text-xs">
+              <TableHead className="py-2 w-[52px] text-center">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted">🔥</TooltipTrigger>
+                    <TooltipContent className="text-xs max-w-64">
+                      <p className="font-semibold">Prioridade (0-100)</p>
+                      <p className="text-muted-foreground">Curva ABC + magnitude do delta + alertas + giro. ≥80 crítico · ≥60 alto · ≥40 médio.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </TableHead>
               <TableHead className="py-2 w-[88px]">Depto / Seção</TableHead>
               <TableHead className="py-2">Produto</TableHead>
               <TableHead className="py-2 w-[180px]">Cód. · Endereço</TableHead>
@@ -553,6 +621,9 @@ function PropostasTable({
           <TableBody>
             {paged.map(p => (
               <TableRow key={p.id} className={`text-xs ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
+                <TableCell className="py-1.5 w-[52px] text-center">
+                  <PrioridadeCell score={p.prioridade} />
+                </TableCell>
                 <TableCell className="py-1.5 w-[88px]">
                   <div className="text-[11px] font-medium truncate" title={p.departamento ?? ''}>{p.departamento || '—'}</div>
                   <div className="text-[11px] text-muted-foreground truncate" title={p.secao ?? ''}>{p.secao || '—'}</div>
