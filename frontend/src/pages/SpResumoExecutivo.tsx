@@ -96,7 +96,8 @@ export default function SpResumoExecutivo() {
   const qc = useQueryClient()
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token])
 
-  const isMaster = group === 'MASTER' || spRole === 'admin_fbtax'
+  const podeGerar = group === 'MASTER' || spRole === 'admin_fbtax' || spRole === 'gestor_geral'
+  const isMaster = podeGerar // mantém compat com botão "Enviar por email"
 
   const [filialID, setFilialID] = useState('')
   const [cdID, setCdID]         = useState('')
@@ -202,7 +203,7 @@ export default function SpResumoExecutivo() {
           </Select>
         </div>
 
-        {isMaster && cdID && (
+        {podeGerar && cdID && (
           <Button
             size="sm"
             onClick={() => gerarMutation.mutate()}
@@ -225,9 +226,13 @@ export default function SpResumoExecutivo() {
           <p className="text-sm text-muted-foreground">
             Nenhum resumo gerado para este CD ainda.
           </p>
-          {isMaster && (
+          {podeGerar ? (
             <p className="text-xs text-muted-foreground mt-1">
-              Clique em "Gerar Resumo Semanal" para criar o primeiro.
+              Clique em "Gerar Resumo Semanal" acima para criar o primeiro.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground mt-1">
+              Aguarde o gestor geral ou administrador gerar o primeiro resumo.
             </p>
           )}
         </div>
