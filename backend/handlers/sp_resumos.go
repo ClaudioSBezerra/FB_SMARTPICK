@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -252,7 +253,9 @@ func SpResumoItemHandler(db *sql.DB) http.HandlerFunc {
 //   gera o resumo executivo da última semana e retorna o id criado
 func SpResumoGerarHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[resumo-handler] %s %s", r.Method, r.URL.String())
 		if r.Method != http.MethodPost {
+			log.Printf("[resumo-handler] método inválido: %s", r.Method)
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
 		}
@@ -260,6 +263,7 @@ func SpResumoGerarHandler(db *sql.DB) http.HandlerFunc {
 
 		cdIDStr := r.URL.Query().Get("cd_id")
 		if cdIDStr == "" {
+			log.Printf("[resumo-handler] cd_id ausente na URL")
 			http.Error(w, `{"error":"cd_id obrigatório"}`, http.StatusBadRequest)
 			return
 		}
@@ -269,14 +273,19 @@ func SpResumoGerarHandler(db *sql.DB) http.HandlerFunc {
 		criadoPor := ""
 		if spCtx != nil {
 			criadoPor = spCtx.UserID
+			log.Printf("[resumo-handler] CD=%d user=%s role=%s", cdID, criadoPor, spCtx.SpRole)
+		} else {
+			log.Printf("[resumo-handler] CD=%d sem spContext", cdID)
 		}
 
 		id, _, _, err := services.GerarResumoExecutivo(db, cdID, criadoPor)
 		if err != nil {
+			log.Printf("[resumo-handler] CD=%d erro: %v", cdID, err)
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
 		}
 
+		log.Printf("[resumo-handler] CD=%d sucesso, relatório id=%d", cdID, id)
 		json.NewEncoder(w).Encode(map[string]int{"id": id})
 	}
 }

@@ -374,6 +374,7 @@ func MarcarEnviado(db *sql.DB, relatorioID int, enviadoPara []string, erroEnvio 
 // retornando lista de emails enviados e mensagem de erro (se houver).
 // Reaproveita GetEmailConfig + sendMailSSL do email.go.
 func EnviarResumoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
+	log.Printf("[resumo] enviando relatório %d por email", relatorioID)
 	// Carrega o relatório
 	var (
 		cdID                   int
@@ -607,21 +608,29 @@ func buildResumoPlainText(k *KPIsResumoExecutivo, narrativa, periodoIni, periodo
 func GerarResumoExecutivo(db *sql.DB, cdID int, criadoPor string) (int, *KPIsResumoExecutivo, string, error) {
 	fim := time.Now()
 	inicio := fim.AddDate(0, 0, -7)
+	log.Printf("[resumo] CD=%d gerando resumo período %s → %s", cdID, inicio.Format("2006-01-02"), fim.Format("2006-01-02"))
 
 	kpis, err := ColetarKPIs(db, cdID, inicio, fim)
 	if err != nil {
+		log.Printf("[resumo] CD=%d coletar KPIs FALHOU: %v", cdID, err)
 		return 0, nil, "", fmt.Errorf("coletar KPIs: %w", err)
 	}
+	log.Printf("[resumo] CD=%d KPIs coletados: total=%d aprovadas=%d rejeitadas=%d imports=%d sem_atividade=%v",
+		cdID, kpis.TotalPropostas, kpis.TotalAprovadas, kpis.TotalRejeitadas, len(kpis.ImportsPeriodo), kpis.SemAtividade)
 
 	narrativa, err := GerarNarrativaIA(kpis)
 	if err != nil {
+		log.Printf("[resumo] CD=%d gerar narrativa FALHOU: %v", cdID, err)
 		return 0, nil, "", fmt.Errorf("gerar narrativa: %w", err)
 	}
+	log.Printf("[resumo] CD=%d narrativa gerada (%d chars)", cdID, len(narrativa))
 
 	id, err := SalvarRelatorio(db, kpis, narrativa, criadoPor)
 	if err != nil {
+		log.Printf("[resumo] CD=%d salvar relatório FALHOU: %v", cdID, err)
 		return 0, nil, "", fmt.Errorf("salvar relatório: %w", err)
 	}
+	log.Printf("[resumo] CD=%d relatório %d salvo com sucesso", cdID, id)
 
 	return id, kpis, narrativa, nil
 }
