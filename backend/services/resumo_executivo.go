@@ -504,11 +504,14 @@ func EnviarResumoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
 			sendErr = fmt.Errorf("porta SMTP %d não suportada (somente 465)", cfg.Port)
 		}
 		if sendErr != nil {
-			log.Printf("[resumo] erro envio para %s: %v", d.Email, sendErr)
+			log.Printf("[resumo] ✗ erro envio para %s: %v", d.Email, sendErr)
 			continue
 		}
+		log.Printf("[resumo] ✓ enviado para %s", d.Email)
 		enviados = append(enviados, d.Email)
 	}
+	log.Printf("[resumo] envio concluído: %d/%d destinatários receberam o relatório %d",
+		len(enviados), len(destinos), relatorioID)
 
 	if len(enviados) == 0 {
 		return nil, fmt.Errorf("falha ao enviar para todos os %d destinatários", len(destinos))
