@@ -44,6 +44,9 @@ type KPIsResumoExecutivo struct {
 	AlertasUrgencia int `json:"alertas_urgencia"`
 	AlertasAjustar  int `json:"alertas_ajustar"`
 	AlertasCapMenor int `json:"alertas_cap_menor"`
+
+	ImportsPeriodo []ImportInfo `json:"imports_periodo"`
+	SemAtividade   bool         `json:"sem_atividade"` // true quando não houve aprovações/rejeições no período
 }
 
 type KVPair struct {
@@ -60,6 +63,18 @@ type ProdutoCritico struct {
 	Prioridade   int    `json:"prioridade"`
 }
 
+// ImportInfo descreve um arquivo CSV importado no período do resumo
+type ImportInfo struct {
+	JobID        string `json:"job_id"`
+	Filename     string `json:"filename"`
+	Status       string `json:"status"`
+	UploadedBy   string `json:"uploaded_by"`   // nome do usuário ou email
+	UploadedEm   string `json:"uploaded_em"`   // YYYY-MM-DD HH:MM
+	TotalLinhas  int    `json:"total_linhas"`
+	LinhasOk     int    `json:"linhas_ok"`
+	LinhasErro   int    `json:"linhas_erro"`
+}
+
 // ── Coleta de KPIs ────────────────────────────────────────────────────────────
 
 // ColetarKPIs busca os indicadores agregados do CD no período informado
@@ -71,6 +86,7 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		TopMotivosRejeicao:  []KVPair{},
 		TopDeptosPendentes:  []KVPair{},
 		TopProdutosCriticos: []ProdutoCritico{},
+		ImportsPeriodo:      []ImportInfo{},
 	}
 	// Limite superior do range (exclusivo) — fim do dia. Usado nas queries
 	// como `created_at < $3` para incluir o dia inteiro do fim.
@@ -196,6 +212,37 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		}
 	}
 
+	// Imports CSV no período (úteis quando não houve atividade na semana)
+	rows4, err := db.Query(`
+		SELECT j.id::text,
+		       j.filename,
+		       j.status,
+		       COALESCE(NULLIF(u.email,''), 'desconhecido'),
+		       to_char(j.created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI'),
+		       COALESCE(j.total_linhas, 0),
+		       COALESCE(j.linhas_ok, 0),
+		       COALESCE(j.linhas_erro, 0)
+		  FROM smartpick.sp_csv_jobs j
+	     LEFT JOIN public.users u ON u.id = j.uploaded_by
+		 WHERE j.cd_id = $1
+		   AND j.created_at >= $2 AND j.created_at < $3
+		 ORDER BY j.created_at DESC
+		 LIMIT 20
+	`, cdID, inicio, fimExclusivo)
+	if err == nil {
+		defer rows4.Close()
+		for rows4.Next() {
+			var imp ImportInfo
+			if rows4.Scan(&imp.JobID, &imp.Filename, &imp.Status, &imp.UploadedBy, &imp.UploadedEm,
+				&imp.TotalLinhas, &imp.LinhasOk, &imp.LinhasErro) == nil {
+				k.ImportsPeriodo = append(k.ImportsPeriodo, imp)
+			}
+		}
+	}
+
+	// Marca como "sem atividade" quando não houve aprovações nem rejeições
+	k.SemAtividade = (k.TotalAprovadas + k.TotalRejeitadas) == 0
+
 	// Alertas atuais usando o último csv_job do CD
 	_ = db.QueryRow(`
 		WITH job AS (
@@ -228,6 +275,13 @@ Receberá um JSON com KPIs do CD na semana. Sua tarefa:
 3. Use os números EXATOS do JSON. Se algum dado não estiver disponível, omita o ponto sem inventar
 4. Máximo de ~250 palavras totais
 5. Não repita o JSON — só análise narrativa
+
+CASO ESPECIAL — sem_atividade=true:
+   Se o campo "sem_atividade" estiver true, significa que NÃO houve aprovações nem rejeições no período. Nesse caso:
+   - Abra reconhecendo a baixa atividade ("A semana não registrou movimentações de calibragem...")
+   - Se houver imports_periodo: liste cada arquivo importado (filename, uploaded_by, uploaded_em, total_linhas, status) em "## Importações do período"
+   - Em "## Sugestão de ação": cobre o gestor para revisar as propostas pendentes ou importar dados se nada chegou
+   - Não invente alertas que não estão nos dados
 
 Não inclua saudações, despedidas ou nome do destinatário — apenas o conteúdo do resumo.`
 
@@ -494,6 +548,23 @@ table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
 		sb.WriteString(`</tbody></table></div>`)
 	}
 
+	// Importações do período (úteis principalmente quando sem_atividade=true)
+	if len(k.ImportsPeriodo) > 0 {
+		sb.WriteString(`<div class="sec"><div class="sec-title">Importa&ccedil;&otilde;es do per&iacute;odo</div><table class="dt"><thead><tr><th>Data</th><th>Arquivo</th><th>Importado por</th><th style="text-align:right">Linhas</th><th>Status</th></tr></thead><tbody>`)
+		for _, imp := range k.ImportsPeriodo {
+			statusColor := "#16a34a"
+			switch imp.Status {
+			case "failed":
+				statusColor = "#dc2626"
+			case "pending", "processing":
+				statusColor = "#ca8a04"
+			}
+			fmt.Fprintf(&sb, `<tr><td>%s</td><td>%s</td><td>%s</td><td style="text-align:right">%d</td><td style="color:%s;font-weight:600">%s</td></tr>`,
+				imp.UploadedEm, imp.Filename, imp.UploadedBy, imp.TotalLinhas, statusColor, imp.Status)
+		}
+		sb.WriteString(`</tbody></table></div>`)
+	}
+
 	appURL := os.Getenv("APP_URL")
 	if appURL == "" {
 		appURL = "https://smartpick.fbtax.cloud"
@@ -514,6 +585,15 @@ func buildResumoPlainText(k *KPIsResumoExecutivo, narrativa, periodoIni, periodo
 	fmt.Fprintf(&sb, "  - Pendentes:  %d\n", k.TotalPendentes)
 	fmt.Fprintf(&sb, "Ampliar slot: %d | Reduzir slot: %d | Calibrados: %d | Curva A revisar: %d\n", k.Ampliar, k.Reduzir, k.Calibrados, k.CurvaARevisar)
 	fmt.Fprintf(&sb, "Taxa de aprovacao: %.0f%% | Compliance: %.0f%% | Ignorados: %d\n\n", k.TaxaAprovacaoPct, k.TaxaCompliancePct, k.TotalIgnorados)
+
+	if len(k.ImportsPeriodo) > 0 {
+		sb.WriteString("=== IMPORTACOES DO PERIODO ===\n")
+		for _, imp := range k.ImportsPeriodo {
+			fmt.Fprintf(&sb, "%s | %s | por %s | %d linhas | %s\n",
+				imp.UploadedEm, imp.Filename, imp.UploadedBy, imp.TotalLinhas, imp.Status)
+		}
+		sb.WriteString("\n")
+	}
 
 	sb.WriteString("=== ANALISE DA IA ===\n")
 	sb.WriteString(narrativa)

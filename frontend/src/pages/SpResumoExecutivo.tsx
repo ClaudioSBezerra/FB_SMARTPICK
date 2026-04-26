@@ -43,6 +43,17 @@ interface KPIs {
   alertas_urgencia: number
   alertas_ajustar: number
   alertas_cap_menor: number
+  imports_periodo: Array<{
+    job_id: string
+    filename: string
+    status: string
+    uploaded_by: string
+    uploaded_em: string
+    total_linhas: number
+    linhas_ok: number
+    linhas_erro: number
+  }>
+  sem_atividade: boolean
 }
 
 interface ResumoDetalhe {
@@ -270,6 +281,11 @@ export default function SpResumoExecutivo() {
                     <p className="text-xs text-muted-foreground">
                       {detalhe.dados.filial_nome} · período {new Date(detalhe.periodo_inicio).toLocaleDateString('pt-BR')} a {new Date(detalhe.periodo_fim).toLocaleDateString('pt-BR')}
                     </p>
+                    {detalhe.dados.sem_atividade && (
+                      <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-medium">
+                        ⚠ Sem movimentação de calibragem no período
+                      </span>
+                    )}
                     {detalhe.enviado_em && (
                       <p className="text-[11px] text-green-700 flex items-center gap-1 mt-1">
                         <Mail className="h-3 w-3" /> Enviado em {new Date(detalhe.enviado_em).toLocaleString('pt-BR')}
@@ -355,6 +371,43 @@ export default function SpResumoExecutivo() {
                               </td>
                             </tr>
                           ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {(detalhe.dados.imports_periodo ?? []).length > 0 && (
+                  <div className="p-4 border-t">
+                    <h3 className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+                      Importações do período ({(detalhe.dados.imports_periodo ?? []).length})
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="text-xs w-full">
+                        <thead>
+                          <tr className="border-b text-left text-muted-foreground">
+                            <th className="py-1">Data</th>
+                            <th>Arquivo</th>
+                            <th>Importado por</th>
+                            <th className="text-right">Linhas</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(detalhe.dados.imports_periodo ?? []).map(imp => {
+                            const cor = imp.status === 'failed' ? 'text-red-600'
+                              : imp.status === 'done' ? 'text-green-700'
+                              : 'text-yellow-700'
+                            return (
+                              <tr key={imp.job_id} className="border-b last:border-0">
+                                <td className="py-1 font-mono text-[11px]">{imp.uploaded_em}</td>
+                                <td className="truncate max-w-[240px]" title={imp.filename}>{imp.filename}</td>
+                                <td className="text-muted-foreground text-[11px]">{imp.uploaded_by}</td>
+                                <td className="text-right">{imp.total_linhas.toLocaleString('pt-BR')}</td>
+                                <td className={`font-semibold ${cor}`}>{imp.status}</td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
