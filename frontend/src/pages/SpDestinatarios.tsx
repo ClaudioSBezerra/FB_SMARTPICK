@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -15,8 +15,11 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Plus, Trash2, Pencil, Mail } from 'lucide-react'
 import { toast } from 'sonner'
 
-interface SpFilial { id: number; cod_filial: number; nome: string }
-interface SpCD     { id: number; filial_id: number; nome: string }
+interface Environment { id: string; name: string }
+interface Group       { id: string; name: string }
+interface Company     { id: string; name: string; trade_name?: string }
+interface SpFilial    { id: number; cod_filial: number; nome: string }
+interface SpCD        { id: number; filial_id: number; nome: string }
 
 interface Destinatario {
   id: number
@@ -36,17 +39,53 @@ export default function SpDestinatarios() {
   const qc = useQueryClient()
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token])
 
-  const [filialID, setFilialID] = useState('')
-  const [cdID, setCdID]         = useState('')
-  const [editingID, setEditingID] = useState<number | null>(null)
-  const [creating, setCreating]  = useState(false)
+  // ── Hierarquia em cascata ────────────────────────────────────────────────
+  const [envID,     setEnvID]     = useState('')
+  const [groupID,   setGroupID]   = useState('')
+  const [companyID, setCompanyID] = useState('')
+  const [filialID,  setFilialID]  = useState('')
+  const [cdID,      setCdID]      = useState('')
+
+  const [editing, setEditing] = useState<Destinatario | null>(null)
+  const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({ nome_completo: '', cargo: '', email: '', ativo: true })
 
-  const { data: filiais = [] } = useQuery<SpFilial[]>({
-    queryKey: ['filiais'],
+  // ── Cascata de queries ──────────────────────────────────────────────────
+  const { data: environments = [] } = useQuery<Environment[]>({
+    queryKey: ['environments'],
     queryFn: async () => {
-      const r = await fetch('/api/filiais', { headers })
-      if (!r.ok) throw new Error()
+      const r = await fetch('/api/config/environments', { headers })
+      if (!r.ok) return []
+      return r.json()
+    },
+  })
+
+  const { data: groups = [] } = useQuery<Group[]>({
+    queryKey: ['groups', envID],
+    enabled: !!envID,
+    queryFn: async () => {
+      const r = await fetch(`/api/config/groups?environment_id=${envID}`, { headers })
+      if (!r.ok) return []
+      return r.json()
+    },
+  })
+
+  const { data: companies = [] } = useQuery<Company[]>({
+    queryKey: ['companies', groupID],
+    enabled: !!groupID,
+    queryFn: async () => {
+      const r = await fetch(`/api/config/companies?group_id=${groupID}`, { headers })
+      if (!r.ok) return []
+      return r.json()
+    },
+  })
+
+  const { data: filiais = [] } = useQuery<SpFilial[]>({
+    queryKey: ['sp-filiais-empresa', companyID],
+    enabled: !!companyID,
+    queryFn: async () => {
+      const r = await fetch(`/api/sp/filiais-empresa?empresa_id=${companyID}`, { headers })
+      if (!r.ok) return []
       return r.json()
     },
   })
@@ -56,13 +95,11 @@ export default function SpDestinatarios() {
     enabled: !!filialID,
     queryFn: async () => {
       const r = await fetch(`/api/sp/filiais/${filialID}/cds`, { headers })
-      if (!r.ok) throw new Error()
+      if (!r.ok) return []
       return r.json()
     },
   })
 
-  // Sem cd_id: lista TODOS os destinatários da empresa (visão consolidada)
-  // Com cd_id: filtra apenas os do CD escolhido
   const { data: destinatarios = [] } = useQuery<Destinatario[]>({
     queryKey: ['sp-destinatarios', cdID],
     queryFn: async () => {
@@ -73,11 +110,23 @@ export default function SpDestinatarios() {
     },
   })
 
-  const invalidar = () => qc.invalidateQueries({ queryKey: ['sp-destinatarios', cdID] })
-  const resetForm = () => { setForm({ nome_completo: '', cargo: '', email: '', ativo: true }); setCreating(false); setEditingID(null) }
+  // ── Auto-seleção quando há apenas 1 opção ───────────────────────────────
+  useEffect(() => { if (environments.length === 1 && !envID) setEnvID(environments[0].id) }, [environments, envID])
+  useEffect(() => { if (groups.length === 1 && !groupID) setGroupID(groups[0].id) }, [groups, groupID])
+  useEffect(() => { if (companies.length === 1 && !companyID) setCompanyID(companies[0].id) }, [companies, companyID])
 
+  const invalidar = () => qc.invalidateQueries({ queryKey: ['sp-destinatarios'] })
+
+  function resetForm() {
+    setForm({ nome_completo: '', cargo: '', email: '', ativo: true })
+    setCreating(false)
+    setEditing(null)
+  }
+
+  // ── Mutações ─────────────────────────────────────────────────────────────
   const criarMut = useMutation({
     mutationFn: async () => {
+      if (!cdID) throw new Error('Selecione Ambiente, Grupo, Empresa, Filial e CD antes de cadastrar')
       const r = await fetch('/api/sp/admin/destinatarios', {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
@@ -92,12 +141,12 @@ export default function SpDestinatarios() {
   })
 
   const atualizarMut = useMutation({
-    mutationFn: async () => {
-      if (!editingID) throw new Error('id ausente')
-      const r = await fetch(`/api/sp/admin/destinatarios/${editingID}`, {
+    mutationFn: async (payload: { cd_id?: number }) => {
+      if (!editing) throw new Error('id ausente')
+      const r = await fetch(`/api/sp/admin/destinatarios/${editing.id}`, {
         method: 'PUT',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, ...payload }),
       })
       const data = await r.json()
       if (!r.ok) throw new Error(data.error ?? 'Erro')
@@ -115,11 +164,30 @@ export default function SpDestinatarios() {
     onError: () => toast.error('Erro ao remover'),
   })
 
+  // Move para o CD selecionado atualmente nos filtros
+  function moverParaSelecionado(d: Destinatario) {
+    if (!cdID) {
+      toast.error('Selecione Filial e CD acima para onde mover este destinatário.')
+      return
+    }
+    if (Number(cdID) === d.cd_id) {
+      toast.info('Destinatário já está neste CD.')
+      return
+    }
+    setEditing(d)
+    setForm({ nome_completo: d.nome_completo, cargo: d.cargo, email: d.email, ativo: d.ativo })
+    atualizarMut.mutate({ cd_id: Number(cdID) })
+  }
+
   function abrirEdicao(d: Destinatario) {
-    setEditingID(d.id)
+    setEditing(d)
     setForm({ nome_completo: d.nome_completo, cargo: d.cargo, email: d.email, ativo: d.ativo })
     setCreating(true)
   }
+
+  const podeCriar = !!cdID
+  const cdSelecionadoNome = cds.find(c => String(c.id) === cdID)?.nome
+  const filialSelecionadaNome = filiais.find(f => String(f.id) === filialID)?.nome
 
   return (
     <div className="space-y-4">
@@ -128,17 +196,44 @@ export default function SpDestinatarios() {
           <Mail className="h-4 w-4" /> Destinatários do Resumo Executivo
         </h2>
         <p className="text-xs text-muted-foreground mt-1">
-          Cadastre os gestores que receberão o resumo semanal por email. O envio é automático
-          toda segunda-feira pela manhã.
+          Selecione a hierarquia completa <strong>Ambiente → Grupo → Empresa → Filial → CD</strong> para cadastrar.
+          A tabela mostra todos os destinatários da empresa selecionada.
         </p>
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-3 items-end">
+      {/* Cascata de filtros */}
+      <div className="grid grid-cols-5 gap-3">
+        <div>
+          <label className="text-xs font-medium mb-1 block">Ambiente</label>
+          <Select value={envID} onValueChange={v => { setEnvID(v); setGroupID(''); setCompanyID(''); setFilialID(''); setCdID('') }}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <SelectContent>
+              {environments.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Grupo</label>
+          <Select value={groupID} onValueChange={v => { setGroupID(v); setCompanyID(''); setFilialID(''); setCdID('') }} disabled={!envID}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <SelectContent>
+              {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Empresa</label>
+          <Select value={companyID} onValueChange={v => { setCompanyID(v); setFilialID(''); setCdID('') }} disabled={!groupID}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <SelectContent>
+              {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.trade_name || c.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
         <div>
           <label className="text-xs font-medium mb-1 block">Filial</label>
-          <Select value={filialID} onValueChange={v => { setFilialID(v); setCdID('') }}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="Selecione" /></SelectTrigger>
+          <Select value={filialID} onValueChange={v => { setFilialID(v); setCdID('') }} disabled={!companyID}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
             <SelectContent>
               {filiais.map(f => <SelectItem key={f.id} value={String(f.id)}>{f.nome} (cód. {f.cod_filial})</SelectItem>)}
             </SelectContent>
@@ -147,52 +242,55 @@ export default function SpDestinatarios() {
         <div>
           <label className="text-xs font-medium mb-1 block">CD</label>
           <Select value={cdID} onValueChange={setCdID} disabled={!filialID}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
             <SelectContent>
               {cds.map(cd => <SelectItem key={cd.id} value={String(cd.id)}>{cd.nome}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
-        {cdID && (
-          <Button size="sm" onClick={() => { resetForm(); setCreating(true) }}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Novo destinatário
-          </Button>
-        )}
       </div>
 
-      {/* Tabela: visão consolidada quando sem CD selecionado, filtrada quando com CD */}
-      {destinatarios.length === 0 && (
+      <div className="flex justify-between items-center">
+        <p className="text-[11px] text-muted-foreground">
+          {cdID
+            ? `Mostrando ${destinatarios.length} destinatário(s) do CD selecionado.`
+            : `Mostrando ${destinatarios.length} destinatário(s) de toda a empresa.`}
+        </p>
+        <Button size="sm" disabled={!podeCriar} onClick={() => { resetForm(); setCreating(true) }}>
+          <Plus className="h-3.5 w-3.5 mr-1" /> Novo destinatário
+        </Button>
+      </div>
+
+      {!podeCriar && destinatarios.length === 0 && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+          Selecione a hierarquia completa para cadastrar um novo destinatário.
+        </p>
+      )}
+
+      {/* Tabela */}
+      {destinatarios.length === 0 ? (
         <div className="text-center py-12 border rounded-lg bg-muted/30">
           <Mail className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
           <p className="text-sm text-muted-foreground">
-            {cdID ? 'Nenhum destinatário cadastrado para este CD.' : 'Nenhum destinatário cadastrado em nenhum CD.'}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Selecione Filial e CD acima e clique em "Novo destinatário".
+            {cdID ? 'Nenhum destinatário cadastrado para este CD.' : 'Nenhum destinatário cadastrado.'}
           </p>
         </div>
-      )}
-
-      {destinatarios.length > 0 && (
-        <>
-          <p className="text-[11px] text-muted-foreground">
-            {cdID
-              ? `Mostrando destinatários do CD selecionado (${destinatarios.length})`
-              : `Mostrando todos os destinatários da empresa (${destinatarios.length}). Selecione um CD acima para filtrar.`}
-          </p>
-          <Table>
-            <TableHeader>
-              <TableRow className="text-xs">
-                <TableHead className="py-2 w-32">Filial / CD</TableHead>
-                <TableHead className="py-2">Nome completo</TableHead>
-                <TableHead className="py-2">Cargo</TableHead>
-                <TableHead className="py-2">Email</TableHead>
-                <TableHead className="py-2 w-24">Ativo</TableHead>
-                <TableHead className="py-2 w-32">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {destinatarios.map(d => (
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="text-xs">
+              <TableHead className="py-2 w-44">Filial / CD</TableHead>
+              <TableHead className="py-2">Nome completo</TableHead>
+              <TableHead className="py-2">Cargo</TableHead>
+              <TableHead className="py-2">Email</TableHead>
+              <TableHead className="py-2 w-20">Ativo</TableHead>
+              <TableHead className="py-2 w-44">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {destinatarios.map(d => {
+              const noMesmoCD = String(d.cd_id) === cdID
+              return (
                 <TableRow key={d.id} className={`text-xs ${!d.ativo ? 'opacity-50' : ''}`}>
                   <TableCell className="py-1.5">
                     <div className="text-[11px] font-medium">{d.filial_nome || '—'}</div>
@@ -208,31 +306,55 @@ export default function SpDestinatarios() {
                   </TableCell>
                   <TableCell className="py-1.5">
                     <div className="flex gap-1">
-                      <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" onClick={() => abrirEdicao(d)}>
+                      <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" onClick={() => abrirEdicao(d)} title="Editar">
                         <Pencil className="h-3 w-3" />
                       </Button>
+                      {cdID && !noMesmoCD && (
+                        <Button
+                          size="sm" variant="outline"
+                          className="h-6 text-[10px] px-1.5 text-blue-700 border-blue-200 hover:bg-blue-50"
+                          onClick={() => moverParaSelecionado(d)}
+                          title={`Mover para ${cdSelecionadoNome ?? 'CD selecionado'}`}
+                        >
+                          → {filialSelecionadaNome?.slice(0, 8)}
+                        </Button>
+                      )}
                       <Button
                         size="sm" variant="outline"
                         className="h-6 text-[10px] px-1.5 text-red-600 border-red-200 hover:bg-red-50"
                         onClick={() => { if (confirm('Remover destinatário?')) removerMut.mutate(d.id) }}
+                        title="Remover"
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </>
+              )
+            })}
+          </TableBody>
+        </Table>
       )}
 
-      {/* Dialog de cadastro/edição */}
+      {/* Dialog */}
       <Dialog open={creating} onOpenChange={open => { if (!open) resetForm() }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingID ? 'Editar destinatário' : 'Novo destinatário'}</DialogTitle>
+            <DialogTitle>{editing ? 'Editar destinatário' : 'Novo destinatário'}</DialogTitle>
           </DialogHeader>
+          {editing && (
+            <p className="text-[11px] text-muted-foreground border-l-2 border-primary pl-2">
+              Vinculado a <strong>{editing.filial_nome || '—'} / {editing.cd_nome || `CD ${editing.cd_id}`}</strong>.
+              {cdID && Number(cdID) !== editing.cd_id && (
+                <> Para mover, use o botão <em>→ Filial</em> na linha da tabela.</>
+              )}
+            </p>
+          )}
+          {!editing && cdSelecionadoNome && (
+            <p className="text-[11px] text-muted-foreground border-l-2 border-primary pl-2">
+              Será vinculado a <strong>{filialSelecionadaNome} / {cdSelecionadoNome}</strong>.
+            </p>
+          )}
           <div className="space-y-3">
             <div>
               <label className="text-xs font-medium block mb-1">Nome completo *</label>
@@ -246,7 +368,7 @@ export default function SpDestinatarios() {
               <label className="text-xs font-medium block mb-1">Email *</label>
               <Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} type="email" />
             </div>
-            {editingID && (
+            {editing && (
               <label className="flex items-center gap-2 text-xs cursor-pointer">
                 <input type="checkbox" checked={form.ativo} onChange={e => setForm({ ...form, ativo: e.target.checked })} />
                 Ativo (recebe emails)
@@ -256,10 +378,10 @@ export default function SpDestinatarios() {
           <DialogFooter>
             <Button variant="outline" onClick={resetForm}>Cancelar</Button>
             <Button
-              onClick={() => editingID ? atualizarMut.mutate() : criarMut.mutate()}
+              onClick={() => editing ? atualizarMut.mutate({}) : criarMut.mutate()}
               disabled={!form.nome_completo || !form.email || criarMut.isPending || atualizarMut.isPending}
             >
-              {editingID ? 'Salvar' : 'Cadastrar'}
+              {editing ? 'Salvar' : 'Cadastrar'}
             </Button>
           </DialogFooter>
         </DialogContent>

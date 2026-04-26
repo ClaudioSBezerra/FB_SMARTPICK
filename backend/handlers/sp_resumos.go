@@ -121,6 +121,7 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 				return
 			}
 			var body struct {
+				CdID         *int   `json:"cd_id"`
 				NomeCompleto string `json:"nome_completo"`
 				Cargo        string `json:"cargo"`
 				Email        string `json:"email"`
@@ -131,15 +132,20 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 			if body.Ativo != nil {
 				ativo = *body.Ativo
 			}
+			cdID := 0
+			if body.CdID != nil {
+				cdID = *body.CdID
+			}
 			_, err := db.Exec(`
 				UPDATE smartpick.sp_destinatarios_resumo
-				   SET nome_completo = COALESCE(NULLIF($2, ''), nome_completo),
+				   SET cd_id         = COALESCE(NULLIF($6, 0), cd_id),
+				       nome_completo = COALESCE(NULLIF($2, ''), nome_completo),
 				       cargo         = NULLIF($3, ''),
 				       email         = COALESCE(NULLIF($4, ''), email),
 				       ativo         = $5,
 				       atualizado_em = NOW()
 				 WHERE id = $1
-			`, id, body.NomeCompleto, body.Cargo, body.Email, ativo)
+			`, id, body.NomeCompleto, body.Cargo, body.Email, ativo, cdID)
 			if err != nil {
 				http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
 				return
