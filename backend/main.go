@@ -364,6 +364,7 @@ func main() {
 	}, "admin_fbtax"))
 	// ── SmartPick — Filiais, CDs, Parâmetros do Motor e Planos ──────────────
 	http.HandleFunc("/api/sp/filiais-empresa", withSP(handlers.SpFiliaisByEmpresaHandler, "admin_fbtax"))
+	http.HandleFunc("/api/sp/cds-empresa",     withSP(handlers.SpCDsByEmpresaHandler, "admin_fbtax"))
 	http.HandleFunc("/api/sp/filiais", withSP(handlers.SpFiliaisHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/filiais/", withSP(func(db *sql.DB) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

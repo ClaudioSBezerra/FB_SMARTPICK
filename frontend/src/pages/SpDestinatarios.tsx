@@ -90,11 +90,13 @@ export default function SpDestinatarios() {
     },
   })
 
+  // Endpoint admin: aceita empresa_id + filial_id para listar CDs de qualquer
+  // empresa (o /api/sp/filiais/{id}/cds só funciona para a empresa do contexto)
   const { data: cds = [] } = useQuery<SpCD[]>({
-    queryKey: ['sp-cds-filial', filialID],
-    enabled: !!filialID,
+    queryKey: ['sp-cds-empresa', companyID, filialID],
+    enabled: !!filialID && !!companyID,
     queryFn: async () => {
-      const r = await fetch(`/api/sp/filiais/${filialID}/cds`, { headers })
+      const r = await fetch(`/api/sp/cds-empresa?empresa_id=${companyID}&filial_id=${filialID}`, { headers })
       if (!r.ok) return []
       return r.json()
     },

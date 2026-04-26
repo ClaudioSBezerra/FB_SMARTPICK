@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -61,6 +62,69 @@ func GetFiliaisHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		json.NewEncoder(w).Encode(filiais)
+	}
+}
+
+// SpCDsByEmpresaHandler retorna CDs de uma filial dentro de uma empresa específica (admin_fbtax).
+// Diferente de SpCDsHandler que valida pela EmpresaID do contexto, aqui o admin
+// pode listar CDs de qualquer empresa passando empresa_id explícito.
+// GET /api/sp/cds-empresa?empresa_id=xxx&filial_id=N
+func SpCDsByEmpresaHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		spCtx := GetSpContext(r)
+		if spCtx == nil || !spCtx.IsAdminFbtax() {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		empresaID := r.URL.Query().Get("empresa_id")
+		filialIDStr := r.URL.Query().Get("filial_id")
+		if empresaID == "" || filialIDStr == "" {
+			http.Error(w, "empresa_id e filial_id obrigatórios", http.StatusBadRequest)
+			return
+		}
+		filialID, err := strconv.Atoi(filialIDStr)
+		if err != nil {
+			http.Error(w, "filial_id inválido", http.StatusBadRequest)
+			return
+		}
+
+		// Confirma que a filial pertence à empresa informada
+		var existe bool
+		db.QueryRow(`SELECT EXISTS(SELECT 1 FROM smartpick.sp_filiais WHERE id = $1 AND empresa_id = $2::uuid)`,
+			filialID, empresaID).Scan(&existe)
+		if !existe {
+			http.Error(w, "Filial não pertence à empresa informada", http.StatusNotFound)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT id, filial_id, nome
+			  FROM smartpick.sp_centros_dist
+			 WHERE filial_id = $1
+			 ORDER BY nome ASC
+		`, filialID)
+		if err != nil {
+			http.Error(w, "Erro ao listar CDs: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type cdItem struct {
+			ID       int    `json:"id"`
+			FilialID int    `json:"filial_id"`
+			Nome     string `json:"nome"`
+		}
+		out := []cdItem{}
+		for rows.Next() {
+			var c cdItem
+			if rows.Scan(&c.ID, &c.FilialID, &c.Nome) == nil {
+				out = append(out, c)
+			}
+		}
+		json.NewEncoder(w).Encode(out)
 	}
 }
 
