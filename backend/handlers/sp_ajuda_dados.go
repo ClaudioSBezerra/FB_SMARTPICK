@@ -37,14 +37,15 @@ func SpAjudaDadosHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		var body struct {
-			Pergunta string `json:"pergunta"`
+			Pergunta  string                   `json:"pergunta"`
+			Historico []services.HistoricoMsg `json:"historico,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Pergunta == "" {
 			http.Error(w, `{"error":"pergunta obrigatória"}`, http.StatusBadRequest)
 			return
 		}
 
-		out, err := services.ResponderPerguntaDados(db, body.Pergunta, spCtx.EmpresaID)
+		out, err := services.ResponderPerguntaDados(db, body.Pergunta, spCtx.EmpresaID, body.Historico)
 		if err != nil {
 			w.WriteHeader(http.StatusBadGateway)
 			fmt.Fprintf(w, `{"error":%q}`, err.Error())

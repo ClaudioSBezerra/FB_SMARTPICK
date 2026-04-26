@@ -232,20 +232,42 @@ func injetarFiltroEmpresa(sqlClean string, empresaID string) (string, []interfac
 
 // ── Função orquestradora ─────────────────────────────────────────────────────
 
+// HistoricoMsg representa uma troca anterior do chat (papel + conteúdo).
+type HistoricoMsg struct {
+	Role    string `json:"role"`    // user | assistant
+	Content string `json:"content"` // pergunta ou narrativa+SQL
+}
+
 // ResponderPerguntaDados é o pipeline completo:
-//  1. Z.AI gera SQL a partir da pergunta
+//  1. Z.AI gera SQL a partir da pergunta + histórico recente
 //  2. Validador rejeita SQL inseguro
 //  3. Injeta filtro por empresa_id
 //  4. Executa em transação READ ONLY com timeout de 5s, LIMIT 100
 //  5. Z.AI gera narrativa curta sobre o resultado
 //  6. Retorna { reply, sql, columns, rows }
-func ResponderPerguntaDados(db *sql.DB, pergunta, empresaID string) (*DataQueryResult, error) {
+func ResponderPerguntaDados(db *sql.DB, pergunta, empresaID string, historico []HistoricoMsg) (*DataQueryResult, error) {
 	if empresaID == "" {
 		return nil, fmt.Errorf("empresa não identificada no contexto")
 	}
 
-	// 1. Geração do SQL
-	respIA, err := chamarZAI(dataSystemPrompt, pergunta, 512)
+	// 1. Geração do SQL — anexa histórico relevante (últimas 4 trocas)
+	userPrompt := pergunta
+	if len(historico) > 0 {
+		var hb strings.Builder
+		hb.WriteString("CONVERSA ANTERIOR (use como contexto se a pergunta for follow-up):\n")
+		// só as últimas 4 mensagens para não estourar tokens
+		start := 0
+		if len(historico) > 4 {
+			start = len(historico) - 4
+		}
+		for _, m := range historico[start:] {
+			hb.WriteString(fmt.Sprintf("[%s]: %s\n", m.Role, truncar(m.Content, 500)))
+		}
+		hb.WriteString("\nPERGUNTA ATUAL: ")
+		hb.WriteString(pergunta)
+		userPrompt = hb.String()
+	}
+	respIA, err := chamarZAI(dataSystemPrompt, userPrompt, 512)
 	if err != nil {
 		return nil, fmt.Errorf("IA falhou ao gerar SQL: %w", err)
 	}
@@ -344,6 +366,13 @@ func normalizarValor(v interface{}) interface{} {
 	default:
 		return x
 	}
+}
+
+func truncar(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }
 
 func jsonOrEmpty(v interface{}) string {

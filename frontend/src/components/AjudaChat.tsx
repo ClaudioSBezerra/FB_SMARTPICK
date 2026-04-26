@@ -143,14 +143,41 @@ function formatCell(v: unknown): string {
 }
 
 // ─── Componente principal ───────────────────────────────────────────────────
+const STORAGE_KEY = 'sp-ajuda-chat-state-v1'
+
+interface PersistedState {
+  mode: ChatMode
+  messages: Message[]
+}
+
+function loadPersisted(): PersistedState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as PersistedState
+  } catch { return null }
+}
+
 export function AjudaChat() {
   const { token } = useAuth()
   const location  = useLocation()
   const [open, setOpen]       = useState(false)
-  const [mode, setMode]       = useState<ChatMode>('tutorial')
-  const [messages, setMessages] = useState<Message[]>([WELCOME_TUTORIAL])
+  const persisted = loadPersisted()
+  const [mode, setMode]       = useState<ChatMode>(persisted?.mode ?? 'tutorial')
+  const [messages, setMessages] = useState<Message[]>(
+    persisted?.messages?.length
+      ? persisted.messages
+      : [persisted?.mode === 'dados' ? WELCOME_DADOS : WELCOME_TUTORIAL]
+  )
   const [input, setInput]     = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Persiste estado no localStorage a cada mudança
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, messages }))
+    } catch { /* quota/incognito */ }
+  }, [mode, messages])
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLInputElement>(null)
 
@@ -193,11 +220,21 @@ export function AjudaChat() {
         if (!res.ok) throw new Error(data.error ?? 'Erro desconhecido')
         setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
       } else {
-        // modo dados
+        // modo dados — envia histórico das últimas 4 trocas (com SQL anterior
+        // anexado na mensagem do assistente para a IA poder fazer follow-ups).
+        const histMsgs = history
+          .filter(m => m !== WELCOME_DADOS && m !== WELCOME_TUTORIAL)
+          .slice(-8) // até 4 pares user/assistant
+          .map(m => ({
+            role: m.role,
+            content: m.role === 'assistant' && m.data
+              ? `${m.content}\n\n[SQL executada]:\n${m.data.sql}`
+              : m.content,
+          }))
         const res = await fetch('/api/sp/ajuda/dados', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body:    JSON.stringify({ pergunta: text }),
+          body:    JSON.stringify({ pergunta: text, historico: histMsgs }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Erro desconhecido')
