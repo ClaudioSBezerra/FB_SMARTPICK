@@ -315,7 +315,7 @@ export default function SpResumoExecutivo() {
                     <h3 className="text-xs font-semibold uppercase text-muted-foreground">Análise da IA</h3>
                   </div>
                   <div className="prose prose-sm max-w-none">
-                    {renderMarkdown(detalhe.narrativa_md)}
+                    {renderMarkdown(detalhe.narrativa_md ?? '')}
                   </div>
                 </div>
 
@@ -323,15 +323,15 @@ export default function SpResumoExecutivo() {
                 <div className="grid grid-cols-2 gap-4 p-4">
                   <DetalheLista
                     titulo="Top motivos de rejeição"
-                    itens={detalhe.dados.top_motivos_rejeicao}
+                    itens={detalhe.dados.top_motivos_rejeicao ?? []}
                   />
                   <DetalheLista
                     titulo="Top departamentos pendentes"
-                    itens={detalhe.dados.top_deptos_pendentes}
+                    itens={detalhe.dados.top_deptos_pendentes ?? []}
                   />
                 </div>
 
-                {detalhe.dados.top_produtos_criticos.length > 0 && (
+                {(detalhe.dados.top_produtos_criticos ?? []).length > 0 && (
                   <div className="p-4 border-t">
                     <h3 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Top 10 produtos críticos (Curva A)</h3>
                     <div className="overflow-x-auto">
@@ -345,7 +345,7 @@ export default function SpResumoExecutivo() {
                           </tr>
                         </thead>
                         <tbody>
-                          {detalhe.dados.top_produtos_criticos.map(p => (
+                          {(detalhe.dados.top_produtos_criticos ?? []).map(p => (
                             <tr key={p.codprod} className="border-b last:border-0">
                               <td className="py-1 font-mono">{p.codprod}</td>
                               <td className="truncate max-w-[280px]">{p.produto}</td>

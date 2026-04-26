@@ -65,9 +65,12 @@ type ProdutoCritico struct {
 // ColetarKPIs busca os indicadores agregados do CD no período informado
 func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecutivo, error) {
 	k := &KPIsResumoExecutivo{
-		CdID:          cdID,
-		PeriodoInicio: inicio.Format("2006-01-02"),
-		PeriodoFim:    fim.Format("2006-01-02"),
+		CdID:                cdID,
+		PeriodoInicio:       inicio.Format("2006-01-02"),
+		PeriodoFim:          fim.Format("2006-01-02"),
+		TopMotivosRejeicao:  []KVPair{},
+		TopDeptosPendentes:  []KVPair{},
+		TopProdutosCriticos: []ProdutoCritico{},
 	}
 	// Limite superior do range (exclusivo) — fim do dia. Usado nas queries
 	// como `created_at < $3` para incluir o dia inteiro do fim.
