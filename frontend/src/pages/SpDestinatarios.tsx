@@ -21,6 +21,8 @@ interface SpCD     { id: number; filial_id: number; nome: string }
 interface Destinatario {
   id: number
   cd_id: number
+  cd_nome?: string
+  filial_nome?: string
   nome_completo: string
   cargo: string
   email: string
@@ -59,11 +61,13 @@ export default function SpDestinatarios() {
     },
   })
 
+  // Sem cd_id: lista TODOS os destinatários da empresa (visão consolidada)
+  // Com cd_id: filtra apenas os do CD escolhido
   const { data: destinatarios = [] } = useQuery<Destinatario[]>({
     queryKey: ['sp-destinatarios', cdID],
-    enabled: !!cdID,
     queryFn: async () => {
-      const r = await fetch(`/api/sp/admin/destinatarios?cd_id=${cdID}`, { headers })
+      const url = cdID ? `/api/sp/admin/destinatarios?cd_id=${cdID}` : '/api/sp/admin/destinatarios'
+      const r = await fetch(url, { headers })
       if (!r.ok) throw new Error()
       return r.json()
     },
@@ -156,58 +160,71 @@ export default function SpDestinatarios() {
         )}
       </div>
 
-      {!cdID && (
-        <p className="text-xs text-muted-foreground">Selecione filial e CD para gerenciar destinatários.</p>
-      )}
-
-      {/* Tabela */}
-      {cdID && destinatarios.length === 0 && (
+      {/* Tabela: visão consolidada quando sem CD selecionado, filtrada quando com CD */}
+      {destinatarios.length === 0 && (
         <div className="text-center py-12 border rounded-lg bg-muted/30">
           <Mail className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">Nenhum destinatário cadastrado para este CD.</p>
+          <p className="text-sm text-muted-foreground">
+            {cdID ? 'Nenhum destinatário cadastrado para este CD.' : 'Nenhum destinatário cadastrado em nenhum CD.'}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Selecione Filial e CD acima e clique em "Novo destinatário".
+          </p>
         </div>
       )}
 
-      {cdID && destinatarios.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow className="text-xs">
-              <TableHead className="py-2">Nome completo</TableHead>
-              <TableHead className="py-2">Cargo</TableHead>
-              <TableHead className="py-2">Email</TableHead>
-              <TableHead className="py-2 w-24">Ativo</TableHead>
-              <TableHead className="py-2 w-32">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {destinatarios.map(d => (
-              <TableRow key={d.id} className={`text-xs ${!d.ativo ? 'opacity-50' : ''}`}>
-                <TableCell className="py-1.5 font-medium">{d.nome_completo}</TableCell>
-                <TableCell className="py-1.5 text-muted-foreground">{d.cargo || '—'}</TableCell>
-                <TableCell className="py-1.5 font-mono text-[11px]">{d.email}</TableCell>
-                <TableCell className="py-1.5">
-                  {d.ativo
-                    ? <span className="inline-flex px-2 py-0.5 rounded bg-green-100 text-green-800 text-[10px] font-medium">Ativo</span>
-                    : <span className="inline-flex px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px] font-medium">Inativo</span>}
-                </TableCell>
-                <TableCell className="py-1.5">
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" onClick={() => abrirEdicao(d)}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm" variant="outline"
-                      className="h-6 text-[10px] px-1.5 text-red-600 border-red-200 hover:bg-red-50"
-                      onClick={() => { if (confirm('Remover destinatário?')) removerMut.mutate(d.id) }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </TableCell>
+      {destinatarios.length > 0 && (
+        <>
+          <p className="text-[11px] text-muted-foreground">
+            {cdID
+              ? `Mostrando destinatários do CD selecionado (${destinatarios.length})`
+              : `Mostrando todos os destinatários da empresa (${destinatarios.length}). Selecione um CD acima para filtrar.`}
+          </p>
+          <Table>
+            <TableHeader>
+              <TableRow className="text-xs">
+                <TableHead className="py-2 w-32">Filial / CD</TableHead>
+                <TableHead className="py-2">Nome completo</TableHead>
+                <TableHead className="py-2">Cargo</TableHead>
+                <TableHead className="py-2">Email</TableHead>
+                <TableHead className="py-2 w-24">Ativo</TableHead>
+                <TableHead className="py-2 w-32">Ações</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {destinatarios.map(d => (
+                <TableRow key={d.id} className={`text-xs ${!d.ativo ? 'opacity-50' : ''}`}>
+                  <TableCell className="py-1.5">
+                    <div className="text-[11px] font-medium">{d.filial_nome || '—'}</div>
+                    <div className="text-[10px] text-muted-foreground">{d.cd_nome || `CD ${d.cd_id}`}</div>
+                  </TableCell>
+                  <TableCell className="py-1.5 font-medium">{d.nome_completo}</TableCell>
+                  <TableCell className="py-1.5 text-muted-foreground">{d.cargo || '—'}</TableCell>
+                  <TableCell className="py-1.5 font-mono text-[11px]">{d.email}</TableCell>
+                  <TableCell className="py-1.5">
+                    {d.ativo
+                      ? <span className="inline-flex px-2 py-0.5 rounded bg-green-100 text-green-800 text-[10px] font-medium">Ativo</span>
+                      : <span className="inline-flex px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px] font-medium">Inativo</span>}
+                  </TableCell>
+                  <TableCell className="py-1.5">
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" onClick={() => abrirEdicao(d)}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-6 text-[10px] px-1.5 text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={() => { if (confirm('Remover destinatário?')) removerMut.mutate(d.id) }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </>
       )}
 
       {/* Dialog de cadastro/edição */}

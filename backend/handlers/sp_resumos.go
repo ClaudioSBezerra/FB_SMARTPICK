@@ -17,6 +17,8 @@ import (
 type destinatarioResp struct {
 	ID            int    `json:"id"`
 	CdID          int    `json:"cd_id"`
+	CdNome        string `json:"cd_nome,omitempty"`
+	FilialNome    string `json:"filial_nome,omitempty"`
 	NomeCompleto  string `json:"nome_completo"`
 	Cargo         string `json:"cargo"`
 	Email         string `json:"email"`
@@ -40,20 +42,41 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 
 		switch r.Method {
 		case http.MethodGet:
+			// cd_id é opcional — sem ele, lista TODOS os destinatários da empresa
+			// (visão consolidada para o master saber onde cada um está cadastrado).
 			cdIDStr := r.URL.Query().Get("cd_id")
-			if cdIDStr == "" {
-				http.Error(w, `{"error":"cd_id obrigatório"}`, http.StatusBadRequest)
-				return
+			spCtx := GetSpContext(r)
+			empresaID := ""
+			if spCtx != nil {
+				empresaID = spCtx.EmpresaID
 			}
-			cdID, _ := strconv.Atoi(cdIDStr)
-			rows, err := db.Query(`
-				SELECT id, cd_id, nome_completo, COALESCE(cargo,''), email, ativo,
-				       to_char(criado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-				       to_char(atualizado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-				  FROM smartpick.sp_destinatarios_resumo
-				 WHERE cd_id = $1
-				 ORDER BY ativo DESC, nome_completo ASC
-			`, cdID)
+
+			query := `
+				SELECT d.id, d.cd_id, c.nome, COALESCE(f.nome, ''),
+				       d.nome_completo, COALESCE(d.cargo,''), d.email, d.ativo,
+				       to_char(d.criado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+				       to_char(d.atualizado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+				  FROM smartpick.sp_destinatarios_resumo d
+				  JOIN smartpick.sp_centros_dist c ON c.id = d.cd_id
+			     LEFT JOIN smartpick.sp_filiais f ON f.id = c.filial_id
+			`
+			args := []interface{}{}
+			where := []string{}
+			if cdIDStr != "" {
+				cdID, _ := strconv.Atoi(cdIDStr)
+				args = append(args, cdID)
+				where = append(where, fmt.Sprintf("d.cd_id = $%d", len(args)))
+			}
+			if empresaID != "" {
+				args = append(args, empresaID)
+				where = append(where, fmt.Sprintf("c.empresa_id = $%d::uuid", len(args)))
+			}
+			if len(where) > 0 {
+				query += " WHERE " + strings.Join(where, " AND ")
+			}
+			query += " ORDER BY f.nome, c.nome, d.ativo DESC, d.nome_completo"
+
+			rows, err := db.Query(query, args...)
 			if err != nil {
 				http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 				return
@@ -62,7 +85,7 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 			out := []destinatarioResp{}
 			for rows.Next() {
 				var d destinatarioResp
-				if err := rows.Scan(&d.ID, &d.CdID, &d.NomeCompleto, &d.Cargo, &d.Email, &d.Ativo, &d.CriadoEm, &d.AtualizadoEm); err == nil {
+				if err := rows.Scan(&d.ID, &d.CdID, &d.CdNome, &d.FilialNome, &d.NomeCompleto, &d.Cargo, &d.Email, &d.Ativo, &d.CriadoEm, &d.AtualizadoEm); err == nil {
 					out = append(out, d)
 				}
 			}
