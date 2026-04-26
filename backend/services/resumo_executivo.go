@@ -393,6 +393,18 @@ func EnviarResumoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
 		return nil, fmt.Errorf("relatório não encontrado: %w", err)
 	}
 
+	// Nome do CD e da filial (para mensagens de erro claras)
+	var cdNome, filialNome string
+	_ = db.QueryRow(`
+		SELECT c.nome, COALESCE(f.nome, '')
+		  FROM smartpick.sp_centros_dist c
+	     LEFT JOIN smartpick.sp_filiais f ON f.id = c.filial_id
+		 WHERE c.id = $1
+	`, cdID).Scan(&cdNome, &filialNome)
+	if cdNome == "" {
+		cdNome = fmt.Sprintf("CD %d", cdID)
+	}
+
 	var kpis KPIsResumoExecutivo
 	if err := json.Unmarshal([]byte(dadosJSON), &kpis); err != nil {
 		return nil, fmt.Errorf("parse dados_json: %w", err)
@@ -417,9 +429,49 @@ func EnviarResumoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
 			destinos = append(destinos, d)
 		}
 	}
+
 	if len(destinos) == 0 {
-		return nil, fmt.Errorf("nenhum destinatário ativo cadastrado para o CD %d", cdID)
+		// Diagnóstico: contadores e onde o usuário pode estar cadastrado
+		var total, inativos int
+		_ = db.QueryRow(`SELECT COUNT(*), COUNT(*) FILTER (WHERE NOT ativo) FROM smartpick.sp_destinatarios_resumo WHERE cd_id = $1`, cdID).Scan(&total, &inativos)
+
+		// Lista CDs (com nome) onde HÁ destinatários ativos para orientar o usuário
+		outrosRows, _ := db.Query(`
+			SELECT DISTINCT c.id, c.nome, COUNT(d.id) AS qtd
+			  FROM smartpick.sp_destinatarios_resumo d
+			  JOIN smartpick.sp_centros_dist c ON c.id = d.cd_id
+			 WHERE d.ativo = TRUE
+			 GROUP BY c.id, c.nome
+			 ORDER BY c.nome
+			 LIMIT 5
+		`)
+		outros := []string{}
+		if outrosRows != nil {
+			defer outrosRows.Close()
+			for outrosRows.Next() {
+				var id, qtd int
+				var nome string
+				if outrosRows.Scan(&id, &nome, &qtd) == nil {
+					outros = append(outros, fmt.Sprintf("%s (id=%d, %d destinatários)", nome, id, qtd))
+				}
+			}
+		}
+
+		log.Printf("[resumo] CD=%d (%s) sem destinatários ativos. total=%d inativos=%d. CDs com destinatários: %v",
+			cdID, cdNome, total, inativos, outros)
+
+		msg := fmt.Sprintf("Nenhum destinatário ativo cadastrado para o CD %q (id=%d).", cdNome, cdID)
+		if total > 0 {
+			msg += fmt.Sprintf(" Há %d cadastrado(s) neste CD mas todos estão inativos.", total)
+		}
+		if len(outros) > 0 {
+			msg += " Destinatários ativos existem em: " + strings.Join(outros, "; ") + "."
+		} else {
+			msg += " Cadastre em Configurações → Destinatários Resumo."
+		}
+		return nil, fmt.Errorf("%s", msg)
 	}
+	log.Printf("[resumo] CD=%d (%s) %d destinatários ativos: enviando", cdID, cdNome, len(destinos))
 
 	cfg := GetEmailConfig()
 	if cfg.Password == "" {
