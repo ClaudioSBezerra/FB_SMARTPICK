@@ -922,8 +922,12 @@ export default function SpDashboard() {
     return `/api/sp/propostas?${p}`
   }
 
+  // Lazy: cada aba só dispara fetch quando o usuário a ativa pela primeira vez.
+  // Após a primeira visita, o staleTime mantém o cache "fresh" por 60s — alternar
+  // entre abas já carregadas é instantâneo.
   const { data: propostasFalta = [], refetch: refetchFalta } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'falta', cdID, jobID],
+    enabled: !!(cdID || jobID) && activeTab === 'falta',
     staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch(buildPropostasUrl('falta', 'pendente'), { headers })
@@ -934,6 +938,7 @@ export default function SpDashboard() {
 
   const { data: propostasEspaco = [], refetch: refetchEspaco } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'espaco', cdID, jobID],
+    enabled: !!(cdID || jobID) && activeTab === 'espaco',
     staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch(buildPropostasUrl('espaco', 'pendente'), { headers })
@@ -944,6 +949,7 @@ export default function SpDashboard() {
 
   const { data: propostasCalibrado = [], refetch: refetchCalibrado } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'calibrado', cdID, jobID],
+    enabled: !!(cdID || jobID) && activeTab === 'calibrado',
     staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch(buildPropostasUrl('calibrado'), { headers })
@@ -954,6 +960,7 @@ export default function SpDashboard() {
 
   const { data: propostasCurvaA = [], refetch: refetchCurvaA } = useQuery<Proposta[]>({
     queryKey: ['sp-propostas', 'curva_a_mantida', cdID, jobID],
+    enabled: !!(cdID || jobID) && activeTab === 'curva_a_mantida',
     staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch(buildPropostasUrl('curva_a_mantida'), { headers })

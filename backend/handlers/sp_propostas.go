@@ -190,6 +190,9 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		// Cache curto no browser para refetches rápidos (mudou filtro,
+		// voltou para a página); private = não cacheia em proxy compartilhado.
+		w.Header().Set("Cache-Control", "private, max-age=10")
 		json.NewEncoder(w).Encode(propostas)
 	}
 }

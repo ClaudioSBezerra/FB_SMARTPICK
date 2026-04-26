@@ -417,7 +417,8 @@ func main() {
 	http.HandleFunc("/api/sp/pdf/calibracao", withSP(handlers.SpPDFCalibracaoHandler, "gestor_filial"))
 
 	// ── SmartPick — Dashboard de Urgência e Propostas (Epic 5) ───────────────
-	http.HandleFunc("/api/sp/propostas", withSP(handlers.SpPropostasHandler, "gestor_filial"))
+	// /api/sp/propostas envolvido em gzip por retornar payloads grandes (até alguns MB).
+	http.HandleFunc("/api/sp/propostas", handlers.GzipMiddleware(withSP(handlers.SpPropostasHandler, "gestor_filial")))
 	http.HandleFunc("/api/sp/propostas/resumo", withSP(handlers.SpPropostasResumoHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/ruas", withSP(handlers.SpPropostasRuasHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/propostas/motivos-rejeicao", withSP(handlers.SpMotivoRejeicaoHandler, "gestor_filial"))
