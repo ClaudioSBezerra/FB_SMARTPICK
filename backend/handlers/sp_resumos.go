@@ -42,14 +42,13 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 
 		switch r.Method {
 		case http.MethodGet:
-			// cd_id é opcional — sem ele, lista TODOS os destinatários da empresa
-			// (visão consolidada para o master saber onde cada um está cadastrado).
+			// Filtros opcionais:
+			//   cd_id      → apenas destinatários do CD específico
+			//   empresa_id → apenas destinatários daquela empresa (admin)
+			// Sem nenhum: admin_fbtax vê TUDO; demais só da própria empresa.
 			cdIDStr := r.URL.Query().Get("cd_id")
+			empresaIDQuery := r.URL.Query().Get("empresa_id")
 			spCtx := GetSpContext(r)
-			empresaID := ""
-			if spCtx != nil {
-				empresaID = spCtx.EmpresaID
-			}
 
 			query := `
 				SELECT d.id, d.cd_id, c.nome, COALESCE(f.nome, ''),
@@ -67,8 +66,19 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 				args = append(args, cdID)
 				where = append(where, fmt.Sprintf("d.cd_id = $%d", len(args)))
 			}
-			if empresaID != "" {
-				args = append(args, empresaID)
+			// Filtragem por empresa:
+			//   - admin_fbtax (MASTER): se passou empresa_id na query, filtra por esse;
+			//     senão vê todas as empresas (necessário para ver destinatários de
+			//     outras empresas onde ele atua como admin global).
+			//   - demais perfis: sempre filtra pela empresa do contexto.
+			isAdmin := spCtx != nil && spCtx.IsAdminFbtax()
+			if isAdmin {
+				if empresaIDQuery != "" {
+					args = append(args, empresaIDQuery)
+					where = append(where, fmt.Sprintf("c.empresa_id = $%d::uuid", len(args)))
+				}
+			} else if spCtx != nil && spCtx.EmpresaID != "" {
+				args = append(args, spCtx.EmpresaID)
 				where = append(where, fmt.Sprintf("c.empresa_id = $%d::uuid", len(args)))
 			}
 			if len(where) > 0 {

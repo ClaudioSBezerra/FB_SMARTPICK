@@ -102,10 +102,16 @@ export default function SpDestinatarios() {
     },
   })
 
+  // Se há empresa selecionada na cascata, filtra por ela; senão lista tudo (admin).
+  // Se há CD, restringe ao CD específico.
   const { data: destinatarios = [] } = useQuery<Destinatario[]>({
-    queryKey: ['sp-destinatarios', cdID],
+    queryKey: ['sp-destinatarios', companyID, cdID],
     queryFn: async () => {
-      const url = cdID ? `/api/sp/admin/destinatarios?cd_id=${cdID}` : '/api/sp/admin/destinatarios'
+      const params = new URLSearchParams()
+      if (cdID)      params.set('cd_id', cdID)
+      if (companyID) params.set('empresa_id', companyID)
+      const qs = params.toString()
+      const url = qs ? `/api/sp/admin/destinatarios?${qs}` : '/api/sp/admin/destinatarios'
       const r = await fetch(url, { headers })
       if (!r.ok) throw new Error()
       return r.json()
