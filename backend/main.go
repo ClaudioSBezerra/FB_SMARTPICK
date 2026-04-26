@@ -458,7 +458,8 @@ func main() {
 	http.HandleFunc("/api/sp/admin/uso",    withSP(handlers.SpUsageReportHandler, "admin_fbtax"))
 
 	// ── SmartPick — Assistente de Treinamento ───────────────────────────────
-	http.HandleFunc("/api/sp/ajuda/chat", withSP(handlers.SpAjudaChatHandler, ""))
+	http.HandleFunc("/api/sp/ajuda/chat",  withSP(handlers.SpAjudaChatHandler, ""))
+	http.HandleFunc("/api/sp/ajuda/dados", withSP(handlers.SpAjudaDadosHandler, "gestor_filial"))
 
 	// ── SmartPick — Resumos Executivos Semanais ─────────────────────────────
 	http.HandleFunc("/api/sp/relatorios",        withSP(handlers.SpResumosHandler, "gestor_filial"))
