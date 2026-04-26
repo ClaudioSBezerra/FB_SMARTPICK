@@ -156,6 +156,28 @@ func chamarZAI(systemPrompt, userMsg string, maxTokens int) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// Lista de views que precisam ser prefixadas com "smartpick." se vierem sem schema.
+var chatViews = []string{
+	"vw_propostas_chat",
+	"vw_imports_chat",
+	"vw_destinatarios_chat",
+	"vw_ignorados_chat",
+	"vw_resumo_executivo_chat",
+}
+
+// qualificarSchema substitui referências a "vw_xxx_chat" por "smartpick.vw_xxx_chat"
+// quando a view aparece sem schema. Necessário porque alguns ambientes não têm
+// "smartpick" no search_path da conexão.
+func qualificarSchema(sql string) string {
+	for _, v := range chatViews {
+		// (?i) case-insensitive; \b boundary; lookbehind não é suportado em Go,
+		// então testamos com captura (charNotDot ou início) antes do nome.
+		rx := regexp.MustCompile(`(?i)(^|[^\w.])` + v + `\b`)
+		sql = rx.ReplaceAllString(sql, "${1}smartpick."+v)
+	}
+	return sql
+}
+
 // extrairSQL pega o conteúdo de um bloco ```sql ... ``` ou da string crua.
 var rxSQLBlock = regexp.MustCompile("(?s)```(?:sql)?\\s*(.*?)```")
 
@@ -166,27 +188,46 @@ func extrairSQL(texto string) string {
 	return strings.TrimSpace(texto)
 }
 
-// injetarFiltroEmpresa aplica WHERE/AND empresa_id = $1 antes do GROUP/ORDER/LIMIT.
-// Como todas as views do chat têm a coluna empresa_id, isso isola dados por empresa.
+// injetarFiltroEmpresa aplica WHERE/AND empresa_id = $1 antes das cláusulas
+// finais (GROUP/HAVING/ORDER/LIMIT/OFFSET/WINDOW). Como todas as views do chat
+// têm a coluna empresa_id, isso isola dados por empresa.
+//
+// IMPORTANTE: o validador pode ter quebrado a query em duas linhas para anexar
+// LIMIT 100 — busca insensível a quebras de linha.
 func injetarFiltroEmpresa(sqlClean string, empresaID string) (string, []interface{}) {
-	// Localiza onde inserir o filtro: antes de GROUP BY, ORDER BY, LIMIT, OFFSET.
+	// Normaliza pra detectar palavras-chave finais — busca pelo
+	// MENOR índice entre todas elas, mesmo se aparecerem em qualquer ordem
+	// (palavras só "finais" depois do WHERE).
 	upper := strings.ToUpper(sqlClean)
 	idx := len(sqlClean)
-	for _, kw := range []string{" GROUP BY ", " ORDER BY ", " LIMIT ", " OFFSET ", " HAVING ", " WINDOW "} {
-		if i := strings.Index(upper, kw); i >= 0 && i < idx {
-			idx = i
+	for _, rxKw := range []string{
+		`(?i)\bGROUP\s+BY\b`,
+		`(?i)\bHAVING\b`,
+		`(?i)\bORDER\s+BY\b`,
+		`(?i)\bLIMIT\b`,
+		`(?i)\bOFFSET\b`,
+		`(?i)\bWINDOW\b`,
+	} {
+		if loc := regexp.MustCompile(rxKw).FindStringIndex(sqlClean); loc != nil && loc[0] < idx {
+			idx = loc[0]
 		}
 	}
-	prefix := sqlClean[:idx]
+	_ = upper // não usado mais, fica para legibilidade
+
+	prefix := strings.TrimRight(sqlClean[:idx], " \n\t")
 	suffix := sqlClean[idx:]
 
-	// Decide se já há WHERE
-	if strings.Contains(strings.ToUpper(prefix), " WHERE ") {
+	// Decide se já há WHERE no prefix
+	hasWhere := regexp.MustCompile(`(?i)\bWHERE\b`).MatchString(prefix)
+	if hasWhere {
 		prefix += " AND empresa_id = $1::uuid"
 	} else {
 		prefix += " WHERE empresa_id = $1::uuid"
 	}
-	return prefix + suffix, []interface{}{empresaID}
+	if suffix != "" {
+		return prefix + "\n" + suffix, []interface{}{empresaID}
+	}
+	return prefix, []interface{}{empresaID}
 }
 
 // ── Função orquestradora ─────────────────────────────────────────────────────
@@ -219,6 +260,9 @@ func ResponderPerguntaDados(db *sql.DB, pergunta, empresaID string) (*DataQueryR
 
 	// 3. Injeta filtro empresa
 	sqlFinal, args := injetarFiltroEmpresa(sqlClean, empresaID)
+	// Garante que as referências às views usem o schema "smartpick." (alguns
+	// ambientes não têm smartpick no search_path da conexão).
+	sqlFinal = qualificarSchema(sqlFinal)
 	log.Printf("[chat-dados] sql_final=%q", sqlFinal)
 
 	// 4. Execução em transação read-only com timeout
