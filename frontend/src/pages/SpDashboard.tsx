@@ -322,6 +322,8 @@ function PropostasTable({
   const [filterGiroPR,   setFilterGiroPR]   = useState('')
   const [filterCapDias,  setFilterCapDias]  = useState('')
   const [filterPrio,     setFilterPrio]     = useState('') // '' | 'critico' | 'alto' | 'medio'
+  const [sortBy,  setSortBy]  = useState<'prioridade'|'delta'|'sugestao'|'capacidade'|'giro'>('prioridade')
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc')
   const [page, setPage] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
   const PAGE_SIZE = 100
@@ -368,8 +370,20 @@ function PropostasTable({
       if (filterPrio === 'alto'    && r.prioridade < 60) return false
       if (filterPrio === 'medio'   && r.prioridade < 40) return false
       return true
-    }).sort((a, b) => b.prioridade - a.prioridade),
-    [rows, filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, filterPrio],
+    }).sort((a, b) => {
+      const dir = sortDir === 'desc' ? -1 : 1
+      const valor = (r: typeof a) => {
+        switch (sortBy) {
+          case 'delta':      return Math.abs(r.delta ?? 0)
+          case 'sugestao':   return r.sugestao_editada ?? r.sugestao_calibragem ?? 0
+          case 'capacidade': return r.capacidade_atual ?? 0
+          case 'giro':       return r.giro_dia_cx ?? 0
+          case 'prioridade': default: return r.prioridade ?? 0
+        }
+      }
+      return (valor(a) - valor(b)) * dir
+    }),
+    [rows, filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, filterPrio, sortBy, sortDir],
   )
 
   const hasFilters = filterSearch || filterDepto || filterSecao || filterEnder || filterGiroCap || filterGiroPR || filterCapDias || filterPrio
@@ -572,15 +586,16 @@ function PropostasTable({
           <TableHeader>
             <TableRow className="text-xs">
               <TableHead className="py-2 w-[52px] text-center">
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted">🔥</TooltipTrigger>
-                    <TooltipContent className="text-xs max-w-64">
-                      <p className="font-semibold">Prioridade (0-100)</p>
-                      <p className="text-muted-foreground">Curva ABC + magnitude do delta + alertas + giro. ≥80 crítico · ≥60 alto · ≥40 médio.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <button
+                  className={`cursor-pointer ${sortBy === 'prioridade' ? 'font-bold text-primary' : ''}`}
+                  onClick={() => {
+                    if (sortBy === 'prioridade') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
+                    else { setSortBy('prioridade'); setSortDir('desc') }
+                  }}
+                  title="Clique para ordenar por prioridade"
+                >
+                  🔥{sortBy === 'prioridade' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                </button>
               </TableHead>
               <TableHead className="py-2 w-[88px]">Depto / Seção</TableHead>
               <TableHead className="py-2">Produto</TableHead>
@@ -593,19 +608,64 @@ function PropostasTable({
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="text-right py-2 w-[46px]">Cap.</TableHead>
+              <TableHead className="text-right py-2 w-[46px]">
+                <button
+                  className={`cursor-pointer ${sortBy === 'capacidade' ? 'font-bold text-primary' : ''}`}
+                  onClick={() => {
+                    if (sortBy === 'capacidade') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
+                    else { setSortBy('capacidade'); setSortDir('desc') }
+                  }}
+                  title="Clique para ordenar por capacidade atual"
+                >
+                  Cap.{sortBy === 'capacidade' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                </button>
+              </TableHead>
               <TableHead className="text-right py-2 w-[62px]">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted">Giro/dia</TooltipTrigger>
+                    <TooltipTrigger asChild>
+                      <button
+                        className={`cursor-pointer ${sortBy === 'giro' ? 'font-bold text-primary underline' : 'underline decoration-dotted'}`}
+                        onClick={() => {
+                          if (sortBy === 'giro') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
+                          else { setSortBy('giro'); setSortDir('desc') }
+                        }}
+                      >
+                        Giro/dia{sortBy === 'giro' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                      </button>
+                    </TooltipTrigger>
                     <TooltipContent className="max-w-64 text-xs">
                       <p className="font-semibold">Acessos ao picking / dia</p>
-                      <p className="text-muted-foreground">QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS · Fallback: MED_VENDA_DIAS</p>
+                      <p className="text-muted-foreground">QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS · Fallback: MED_VENDA_DIAS · Clique para ordenar</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="py-2 w-[110px]">Sug. / Δ</TableHead>
+              <TableHead className="py-2 w-[110px]">
+                <span className="inline-flex items-center gap-2">
+                  <button
+                    className={`cursor-pointer ${sortBy === 'sugestao' ? 'font-bold text-primary' : ''}`}
+                    onClick={() => {
+                      if (sortBy === 'sugestao') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
+                      else { setSortBy('sugestao'); setSortDir('desc') }
+                    }}
+                    title="Clique para ordenar por sugestão"
+                  >
+                    Sug.{sortBy === 'sugestao' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                  </button>
+                  <span className="text-muted-foreground">/</span>
+                  <button
+                    className={`cursor-pointer ${sortBy === 'delta' ? 'font-bold text-primary' : ''}`}
+                    onClick={() => {
+                      if (sortBy === 'delta') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
+                      else { setSortBy('delta'); setSortDir('desc') }
+                    }}
+                    title="Clique para ordenar por |Δ| (maior agressor primeiro)"
+                  >
+                    Δ{sortBy === 'delta' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                  </button>
+                </span>
+              </TableHead>
               <TableHead className="py-2 w-[72px]">Status</TableHead>
               <TableHead className="w-[50px] py-2 text-center">
                 <TooltipProvider delayDuration={200}>
