@@ -113,9 +113,7 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			       p.sugestao_editada, p.editado_por::text,
 			       TO_CHAR(p.editado_em,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 			       TO_CHAR(p.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-			       CASE WHEN e.unidade_master > 0 AND e.qt_giro_dia IS NOT NULL
-			            THEN ROUND(e.qt_giro_dia / e.unidade_master, 2)
-			            ELSE NULL END,
+			       e.qt_giro_dia,
 			       e.med_venda_cx,
 			       e.ponto_reposicao,
 			       e.participacao

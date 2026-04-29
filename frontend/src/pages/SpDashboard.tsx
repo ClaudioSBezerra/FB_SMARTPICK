@@ -545,7 +545,7 @@ function PropostasTable({
                 'Código': r.codprod,
                 'Endereço': r._end,
                 'Capacidade': r.capacidade_atual ?? '',
-                'Giro/dia (cx)': r.giro_dia_cx != null ? r.giro_dia_cx : '',
+                'Giro/dia': r.giro_dia_cx != null ? r.giro_dia_cx : '',
                 'Méd.Venda (cx)': r.med_venda_cx != null ? r.med_venda_cx : '',
                 'Pt.Reposição': r.ponto_reposicao ?? '',
                 'Sugestão': r.sugestao_editada ?? r.sugestao_calibragem,
@@ -635,8 +635,8 @@ function PropostasTable({
                       </button>
                     </TooltipTrigger>
                     <TooltipContent className="max-w-64 text-xs">
-                      <p className="font-semibold">Acessos ao picking / dia</p>
-                      <p className="text-muted-foreground">QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS · Fallback: MED_VENDA_DIAS · Clique para ordenar</p>
+                      <p className="font-semibold">Giro diário (WMS bruto)</p>
+                      <p className="text-muted-foreground">QTGIRODIA_SISTEMA — valor exportado diretamente do WMS · Clique para ordenar</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -699,7 +699,7 @@ function PropostasTable({
                 <TableCell className="py-1.5 w-[100px]"><CurvaCell classe={p.classe_venda} participacao={p.participacao} /></TableCell>
                 <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
                 <TableCell className="py-1 text-right text-muted-foreground">
-                  {p.giro_dia_cx != null ? p.giro_dia_cx.toFixed(1) : '—'}
+                  {p.giro_dia_cx != null ? p.giro_dia_cx.toFixed(3) : '—'}
                 </TableCell>
                 <TableCell className="py-1 w-[110px]">
                   <div className="flex items-center gap-2">
