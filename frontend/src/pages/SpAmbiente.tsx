@@ -111,15 +111,19 @@ export default function SpAmbiente() {
 
   // ── Simulador da fórmula ─────────────────────────────────────────────────────
   const [showHelp,        setShowHelp]        = useState(true)
-  const [simGiro,         setSimGiro]         = useState(25)
-  const [simMaster,       setSimMaster]       = useState(6)
-  const [simCurva,        setSimCurva]        = useState<'A' | 'B' | 'C'>('B')
-  const [simDias,         setSimDias]         = useState(15)
-  const [simFator,        setSimFator]        = useState(1.10)
-  const [simCapAtual,     setSimCapAtual]     = useState(60)
-  const [simMinCap,       setSimMinCap]       = useState(1)
-  const [simNuncaReduz,   setSimNuncaReduz]   = useState(true)
-  const [simNormaPalete,  setSimNormaPalete]  = useState(0)
+  const [simAcesso90,     setSimAcesso90]     = useState(859)   // QTACESSO_PICKING_PERIODO_90
+  const [simQtDias,       setSimQtDias]       = useState(42)    // QT_DIAS
+  const [simMaster,       setSimMaster]       = useState(6)     // QTUNITCX
+  const [simCurva,        setSimCurva]        = useState<'A' | 'B' | 'C'>('A') // CLASSEVENDA
+  const [simDias,         setSimDias]         = useState(2)     // CLASSEVENDA_DIAS
+  const [simFator,        setSimFator]        = useState(1.10)  // Fator de Segurança (parâmetro)
+  const [simCapAtual,     setSimCapAtual]     = useState(36)    // CAPACIDADE
+  const [simMinCap,       setSimMinCap]       = useState(1)     // Cap. mínima (parâmetro)
+  const [simNuncaReduz,   setSimNuncaReduz]   = useState(true)  // Curva A nunca reduz (parâmetro)
+  const [simNormaPalete,  setSimNormaPalete]  = useState(105)   // NORMA_PALETE
+
+  // giro diário = QTACESSO90 ÷ QT_DIAS (prioridade 1 do motor)
+  const simGiro = simQtDias > 0 ? simAcesso90 / simQtDias : 0
 
   // resultados do simulador (derivados — sem useMemo para manter simples)
   const simCaixasGiro   = Math.ceil(simGiro / Math.max(simMaster, 1))
@@ -492,59 +496,70 @@ export default function SpAmbiente() {
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Simulador interativo</p>
 
+                {/* Linha 1 — campos do CSV */}
                 <div className="grid grid-cols-4 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Giro/dia (unid.)</label>
-                    <input type="number" value={simGiro} min={0}
-                      onChange={e => setSimGiro(+e.target.value)}
+                    <label className="text-[11px] font-mono font-medium text-slate-700">QTACESSO_PICKING_PERIODO_90</label>
+                    <input type="number" value={simAcesso90} min={0}
+                      onChange={e => setSimAcesso90(+e.target.value)}
                       className="w-full h-8 border rounded px-2 text-sm" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Unid. por cx</label>
+                    <label className="text-[11px] font-mono font-medium text-slate-700">QT_DIAS</label>
+                    <input type="number" value={simQtDias} min={1}
+                      onChange={e => setSimQtDias(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-mono font-medium text-slate-700">QTUNITCX</label>
                     <input type="number" value={simMaster} min={1}
                       onChange={e => setSimMaster(+e.target.value)}
                       className="w-full h-8 border rounded px-2 text-sm" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Curva</label>
+                    <label className="text-[11px] font-mono font-medium text-slate-700">CLASSEVENDA</label>
                     <select value={simCurva}
                       onChange={e => setSimCurva(e.target.value as 'A' | 'B' | 'C')}
                       className="w-full h-8 border rounded px-2 text-sm bg-white">
-                      <option value="A">A — alto giro</option>
-                      <option value="B">B — médio</option>
-                      <option value="C">C — baixo giro</option>
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="C">C</option>
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Dias da curva</label>
+                    <label className="text-[11px] font-mono font-medium text-slate-700">CLASSEVENDA_DIAS</label>
                     <input type="number" value={simDias} min={1}
                       onChange={e => setSimDias(+e.target.value)}
                       className="w-full h-8 border rounded px-2 text-sm" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Fator segurança</label>
-                    <input type="number" step="0.01" value={simFator} min={1}
-                      onChange={e => setSimFator(+e.target.value)}
-                      className="w-full h-8 border rounded px-2 text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Cap. atual (cx)</label>
+                    <label className="text-[11px] font-mono font-medium text-slate-700">CAPACIDADE</label>
                     <input type="number" value={simCapAtual} min={0}
                       onChange={e => setSimCapAtual(+e.target.value)}
                       className="w-full h-8 border rounded px-2 text-sm" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Cap. mínima (cx)</label>
-                    <input type="number" value={simMinCap} min={1}
-                      onChange={e => setSimMinCap(+e.target.value)}
-                      className="w-full h-8 border rounded px-2 text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Norma Palete (cx/pal.)</label>
+                    <label className="text-[11px] font-mono font-medium text-slate-700">NORMA_PALETE</label>
                     <input type="number" value={simNormaPalete} min={0}
                       onChange={e => setSimNormaPalete(+e.target.value)}
                       className="w-full h-8 border rounded px-2 text-sm"
                       placeholder="0 = não aplica" />
+                  </div>
+                </div>
+                {/* Linha 2 — parâmetros do CD (não são colunas do CSV) */}
+                <div className="grid grid-cols-4 gap-3 pt-1 border-t">
+                  <p className="col-span-4 text-[10px] text-muted-foreground uppercase tracking-wide">Parâmetros do CD (Regras de Calibragem)</p>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Fator de Segurança</label>
+                    <input type="number" step="0.01" value={simFator} min={1}
+                      onChange={e => setSimFator(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Cap. mínima absoluta</label>
+                    <input type="number" value={simMinCap} min={1}
+                      onChange={e => setSimMinCap(+e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-sm" />
                   </div>
                   <div className="flex items-end pb-1.5">
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
@@ -563,15 +578,22 @@ export default function SpAmbiente() {
                       <div className="flex gap-2">
                         <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
                         <span>
-                          caixas_giro = ⌈{simGiro} ÷ {simMaster}⌉ ={' '}
-                          <strong className="text-amber-700">{simCaixasGiro} cx/dia</strong>
+                          giro = QTACESSO_PICKING_90({simAcesso90}) ÷ QT_DIAS({simQtDias}) ={' '}
+                          <strong className="text-amber-700">{simGiro.toFixed(3)} acessos/dia</strong>
                         </span>
                       </div>
                       <div className="flex gap-2">
                         <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
                         <span>
-                          dias_curva = <strong className="text-green-700">{simDias} dias</strong>{' '}
-                          <span className="text-slate-400">(Curva {simCurva})</span>
+                          caixas_giro = ⌈{simGiro.toFixed(3)} ÷ QTUNITCX({simMaster})⌉ ={' '}
+                          <strong className="text-amber-700">{simCaixasGiro} cx</strong>
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
+                        <span>
+                          CLASSEVENDA_DIAS = <strong className="text-green-700">{simDias} dias</strong>{' '}
+                          <span className="text-slate-400">(CLASSEVENDA: {simCurva})</span>
                         </span>
                       </div>
                       <div className="flex gap-2">
@@ -595,7 +617,7 @@ export default function SpAmbiente() {
                         <div className="flex gap-2 text-rose-700">
                           <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
                           <span>
-                            norma palete (×{simNormaPalete}): {simSugestaoMin} →{' '}
+                            NORMA_PALETE(×{simNormaPalete}): {simSugestaoMin} →{' '}
                             <strong>{simSugestaoNorma} cx</strong>
                             <span className="text-slate-400 ml-1">(⌊{simSugestaoMin}÷{simNormaPalete}⌋+1)×{simNormaPalete}</span>
                           </span>

@@ -113,7 +113,17 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			       p.sugestao_editada, p.editado_por::text,
 			       TO_CHAR(p.editado_em,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 			       TO_CHAR(p.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-			       e.qt_giro_dia,
+			       CASE
+			         WHEN e.qt_acesso_90 > 0 AND e.qt_dias > 0
+			           THEN ROUND(e.qt_acesso_90::float8 / NULLIF(e.qt_dias,0), 3)
+			         WHEN e.med_venda_dias > 0
+			           THEN ROUND(e.med_venda_dias::float8, 3)
+			         WHEN e.med_venda_cx > 0 AND e.unidade_master > 0
+			           THEN ROUND(e.med_venda_cx * e.unidade_master, 3)
+			         WHEN e.med_venda_cx_aa > 0 AND e.unidade_master > 0
+			           THEN ROUND(e.med_venda_cx_aa * e.unidade_master, 3)
+			         ELSE NULL
+			       END,
 			       e.med_venda_cx,
 			       e.ponto_reposicao,
 			       e.participacao

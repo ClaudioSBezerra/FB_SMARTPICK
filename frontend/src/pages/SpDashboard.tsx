@@ -545,7 +545,7 @@ function PropostasTable({
                 'Código': r.codprod,
                 'Endereço': r._end,
                 'Capacidade': r.capacidade_atual ?? '',
-                'Giro/dia': r.giro_dia_cx != null ? r.giro_dia_cx : '',
+                'Giro picking/dia': r.giro_dia_cx != null ? r.giro_dia_cx : '',
                 'Méd.Venda (cx)': r.med_venda_cx != null ? r.med_venda_cx : '',
                 'Pt.Reposição': r.ponto_reposicao ?? '',
                 'Sugestão': r.sugestao_editada ?? r.sugestao_calibragem,
@@ -631,12 +631,12 @@ function PropostasTable({
                           else { setSortBy('giro'); setSortDir('desc') }
                         }}
                       >
-                        Giro/dia{sortBy === 'giro' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                        Giro pick/dia{sortBy === 'giro' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent className="max-w-64 text-xs">
-                      <p className="font-semibold">Giro diário (WMS bruto)</p>
-                      <p className="text-muted-foreground">QTGIRODIA_SISTEMA — valor exportado diretamente do WMS · Clique para ordenar</p>
+                      <p className="font-semibold">Giro picking/dia (motor)</p>
+                      <p className="text-muted-foreground">QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS — mesmo valor que o motor usa na fórmula · Clique para ordenar</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
