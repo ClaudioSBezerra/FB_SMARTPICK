@@ -9,10 +9,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 )
 
-var ajudaHTTPClient = &http.Client{Timeout: 12 * time.Second}
+var ajudaHTTPClient = &http.Client{Timeout: 25 * time.Second}
+
+// rxCodProd extrai códigos de produto (4–7 dígitos isolados) das mensagens.
+var rxCodProd = regexp.MustCompile(`\b(\d{4,7})\b`)
 
 const smartpickSystemPrompt = `Você é o assistente de treinamento do SmartPick (sistema de calibragem de slots de picking para CDs). Responda sempre em português do Brasil, de forma direta e prática.
 
@@ -90,7 +94,7 @@ type mistralResponse struct {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
+func SpAjudaChatHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -115,6 +119,13 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		systemContent := smartpickSystemPrompt
 		if req.Context != "" {
 			systemContent += "\n\n## CONTEXTO ATUAL\nO usuário está na página: " + req.Context
+		}
+
+		// Se alguma mensagem mencionar um código de produto, busca os dados reais
+		// e injeta no contexto para que a IA responda com números corretos.
+		spCtx := GetSpContext(r)
+		if db != nil && spCtx != nil && spCtx.EmpresaID != "" {
+			systemContent += buscarContextoProduto(db, req.Messages, spCtx.EmpresaID)
 		}
 
 		// Monta o array de mensagens com a mensagem de sistema no início
@@ -165,6 +176,7 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 
 		resp, raw, err := doRequest(payload)
 		if err != nil {
+			log.Printf("[ajuda] erro de transporte Z.AI: %v", err)
 			http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
 			return
 		}
@@ -277,4 +289,105 @@ func SpAjudaChatHandler(_ *sql.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"reply": reply})
 	}
+}
+
+// buscarContextoProduto varre as mensagens em busca de códigos de produto e,
+// se encontrar, consulta vw_propostas_chat e devolve um bloco de contexto para
+// ser injetado no system prompt. Assim a IA responde com dados reais em vez de
+// inventar números.
+func buscarContextoProduto(db *sql.DB, msgs []ajudaMessage, empresaID string) string {
+	// Coleta todos os candidatos a codprod nas mensagens do usuário
+	seen := map[string]bool{}
+	var codprods []string
+	for _, m := range msgs {
+		if m.Role != "user" {
+			continue
+		}
+		for _, match := range rxCodProd.FindAllString(m.Content, -1) {
+			if !seen[match] {
+				seen[match] = true
+				codprods = append(codprods, match)
+			}
+		}
+	}
+	if len(codprods) == 0 {
+		return ""
+	}
+
+	// Consulta os dados do(s) produto(s) — máx. 3 para não inflar o prompt
+	if len(codprods) > 3 {
+		codprods = codprods[:3]
+	}
+
+	var bloco string
+	for _, cp := range codprods {
+		var (
+			codprod        int
+			produto        string
+			classeVenda    string
+			capAtual       sql.NullInt64
+			sugestao       sql.NullInt64
+			delta          sql.NullInt64
+			justificativa  sql.NullString
+			giroDia        sql.NullFloat64
+			medVendaCx     sql.NullFloat64
+			pontoReposicao sql.NullInt64
+		)
+		err := db.QueryRow(`
+			SELECT codprod, produto, COALESCE(classe_venda,''),
+			       capacidade_atual, sugestao_calibragem, delta,
+			       justificativa, giro_dia_cx, med_venda_cx, ponto_reposicao
+			FROM smartpick.vw_propostas_chat
+			WHERE codprod = $1 AND empresa_id = $2::uuid
+			ORDER BY created_at DESC
+			LIMIT 1
+		`, cp, empresaID).Scan(
+			&codprod, &produto, &classeVenda,
+			&capAtual, &sugestao, &delta,
+			&justificativa, &giroDia, &medVendaCx, &pontoReposicao,
+		)
+		if err != nil {
+			continue
+		}
+		bloco += fmt.Sprintf(`
+
+## DADOS REAIS DO PRODUTO %d — %s
+- Curva: %s
+- Capacidade atual: %v cx
+- Sugestão calibragem: %v cx
+- Delta (Δ): %v cx
+- Giro/dia (cx): %v
+- Média venda cx/dia: %v
+- Ponto de reposição: %v
+- Fórmula aplicada pelo motor: %s
+
+Use esses dados exatos ao explicar qualquer cálculo sobre este produto.`,
+			codprod, produto, classeVenda,
+			nullInt(capAtual), nullInt(sugestao), nullInt(delta),
+			nullFloat(giroDia), nullFloat(medVendaCx), nullInt(pontoReposicao),
+			nullStr(justificativa),
+		)
+	}
+	return bloco
+}
+
+func nullInt(v sql.NullInt64) interface{} {
+	if v.Valid {
+		return v.Int64
+	}
+	return "—"
+}
+
+func nullFloat(v sql.NullFloat64) interface{} {
+	if v.Valid {
+		return fmt.Sprintf("%.4f", v.Float64)
+	}
+	return "—"
+}
+
+func nullStr(v sql.NullString) string {
+	if v.Valid {
+		return v.String
+	}
+	return "—"
 }
