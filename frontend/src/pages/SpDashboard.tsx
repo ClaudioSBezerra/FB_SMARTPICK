@@ -700,7 +700,9 @@ function PropostasTable({
                 <TableCell className="py-1.5 w-[100px]"><CurvaCell classe={p.classe_venda} participacao={p.participacao} /></TableCell>
                 <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
                 <TableCell className="py-1 text-right text-muted-foreground">
-                  {p.giro_dia_cx != null ? p.giro_dia_cx.toFixed(3) : '—'}
+                  {p.giro_dia_cx != null
+                    ? p.giro_dia_cx.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+                    : '—'}
                 </TableCell>
                 <TableCell className="py-1 w-[110px]">
                   <div className="flex items-center gap-2">

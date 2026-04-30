@@ -417,10 +417,18 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 	}
 
 	// ── 7. Justificativa ──────────────────────────────────────────────────────
-	base := fmt.Sprintf(
-		"Curva %s: ceil(%s=%.2f / master=%d)=%d × %d dias(%s) × %.2f(seg) = %d cx%s",
-		curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaBase, notaNorma,
-	)
+	var base string
+	if fonteGiro == "MED_VENDA_DIAS_CX" && e.MedVendaCx != nil {
+		base = fmt.Sprintf(
+			"Curva %s: ⌈MED_VENDA_DIAS_CX=%.2fcx/dia⌉=%dcx × %ddias(%s) × %.2f(seg) = %dcx%s",
+			curva, *e.MedVendaCx, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaBase, notaNorma,
+		)
+	} else {
+		base = fmt.Sprintf(
+			"Curva %s: ceil(%s=%.2f / master=%d)=%dcx × %ddias(%s) × %.2f(seg) = %dcx%s",
+			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaBase, notaNorma,
+		)
+	}
 	var justificativa string
 	if mantidaCurvaA {
 		justificativa = base + fmt.Sprintf(" → mantida em %d cx [Curva A nunca reduz]", sugestao)
