@@ -397,8 +397,14 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 	}
 
 	// ── 5. Norma Palete: arredonda para múltiplo de norma_palete ─────────────
+	// Aplica somente quando a sugestão já é maior que a capacidade atual.
+	// Se a demanda indica redução, a norma de palete não deve inverter a direção.
+	capAtual := 0
+	if e.Capacidade != nil {
+		capAtual = *e.Capacidade
+	}
 	var notaNorma string
-	if e.NormaPalete != nil && *e.NormaPalete > 1 {
+	if e.NormaPalete != nil && *e.NormaPalete > 1 && sugestao >= capAtual {
 		np := *e.NormaPalete
 		if sugestao%np != 0 {
 			sugestao = ((sugestao / np) + 1) * np
@@ -407,10 +413,6 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 	}
 
 	// ── 6. Curva A: nunca reduz ───────────────────────────────────────────────
-	capAtual := 0
-	if e.Capacidade != nil {
-		capAtual = *e.Capacidade
-	}
 	mantidaCurvaA := curva == "A" && p.CurvaANuncaReduz && sugestao < capAtual
 	if mantidaCurvaA {
 		sugestao = capAtual
