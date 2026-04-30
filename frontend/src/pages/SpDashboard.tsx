@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -620,18 +620,18 @@ function PropostasTable({
                   Cap.{sortBy === 'capacidade' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
                 </button>
               </TableHead>
-              <TableHead className="text-right py-2 w-[62px]">
+              <TableHead className="text-right py-2 w-[68px]">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        className={`cursor-pointer ${sortBy === 'giro' ? 'font-bold text-primary underline' : 'underline decoration-dotted'}`}
+                        className={`cursor-pointer leading-tight text-[10px] font-mono text-right ${sortBy === 'giro' ? 'font-bold text-primary underline' : 'underline decoration-dotted'}`}
                         onClick={() => {
                           if (sortBy === 'giro') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
                           else { setSortBy('giro'); setSortDir('desc') }
                         }}
                       >
-                        MED_VENDA_DIAS_CX{sortBy === 'giro' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                        MED_VENDA<br/>DIAS_CX{sortBy === 'giro' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent className="max-w-64 text-xs">
@@ -680,7 +680,8 @@ function PropostasTable({
           </TableHeader>
           <TableBody>
             {paged.map(p => (
-              <TableRow key={p.id} className={`text-xs ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
+              <Fragment key={p.id}>
+              <TableRow className={`text-xs ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
                 <TableCell className="py-1.5 w-[52px] text-center">
                   <PrioridadeCell score={p.prioridade} />
                 </TableCell>
@@ -757,6 +758,17 @@ function PropostasTable({
                   )}
                 </TableCell>
               </TableRow>
+              <TableRow className={`${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
+                <TableCell colSpan={11} className="py-0.5 px-3 border-b bg-slate-50">
+                  <span className="font-mono text-[10px] text-slate-500">
+                    {p.justificativa
+                      ? <><span className="text-slate-400 mr-1">⊢</span>{p.justificativa}</>
+                      : <span className="text-slate-300">sem justificativa</span>
+                    }
+                  </span>
+                </TableCell>
+              </TableRow>
+              </Fragment>
             ))}
           </TableBody>
         </Table>
