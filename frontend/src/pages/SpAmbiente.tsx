@@ -111,8 +111,7 @@ export default function SpAmbiente() {
 
   // ── Simulador da fórmula ─────────────────────────────────────────────────────
   const [showHelp,        setShowHelp]        = useState(true)
-  const [simAcesso90,     setSimAcesso90]     = useState(859)   // QTACESSO_PICKING_PERIODO_90
-  const [simQtDias,       setSimQtDias]       = useState(42)    // QT_DIAS
+  const [simMedVendaCx,   setSimMedVendaCx]   = useState(20.5)  // MED_VENDA_DIAS_CX
   const [simMaster,       setSimMaster]       = useState(6)     // QTUNITCX
   const [simCurva,        setSimCurva]        = useState<'A' | 'B' | 'C'>('A') // CLASSEVENDA
   const [simDias,         setSimDias]         = useState(2)     // CLASSEVENDA_DIAS
@@ -122,8 +121,8 @@ export default function SpAmbiente() {
   const [simNuncaReduz,   setSimNuncaReduz]   = useState(true)  // Curva A nunca reduz (parâmetro)
   const [simNormaPalete,  setSimNormaPalete]  = useState(105)   // NORMA_PALETE
 
-  // giro diário = QTACESSO90 ÷ QT_DIAS (prioridade 1 do motor)
-  const simGiro = simQtDias > 0 ? simAcesso90 / simQtDias : 0
+  // giro diário = MED_VENDA_DIAS_CX × QTUNITCX (prioridade 1 do motor)
+  const simGiro = simMedVendaCx * Math.max(simMaster, 1)
 
   // resultados do simulador (derivados — sem useMemo para manter simples)
   const simCaixasGiro   = Math.ceil(simGiro / Math.max(simMaster, 1))
@@ -397,8 +396,7 @@ export default function SpAmbiente() {
                   <div className="flex items-start gap-2 text-xs">
                     <span className="font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded shrink-0">Giro_dia</span>
                     <span className="text-muted-foreground">
-                      Acessos diários ao picking — <strong>primário:</strong> QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS
-                      (Curva ABC de Acesso gerada pelo WMS/JC)
+                      Média de vendas diária em caixas — <strong>primário:</strong> MED_VENDA_DIAS_CX × QTUNITCX
                     </span>
                   </div>
                   <div className="flex items-start gap-2 text-xs">
@@ -430,9 +428,9 @@ export default function SpAmbiente() {
                   <div className="space-y-1">
                     <p className="text-xs font-medium">Giro diário (unid/dia)</p>
                     <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside">
-                      <li>QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS <span className="text-green-600 font-medium">(preferido — acesso ao picking)</span></li>
+                      <li>MED_VENDA_DIAS_CX × Unid/cx <span className="text-green-600 font-medium">(preferido — venda diária em cx)</span></li>
+                      <li>QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS</li>
                       <li>MED_VENDA_DIAS</li>
-                      <li>MED_VENDA_DIAS_CX × Unid/cx</li>
                       <li>MED_VENDA_CX_ANOANT × Unid/cx</li>
                     </ol>
                   </div>
@@ -499,15 +497,9 @@ export default function SpAmbiente() {
                 {/* Linha 1 — campos do CSV */}
                 <div className="grid grid-cols-4 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[11px] font-mono font-medium text-slate-700">QTACESSO_PICKING_PERIODO_90</label>
-                    <input type="number" value={simAcesso90} min={0}
-                      onChange={e => setSimAcesso90(+e.target.value)}
-                      className="w-full h-8 border rounded px-2 text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-mono font-medium text-slate-700">QT_DIAS</label>
-                    <input type="number" value={simQtDias} min={1}
-                      onChange={e => setSimQtDias(+e.target.value)}
+                    <label className="text-[11px] font-mono font-medium text-slate-700">MED_VENDA_DIAS_CX</label>
+                    <input type="number" step="0.1" value={simMedVendaCx} min={0}
+                      onChange={e => setSimMedVendaCx(+e.target.value)}
                       className="w-full h-8 border rounded px-2 text-sm" />
                   </div>
                   <div className="space-y-1">
@@ -578,8 +570,8 @@ export default function SpAmbiente() {
                       <div className="flex gap-2">
                         <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
                         <span>
-                          giro = QTACESSO_PICKING_90({simAcesso90}) ÷ QT_DIAS({simQtDias}) ={' '}
-                          <strong className="text-amber-700">{simGiro.toFixed(3)} acessos/dia</strong>
+                          giro = MED_VENDA_DIAS_CX({simMedVendaCx}) × QTUNITCX({simMaster}) ={' '}
+                          <strong className="text-amber-700">{simGiro.toFixed(3)} unid/dia</strong>
                         </span>
                       </div>
                       <div className="flex gap-2">

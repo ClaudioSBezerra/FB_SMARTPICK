@@ -75,8 +75,8 @@ func nilIfEmptyStr(s string) interface{} {
 // Body: { "job_id": "uuid" }
 //
 // Fórmula aplicada: sugestão = ceil( ceil(giro/master) × diasClasse × fator ) → múltiplo de norma_palete
-// Giro primário: QTACESSO_PICKING_PERIODO_90 / QT_DIAS (Curva ABC de Acesso ao Picking)
-// Fallbacks:     MED_VENDA_DIAS → MED_VENDA_DIAS_CX×master → MED_VENDA_CX_AA×master
+// Giro primário: MED_VENDA_DIAS_CX × QTUNITCX (média de vendas diária em caixas)
+// Fallbacks:     QTACESSO_PICKING_PERIODO_90/QT_DIAS → MED_VENDA_DIAS → MED_VENDA_CX_AA×master
 func SpMotorCalibrarHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -353,15 +353,15 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 	var fonteGiro string
 
 	switch {
+	case e.MedVendaCx != nil && *e.MedVendaCx > 0:
+		giroDia = *e.MedVendaCx * float64(unidadeMaster)
+		fonteGiro = "MED_VENDA_DIAS_CX"
 	case e.QtAcesso90 != nil && *e.QtAcesso90 > 0 && e.QtDias != nil && *e.QtDias > 0:
 		giroDia = float64(*e.QtAcesso90) / float64(*e.QtDias)
 		fonteGiro = "ACESSO_PICKING/DIA"
 	case e.MedVendaDias != nil && *e.MedVendaDias > 0:
 		giroDia = *e.MedVendaDias
 		fonteGiro = "MED_VENDA_DIAS"
-	case e.MedVendaCx != nil && *e.MedVendaCx > 0:
-		giroDia = *e.MedVendaCx * float64(unidadeMaster)
-		fonteGiro = "MED_VENDA_DIAS_CX×master"
 	case e.MedVendaCxAA != nil && *e.MedVendaCxAA > 0:
 		giroDia = *e.MedVendaCxAA * float64(unidadeMaster)
 		fonteGiro = "MED_VENDA_CX_AA×master"

@@ -114,12 +114,12 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			       TO_CHAR(p.editado_em,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 			       TO_CHAR(p.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 			       CASE
+			         WHEN e.med_venda_cx > 0
+			           THEN ROUND(e.med_venda_cx::numeric, 3)
 			         WHEN e.qt_acesso_90 > 0 AND e.qt_dias > 0
 			           THEN ROUND((e.qt_acesso_90::float8 / NULLIF(e.qt_dias,0))::numeric, 3)
 			         WHEN e.med_venda_dias > 0
 			           THEN ROUND(e.med_venda_dias::numeric, 3)
-			         WHEN e.med_venda_cx > 0 AND e.unidade_master > 0
-			           THEN ROUND((e.med_venda_cx * e.unidade_master)::numeric, 3)
 			         WHEN e.med_venda_cx_aa > 0 AND e.unidade_master > 0
 			           THEN ROUND((e.med_venda_cx_aa * e.unidade_master)::numeric, 3)
 			         ELSE NULL

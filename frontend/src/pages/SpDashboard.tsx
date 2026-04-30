@@ -545,7 +545,7 @@ function PropostasTable({
                 'Código': r.codprod,
                 'Endereço': r._end,
                 'Capacidade': r.capacidade_atual ?? '',
-                'Giro picking/dia': r.giro_dia_cx != null ? r.giro_dia_cx : '',
+                'MED_VENDA_DIAS_CX': r.giro_dia_cx != null ? r.giro_dia_cx : '',
                 'Méd.Venda (cx)': r.med_venda_cx != null ? r.med_venda_cx : '',
                 'Pt.Reposição': r.ponto_reposicao ?? '',
                 'Sugestão': r.sugestao_editada ?? r.sugestao_calibragem,
@@ -631,12 +631,12 @@ function PropostasTable({
                           else { setSortBy('giro'); setSortDir('desc') }
                         }}
                       >
-                        Giro pick/dia{sortBy === 'giro' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                        MED_VENDA_DIAS_CX{sortBy === 'giro' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent className="max-w-64 text-xs">
-                      <p className="font-semibold">Giro picking/dia (motor)</p>
-                      <p className="text-muted-foreground">QTACESSO_PICKING_PERIODO_90 ÷ QT_DIAS — mesmo valor que o motor usa na fórmula · Clique para ordenar</p>
+                      <p className="font-semibold">MED_VENDA_DIAS_CX (motor)</p>
+                      <p className="text-muted-foreground">Média de vendas diária em caixas — fonte primária do motor de calibragem · Clique para ordenar</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
