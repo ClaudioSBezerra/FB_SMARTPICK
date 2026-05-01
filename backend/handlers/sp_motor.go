@@ -281,7 +281,7 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 		status := "pendente"
 		if e.Capacidade != nil && *e.Capacidade > 0 {
 			diff := math.Abs(float64(sugestao-*e.Capacidade)) / float64(*e.Capacidade)
-			if diff <= 0.05 {
+			if diff <= 0.15 {
 				status = "calibrado"
 			}
 		}

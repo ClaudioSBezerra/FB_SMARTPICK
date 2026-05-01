@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -259,7 +259,7 @@ function SugestaoCell({
   const editada = proposta.sugestao_editada != null
 
   if (proposta.status !== 'pendente') {
-    return <span className="text-xs">{efetivo}{editada ? ' ✎' : ''}</span>
+    return <span className="text-xs">{efetivo} <span className="text-muted-foreground text-[10px]">cx</span>{editada ? ' ✎' : ''}</span>
   }
 
   if (!editing) {
@@ -268,7 +268,7 @@ function SugestaoCell({
         className="flex items-center gap-1 text-xs hover:text-primary group"
         onClick={() => { setVal(String(efetivo)); setEditing(true) }}
       >
-        {efetivo}
+        {efetivo} <span className="text-muted-foreground text-[10px]">cx</span>
         {editada && <span className="text-[10px] text-muted-foreground ml-0.5">editado</span>}
         <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60" />
       </button>
@@ -680,8 +680,7 @@ function PropostasTable({
           </TableHeader>
           <TableBody>
             {paged.map(p => (
-              <Fragment key={p.id}>
-              <TableRow className={`text-xs ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
+              <TableRow key={p.id} className={`text-xs ${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
                 <TableCell className="py-1.5 w-[52px] text-center">
                   <PrioridadeCell score={p.prioridade} />
                 </TableCell>
@@ -698,7 +697,9 @@ function PropostasTable({
                   </div>
                 </TableCell>
                 <TableCell className="py-1.5 w-[100px]"><CurvaCell classe={p.classe_venda} participacao={p.participacao} /></TableCell>
-                <TableCell className="py-1 text-right">{p.capacidade_atual ?? '—'}</TableCell>
+                <TableCell className="py-1 text-right">
+                  {p.capacidade_atual != null ? <span>{p.capacidade_atual} <span className="text-muted-foreground text-[10px]">cx</span></span> : '—'}
+                </TableCell>
                 <TableCell className="py-1 text-right text-muted-foreground">
                   {p.giro_dia_cx != null
                     ? p.giro_dia_cx.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -760,17 +761,6 @@ function PropostasTable({
                   )}
                 </TableCell>
               </TableRow>
-              <TableRow className={`${p.status !== 'pendente' ? 'opacity-60' : ''}`}>
-                <TableCell colSpan={11} className="py-0.5 px-3 border-b bg-slate-50">
-                  <span className="font-mono text-[10px] text-slate-500">
-                    {p.justificativa
-                      ? <><span className="text-slate-400 mr-1">⊢</span>{p.justificativa}</>
-                      : <span className="text-slate-300">sem justificativa</span>
-                    }
-                  </span>
-                </TableCell>
-              </TableRow>
-              </Fragment>
             ))}
           </TableBody>
         </Table>
@@ -1225,7 +1215,7 @@ export default function SpDashboard() {
           <TabsContent value="calibrado" className="space-y-3">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
               <CheckCircle2 className="h-4 w-4 text-blue-500 shrink-0" />
-              Estes produtos já estão com a capacidade ideal — sugestão igual à capacidade atual (delta = 0). Nenhuma ação necessária.
+              Estes produtos já estão com a capacidade ideal — sugestão dentro de 15% da capacidade atual. Nenhuma ação necessária.
             </p>
             {propostasCalibrado.length === 0 ? (
               <div className="text-center text-sm text-muted-foreground py-12">

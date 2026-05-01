@@ -130,7 +130,7 @@ export default function SpAmbiente() {
   const simCurvaALifted  = simCurva === 'A' && simNuncaReduz && simSugestaoMin < simCapAtual
   const simSugestaoFinal = simCurvaALifted ? simCapAtual : simSugestaoMin
   const simDelta         = simSugestaoFinal - simCapAtual
-  const simCalibrado     = simCapAtual > 0 && Math.abs(simDelta) / simCapAtual <= 0.05
+  const simCalibrado     = simCapAtual > 0 && Math.abs(simDelta) / simCapAtual <= 0.15
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const headers = { Authorization: `Bearer ${token}` }
@@ -443,13 +443,13 @@ export default function SpAmbiente() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Regras especiais</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-blue-50 border border-blue-100 rounded-md p-3 space-y-1">
-                    <p className="text-xs font-semibold text-blue-800">Calibrado (≥ 95% assertividade)</p>
+                    <p className="text-xs font-semibold text-blue-800">Calibrado (≤ 15% de tolerância)</p>
                     <p className="text-xs text-blue-700">
-                      Quando a sugestão calculada difere em até 5% da capacidade atual do slot,
+                      Quando a sugestão calculada difere em até 15% da capacidade atual do slot,
                       a proposta é marcada como <strong>Calibrado</strong> — não exige aprovação
                       e sinaliza que o slot já está bem dimensionado.
                     </p>
-                    <p className="text-xs font-mono text-blue-600">|sugestão − cap_atual| ÷ cap_atual ≤ 0.05</p>
+                    <p className="text-xs font-mono text-blue-600">|sugestão − cap_atual| ÷ cap_atual ≤ 0.15</p>
                   </div>
                   <div className="bg-slate-50 border border-slate-200 rounded-md p-3 space-y-1">
                     <p className="text-xs font-semibold text-slate-700">Produtos Ignorados</p>
@@ -605,7 +605,7 @@ export default function SpAmbiente() {
                         </strong>
                         {simCalibrado && (
                           <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-                            Calibrado (≤5%)
+                            Calibrado (≤15%)
                           </span>
                         )}
                       </div>
