@@ -172,12 +172,12 @@ function AlertasCell({ giroCap, giroPR, capDias2 }: { giroCap: string | null; gi
 }
 
 function AcaoBadge({ delta }: { delta: number }) {
-  if (delta === 0) return <span className="text-sm text-green-600 font-semibold">OK</span>
+  if (delta === 0) return <span className="text-sm text-green-600 font-semibold whitespace-nowrap">OK</span>
   if (delta > 0) return (
-    <span className="text-sm text-red-600 font-bold">+{delta} CX</span>
+    <span className="text-sm text-red-600 font-bold whitespace-nowrap">+{delta} CX</span>
   )
   return (
-    <span className="text-sm text-yellow-700 font-bold">{delta} CX</span>
+    <span className="text-sm text-yellow-700 font-bold whitespace-nowrap">{delta} CX</span>
   )
 }
 
@@ -259,13 +259,13 @@ function SugestaoCell({
   const editada = proposta.sugestao_editada != null
 
   if (proposta.status !== 'pendente') {
-    return <span className="text-xs">{efetivo} <span className="text-muted-foreground text-[10px]">cx</span>{editada ? ' ✎' : ''}</span>
+    return <span className="text-xs whitespace-nowrap">{efetivo} <span className="text-muted-foreground text-[10px]">cx</span>{editada ? ' ✎' : ''}</span>
   }
 
   if (!editing) {
     return (
       <button
-        className="flex items-center gap-1 text-xs hover:text-primary group"
+        className="flex items-center gap-1 text-xs hover:text-primary group whitespace-nowrap"
         onClick={() => { setVal(String(efetivo)); setEditing(true) }}
       >
         {efetivo} <span className="text-muted-foreground text-[10px]">cx</span>
@@ -608,7 +608,7 @@ function PropostasTable({
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="text-right py-2 w-[46px]">
+              <TableHead className="text-right py-2 w-[68px]">
                 <button
                   className={`cursor-pointer ${sortBy === 'capacidade' ? 'font-bold text-primary' : ''}`}
                   onClick={() => {
@@ -641,7 +641,7 @@ function PropostasTable({
                   </Tooltip>
                 </TooltipProvider>
               </TableHead>
-              <TableHead className="py-2 w-[110px]">
+              <TableHead className="py-2 w-[140px]">
                 <span className="inline-flex items-center gap-2">
                   <button
                     className={`cursor-pointer ${sortBy === 'sugestao' ? 'font-bold text-primary' : ''}`}
@@ -697,16 +697,18 @@ function PropostasTable({
                   </div>
                 </TableCell>
                 <TableCell className="py-1.5 w-[100px]"><CurvaCell classe={p.classe_venda} participacao={p.participacao} /></TableCell>
-                <TableCell className="py-1 text-right">
-                  {p.capacidade_atual != null ? <span>{p.capacidade_atual} <span className="text-muted-foreground text-[10px]">cx</span></span> : '—'}
+                <TableCell className="py-1 text-right w-[68px]">
+                  {p.capacidade_atual != null
+                    ? <span className="whitespace-nowrap">{p.capacidade_atual} <span className="text-muted-foreground text-[10px]">cx</span></span>
+                    : '—'}
                 </TableCell>
                 <TableCell className="py-1 text-right text-muted-foreground">
                   {p.giro_dia_cx != null
                     ? p.giro_dia_cx.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
                     : '—'}
                 </TableCell>
-                <TableCell className="py-1 w-[110px]">
-                  <div className="flex items-center gap-2">
+                <TableCell className="py-1 w-[140px]">
+                  <div className="flex items-center gap-2 whitespace-nowrap">
                     <SugestaoCell proposta={p} onSave={onEditar} />
                     <AcaoBadge delta={p.delta} />
                   </div>
