@@ -1219,42 +1219,14 @@ export default function SpDashboard() {
               <CheckCircle2 className="h-4 w-4 text-blue-500 shrink-0" />
               Estes produtos já estão com a capacidade ideal — sugestão dentro de 15% da capacidade atual. Nenhuma ação necessária.
             </p>
-            {propostasCalibrado.length === 0 ? (
-              <div className="text-center text-sm text-muted-foreground py-12">
-                Nenhum produto calibrado encontrado.
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-8">Curva</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Cód.</TableHead>
-                    <TableHead>Endereço</TableHead>
-                    <TableHead className="text-right">Cap.Atual</TableHead>
-                    <TableHead className="text-right">Sugestão</TableHead>
-                    <TableHead>Justificativa</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {propostasCalibrado.map(p => (
-                    <TableRow key={p.id} className="opacity-75">
-                      <TableCell><ClasseBadge classe={p.classe_venda} /></TableCell>
-                      <TableCell className="text-xs max-w-[180px] truncate" title={p.produto}>
-                        {p.produto || '—'}
-                      </TableCell>
-                      <TableCell className="text-xs font-mono">{p.codprod}</TableCell>
-                      <TableCell><EnderecoCell rua={p.rua} predio={p.predio} apto={p.apto} /></TableCell>
-                      <TableCell className="text-xs text-right">{p.capacidade_atual ?? '—'}</TableCell>
-                      <TableCell className="text-xs text-right text-blue-700 font-semibold">{p.sugestao_calibragem}</TableCell>
-                      <TableCell className="text-[11px] text-muted-foreground max-w-[240px] truncate" title={p.justificativa ?? ''}>
-                        {p.justificativa ?? '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+            <PropostasTable
+              propostas={propostasCalibrado}
+              onAprovar={id => aprovarMutation.mutate(id)}
+              onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
+              onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
+              onIgnorar={id => { setIgnorarId(id); setIgnorarTipo('') }}
+              loadingId={loadingId}
+            />
           </TabsContent>
           {/* ── Aba: Curva A — Revisar ──────────────────────────────────── */}
           <TabsContent value="curva_a_mantida" className="space-y-3">
