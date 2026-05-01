@@ -74,9 +74,10 @@ func nilIfEmptyStr(s string) interface{} {
 // POST /api/sp/motor/calibrar
 // Body: { "job_id": "uuid" }
 //
-// Fórmula aplicada: sugestão = ceil( ceil(giro/master) × diasClasse × fator ) → múltiplo de norma_palete
+// Fórmula aplicada: sugestão = ceil( ceil(giro/master) × diasClasse × fator )
 // Giro primário: MED_VENDA_DIAS_CX × QTUNITCX (média de vendas diária em caixas)
 // Fallbacks:     QTACESSO_PICKING_PERIODO_90/QT_DIAS → MED_VENDA_DIAS → MED_VENDA_CX_AA×master
+// Nota: NORMA_PALETE não é aplicada na calibração (decisão do gestor)
 func SpMotorCalibrarHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -332,13 +333,12 @@ func carregarIgnorados(db *sql.DB, empresaID string, cdID int) map[string]bool {
 // calcularSugestao aplica a fórmula WMS de calibragem e retorna (sugestão, justificativa).
 //
 // Giro (prioridade):
-//   1. QTACESSO_PICKING_PERIODO_90 / QT_DIAS  ← Curva ABC de Acesso ao Picking (JC)
-//   2. MED_VENDA_DIAS                          ← média de vendas diária em unidades
-//   3. MED_VENDA_DIAS_CX × unidadeMaster       ← fallback caixas
+//   1. MED_VENDA_DIAS_CX × unidadeMaster       ← preferido (venda diária em caixas)
+//   2. QTACESSO_PICKING_PERIODO_90 / QT_DIAS  ← Curva ABC de Acesso ao Picking (JC)
+//   3. MED_VENDA_DIAS                          ← média de vendas diária em unidades
 //   4. MED_VENDA_DIAS_CX_ANOANT_MESSEG × master ← fallback ano anterior
 //
 // Fórmula: sugestão = ceil( ceil(giro / master) × diasClasse × fator )
-//   depois: arredonda para múltiplo de norma_palete (se norma_palete > 1)
 //   depois: aplica mínimo absoluto e regra Curva A nunca reduz
 func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 	curva := strings.ToUpper(e.ClasseVenda)
@@ -396,39 +396,27 @@ func calcularSugestao(e enderecoDB, p *motorParams) (int, string) {
 		sugestao = p.MinCapacidade
 	}
 
-	// ── 5. Norma Palete: arredonda para múltiplo de norma_palete ─────────────
-	// Aplica somente quando a sugestão já é maior que a capacidade atual.
-	// Se a demanda indica redução, a norma de palete não deve inverter a direção.
+	// ── 5. Curva A: nunca reduz ───────────────────────────────────────────────
 	capAtual := 0
 	if e.Capacidade != nil {
 		capAtual = *e.Capacidade
 	}
-	var notaNorma string
-	if e.NormaPalete != nil && *e.NormaPalete > 1 && sugestao >= capAtual {
-		np := *e.NormaPalete
-		if sugestao%np != 0 {
-			sugestao = ((sugestao / np) + 1) * np
-			notaNorma = fmt.Sprintf(" →↑%dcx/palete=%d", np, sugestao)
-		}
-	}
-
-	// ── 6. Curva A: nunca reduz ───────────────────────────────────────────────
 	mantidaCurvaA := curva == "A" && p.CurvaANuncaReduz && sugestao < capAtual
 	if mantidaCurvaA {
 		sugestao = capAtual
 	}
 
-	// ── 7. Justificativa ──────────────────────────────────────────────────────
+	// ── 6. Justificativa ──────────────────────────────────────────────────────
 	var base string
 	if fonteGiro == "MED_VENDA_DIAS_CX" && e.MedVendaCx != nil {
 		base = fmt.Sprintf(
-			"Curva %s: ⌈MED_VENDA_DIAS_CX=%.2fcx/dia⌉=%dcx × %ddias(%s) × %.2f(seg) = %dcx%s",
-			curva, *e.MedVendaCx, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaBase, notaNorma,
+			"Curva %s: ⌈MED_VENDA_DIAS_CX=%.2fcx/dia⌉=%dcx × %ddias(%s) × %.2f(seg) = %dcx",
+			curva, *e.MedVendaCx, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaBase,
 		)
 	} else {
 		base = fmt.Sprintf(
-			"Curva %s: ceil(%s=%.2f / master=%d)=%dcx × %ddias(%s) × %.2f(seg) = %dcx%s",
-			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaBase, notaNorma,
+			"Curva %s: ceil(%s=%.2f / master=%d)=%dcx × %ddias(%s) × %.2f(seg) = %dcx",
+			curva, fonteGiro, giroDia, unidadeMaster, caixasGiro, diasClasse, fonteDias, p.FatorSeguranca, formulaBase,
 		)
 	}
 	var justificativa string

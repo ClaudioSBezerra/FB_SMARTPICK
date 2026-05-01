@@ -119,7 +119,6 @@ export default function SpAmbiente() {
   const [simCapAtual,     setSimCapAtual]     = useState(36)    // CAPACIDADE
   const [simMinCap,       setSimMinCap]       = useState(1)     // Cap. mínima (parâmetro)
   const [simNuncaReduz,   setSimNuncaReduz]   = useState(true)  // Curva A nunca reduz (parâmetro)
-  const [simNormaPalete,  setSimNormaPalete]  = useState(105)   // NORMA_PALETE
 
   // giro diário = MED_VENDA_DIAS_CX × QTUNITCX (prioridade 1 do motor)
   const simGiro = simMedVendaCx * Math.max(simMaster, 1)
@@ -128,12 +127,8 @@ export default function SpAmbiente() {
   const simCaixasGiro   = Math.ceil(simGiro / Math.max(simMaster, 1))
   const simSugestaoRaw  = Math.ceil(simCaixasGiro * simDias * simFator)
   const simSugestaoMin  = Math.max(simSugestaoRaw, simMinCap)
-  const simNormaAplicada = simNormaPalete > 1 && simSugestaoMin % simNormaPalete !== 0
-  const simSugestaoNorma = simNormaAplicada
-    ? (Math.floor(simSugestaoMin / simNormaPalete) + 1) * simNormaPalete
-    : simSugestaoMin
-  const simCurvaALifted  = simCurva === 'A' && simNuncaReduz && simSugestaoNorma < simCapAtual
-  const simSugestaoFinal = simCurvaALifted ? simCapAtual : simSugestaoNorma
+  const simCurvaALifted  = simCurva === 'A' && simNuncaReduz && simSugestaoMin < simCapAtual
+  const simSugestaoFinal = simCurvaALifted ? simCapAtual : simSugestaoMin
   const simDelta         = simSugestaoFinal - simCapAtual
   const simCalibrado     = simCapAtual > 0 && Math.abs(simDelta) / simCapAtual <= 0.05
 
@@ -390,7 +385,7 @@ export default function SpAmbiente() {
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fórmula</p>
                 <div className="bg-slate-900 text-green-400 rounded-md px-4 py-3 font-mono text-sm text-center">
-                  Sugestão = ⌈ ⌈ Giro_dia ÷ Unid/cx ⌉ × Dias_curva × Fator_seg ⌉ → múltiplo Norma_Palete
+                  Sugestão = ⌈ ⌈ Giro_dia ÷ Unid/cx ⌉ × Dias_curva × Fator_seg ⌉
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-start gap-2 text-xs">
@@ -410,13 +405,6 @@ export default function SpAmbiente() {
                   <div className="flex items-start gap-2 text-xs">
                     <span className="font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded shrink-0">Fator_seg</span>
                     <span className="text-muted-foreground">Margem de segurança configurada neste CD (ex: 1.10 = +10% sobre a média)</span>
-                  </div>
-                  <div className="flex items-start gap-2 text-xs">
-                    <span className="font-mono bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded shrink-0">Norma_Palete</span>
-                    <span className="text-muted-foreground">
-                      Caixas por palete (NORMA_PALETE do CSV). Quando &gt; 1, a sugestão é arredondada
-                      para cima ao múltiplo mais próximo: ⌈n ÷ np⌉ × np
-                    </span>
                   </div>
                 </div>
               </div>
@@ -478,15 +466,6 @@ export default function SpAmbiente() {
                       se a sugestão for menor que a capacidade atual, mantém-se a capacidade atual.
                     </p>
                   </div>
-                  <div className="bg-rose-50 border border-rose-100 rounded-md p-3 space-y-1">
-                    <p className="text-xs font-semibold text-rose-800">Norma Palete</p>
-                    <p className="text-xs text-rose-700">
-                      Garante que a sugestão final seja múltiplo exato do tamanho do palete,
-                      facilitando a reposição sem fracionamento. Aplicado após a fórmula base
-                      e o mínimo absoluto.
-                    </p>
-                    <p className="text-xs font-mono text-rose-600">sugestão = (⌊s ÷ np⌋ + 1) × np  (quando s não é múltiplo)</p>
-                  </div>
                 </div>
               </div>
 
@@ -529,13 +508,6 @@ export default function SpAmbiente() {
                     <input type="number" value={simCapAtual} min={0}
                       onChange={e => setSimCapAtual(+e.target.value)}
                       className="w-full h-8 border rounded px-2 text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-mono font-medium text-slate-700">NORMA_PALETE</label>
-                    <input type="number" value={simNormaPalete} min={0}
-                      onChange={e => setSimNormaPalete(+e.target.value)}
-                      className="w-full h-8 border rounded px-2 text-sm"
-                      placeholder="0 = não aplica" />
                   </div>
                 </div>
                 {/* Linha 2 — parâmetros do CD (não são colunas do CSV) */}
@@ -605,21 +577,11 @@ export default function SpAmbiente() {
                           </span>
                         </div>
                       )}
-                      {simNormaAplicada && (
-                        <div className="flex gap-2 text-rose-700">
-                          <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
-                          <span>
-                            NORMA_PALETE(×{simNormaPalete}): {simSugestaoMin} →{' '}
-                            <strong>{simSugestaoNorma} cx</strong>
-                            <span className="text-slate-400 ml-1">(⌊{simSugestaoMin}÷{simNormaPalete}⌋+1)×{simNormaPalete}</span>
-                          </span>
-                        </div>
-                      )}
                       {simCurvaALifted && (
                         <div className="flex gap-2 text-amber-700">
                           <span className="text-slate-400 w-5 shrink-0">{step++}.</span>
                           <span>
-                            Curva A nunca reduz: {simSugestaoNorma} →{' '}
+                            Curva A nunca reduz: {simSugestaoMin} →{' '}
                             <strong>{simSugestaoFinal} cx</strong>
                           </span>
                         </div>
