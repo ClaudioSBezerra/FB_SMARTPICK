@@ -54,6 +54,7 @@ interface Proposta {
   med_venda_cx: number | null
   ponto_reposicao: number | null
   participacao: number | null
+  norma_palete: number | null
   prioridade: number
 }
 
@@ -549,6 +550,10 @@ function PropostasTable({
                 'Méd.Venda (cx)': r.med_venda_cx != null ? r.med_venda_cx : '',
                 'Pt.Reposição': r.ponto_reposicao ?? '',
                 'Sugestão': r.sugestao_editada ?? r.sugestao_calibragem,
+                'Sug.Pallet': (r.norma_palete && r.norma_palete > 0)
+                  ? Math.ceil((r.sugestao_editada ?? r.sugestao_calibragem) / r.norma_palete)
+                  : '',
+                'Norma_Palete': r.norma_palete ?? '',
                 'Delta': r.delta,
                 'Status': r.status,
                 'GiroCap.': r._ind.giroCap ?? '',
@@ -666,6 +671,14 @@ function PropostasTable({
                   </button>
                 </span>
               </TableHead>
+              <TableHead className="py-2 w-[68px] text-right">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[11px] font-mono leading-tight whitespace-nowrap">Sug.<br/>Pallet</TooltipTrigger>
+                    <TooltipContent className="text-xs">⌈Sugestão ÷ Norma_Palete⌉ — paletes necessários</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </TableHead>
               <TableHead className="py-2 w-[72px]">Status</TableHead>
               <TableHead className="w-[50px] py-2 text-center">
                 <TooltipProvider delayDuration={200}>
@@ -712,6 +725,15 @@ function PropostasTable({
                     <SugestaoCell proposta={p} onSave={onEditar} />
                     <AcaoBadge delta={p.delta} />
                   </div>
+                </TableCell>
+                <TableCell className="py-1 text-right w-[68px]">
+                  {(() => {
+                    const sug = p.sugestao_editada ?? p.sugestao_calibragem
+                    const np = p.norma_palete
+                    if (!np || np <= 0) return <span className="text-muted-foreground text-[10px]">—</span>
+                    const plt = Math.ceil(sug / np)
+                    return <span className="whitespace-nowrap font-mono">{plt} <span className="text-muted-foreground text-[10px]">plt</span></span>
+                  })()}
                 </TableCell>
                 <TableCell className="py-1"><StatusBadge status={p.status} /></TableCell>
                 <TableCell className="py-1 text-center">
@@ -825,6 +847,7 @@ export default function SpDashboard() {
     if (p.endsWith('/reduzir')    || p.endsWith('/espaco'))  return 'espaco'
     if (p.endsWith('/calibrados'))                           return 'calibrado'
     if (p.endsWith('/curva-a'))                              return 'curva_a_mantida'
+    if (p.endsWith('/todos'))                                return 'todos'
     return 'falta'
   })()
   const [activeTab, setActiveTab] = useState<string>(urlTab)
@@ -970,6 +993,20 @@ export default function SpDashboard() {
     staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch(buildPropostasUrl('curva_a_mantida'), { headers })
+      if (!r.ok) throw new Error()
+      return r.json()
+    },
+  })
+
+  const { data: propostasTodos = [], refetch: refetchTodos } = useQuery<Proposta[]>({
+    queryKey: ['sp-propostas', 'todos', cdID, jobID],
+    enabled: !!(cdID || jobID) && activeTab === 'todos',
+    staleTime: 60_000,
+    queryFn: async () => {
+      const p = new URLSearchParams({ limit: '99999' })
+      if (cdID)  p.set('cd_id', cdID)
+      if (jobID) p.set('job_id', jobID)
+      const r = await fetch(`/api/sp/propostas?${p}`, { headers })
       if (!r.ok) throw new Error()
       return r.json()
     },
@@ -1128,7 +1165,7 @@ export default function SpDashboard() {
           </div>
         )}
 
-        <Button size="sm" variant="outline" onClick={() => { refetchFalta(); refetchEspaco(); refetchCalibrado(); refetchCurvaA() }}>
+        <Button size="sm" variant="outline" onClick={() => { refetchFalta(); refetchEspaco(); refetchCalibrado(); refetchCurvaA(); refetchTodos() }}>
           <RefreshCw className="h-3.5 w-3.5 mr-1" /> Atualizar
         </Button>
       </div>
@@ -1144,9 +1181,10 @@ export default function SpDashboard() {
           { key: 'calibrado', label: 'Já Calibrados',   value: resumo.calibrado_total,  tab: 'calibrado',       path: '/dashboard/calibrados', active: 'bg-blue-100 border-blue-400 ring-blue-200',  base: 'bg-white hover:bg-blue-50 border-blue-200',  ring: 'ring-2' },
           { key: 'curva_a',   label: 'Curva A — Revisar', value: resumo.curva_a_mantida, tab: 'curva_a_mantida', path: '/dashboard/curva-a',    active: 'bg-amber-100 border-amber-400 ring-amber-200', base: 'bg-white hover:bg-amber-50 border-amber-200', ring: 'ring-2' },
           { key: 'ignorados', label: 'Prod. Ignorados', value: resumo.ignorado_total,   tab: '',                path: '/dashboard/ignorados',  active: 'bg-gray-100 border-gray-400 ring-gray-200',  base: 'bg-white hover:bg-gray-50 border-gray-200',  ring: '' },
+          { key: 'todos',     label: 'Todos os Produtos', value: resumo.total_pendente + resumo.total_aprovada + resumo.total_rejeitada + resumo.calibrado_total, tab: 'todos', path: '/dashboard/todos', active: 'bg-slate-100 border-slate-400 ring-slate-200', base: 'bg-white hover:bg-slate-50 border-slate-200', ring: 'ring-2' },
         ]
         const numColors: Record<string, string> = {
-          falta: 'text-red-700', espaco: 'text-yellow-700', calibrado: 'text-blue-700', curva_a: 'text-amber-700', ignorados: 'text-gray-600',
+          falta: 'text-red-700', espaco: 'text-yellow-700', calibrado: 'text-blue-700', curva_a: 'text-amber-700', ignorados: 'text-gray-600', todos: 'text-slate-700',
         }
         return (
           <div className="flex items-center gap-2 flex-wrap">
@@ -1280,6 +1318,24 @@ export default function SpDashboard() {
                 </TableBody>
               </Table>
             )}
+          </TabsContent>
+
+          {/* ── Aba: Todos os Produtos ───────────────────────────────────── */}
+          <TabsContent value="todos" className="space-y-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Download className="h-4 w-4 text-slate-500 shrink-0" />
+              Todos os produtos com proposta — use os filtros e exporte para Excel com todas as colunas e sugestões.
+            </p>
+            <PropostasTable
+              propostas={propostasTodos}
+              onAprovar={id => aprovarMutation.mutate(id)}
+              onRejeitar={id => { setRejeitarId(id); setMotivoSel('') }}
+              onEditar={(id, valor) => editarMutation.mutate({ id, valor })}
+              onIgnorar={id => { setIgnorarId(id); setIgnorarTipo('') }}
+              onAprovarLote={ids => aprovarSelecionadosMutation.mutate(ids)}
+              loteLoading={aprovarSelecionadosMutation.isPending}
+              loadingId={loadingId}
+            />
           </TabsContent>
         </Tabs>
       )}

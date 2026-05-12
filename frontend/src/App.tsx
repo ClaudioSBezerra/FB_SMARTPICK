@@ -12,6 +12,7 @@ import SpGerarPDF from './pages/SpGerarPDF'
 import SpHistorico from './pages/SpHistorico'
 import SpReincidencia from './pages/SpReincidencia'
 import SpResultados from './pages/SpResultados'
+import SpRealocacao from './pages/SpRealocacao'
 import SpResumoExecutivo from './pages/SpResumoExecutivo'
 import SpDestinatarios from './pages/SpDestinatarios'
 import SpAuditLog from './pages/SpAuditLog'
@@ -148,6 +149,8 @@ function AppLayout() {
               <Route path="/dashboard/reduzir"    element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
               <Route path="/dashboard/calibrados" element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
               <Route path="/dashboard/curva-a"    element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
+              <Route path="/dashboard/todos"      element={<ProtectedRoute><SpDashboard /></ProtectedRoute>} />
+              <Route path="/realocacao"            element={<ProtectedRoute><SpRealocacao /></ProtectedRoute>} />
 
               {/* Produtos Ignorados */}
               <Route path="/dashboard/ignorados" element={<ProtectedRoute><SpIgnorados /></ProtectedRoute>} />

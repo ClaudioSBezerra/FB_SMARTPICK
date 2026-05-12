@@ -60,6 +60,7 @@ type PropostaResponse struct {
 	MedVendaCx         *float64  `json:"med_venda_cx,omitempty"`
 	PontoReposicao     *int      `json:"ponto_reposicao,omitempty"`
 	Participacao       *float64  `json:"participacao,omitempty"` // % participação na curva ABC
+	NormaPalete        *int      `json:"norma_palete,omitempty"` // caixas por palete (para Sug. Pallet)
 	Prioridade         int       `json:"prioridade"`              // score 0..100 calculado em runtime
 }
 
@@ -126,7 +127,8 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			       END,
 			       e.med_venda_cx,
 			       e.ponto_reposicao,
-			       e.participacao
+			       e.participacao,
+			       e.norma_palete
 			FROM smartpick.sp_propostas p
 			LEFT JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
 			WHERE p.empresa_id = $1
@@ -143,6 +145,14 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			query += fmt.Sprintf(" AND p.job_id = $%d", idx)
 			args = append(args, jobIDStr)
 			idx++
+		}
+		ruaStr := q.Get("rua")
+		if ruaStr != "" {
+			if v, err := strconv.Atoi(ruaStr); err == nil {
+				query += fmt.Sprintf(" AND p.rua = $%d", idx)
+				args = append(args, v)
+				idx++
+			}
 		}
 		if status != "" {
 			query += fmt.Sprintf(" AND p.status = $%d", idx)
@@ -183,7 +193,7 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 				&p.Status, &p.AprovadoPor, &p.AprovadoEm,
 				&p.SugestaoEditada, &p.EditadoPor, &p.EditadoEm,
 				&p.CreatedAt, &p.GiroDiaCx,
-				&p.MedVendaCx, &p.PontoReposicao, &p.Participacao,
+				&p.MedVendaCx, &p.PontoReposicao, &p.Participacao, &p.NormaPalete,
 			); err != nil {
 				continue
 			}
@@ -682,7 +692,13 @@ func SpPropostasRuasHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		filter := "WHERE empresa_id = $1 AND rua IS NOT NULL AND status = 'aprovada'"
+		// status param: se fornecido filtra; se omitido retorna todas as ruas com propostas
+		statusParam := q.Get("status")
+		filterStatus := ""
+		if statusParam != "" {
+			filterStatus = fmt.Sprintf(" AND status = '%s'", statusParam)
+		}
+		filter := "WHERE empresa_id = $1 AND rua IS NOT NULL" + filterStatus
 		args   := []any{spCtx.EmpresaID}
 		idx    := 2
 

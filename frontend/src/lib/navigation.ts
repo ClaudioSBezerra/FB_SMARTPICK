@@ -92,6 +92,7 @@ export function getActiveModule(pathname: string): string {
   if (pathname.startsWith('/reincidencia')) return 'reincidencia'
   if (pathname.startsWith('/resultados')) return 'resultados'
   if (pathname.startsWith('/resumos'))    return 'resultados'
+  if (pathname.startsWith('/realocacao')) return 'realocacao'
   if (pathname.startsWith('/gestao')) return 'gestao'
   if (pathname.startsWith('/config')) return 'config'
   return 'dashboard'

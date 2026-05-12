@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, Settings, LogOut, KeyRound, History, FileDown, Repeat2, Building2, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, Upload, Settings, LogOut, KeyRound, History, FileDown, Repeat2, Building2, TrendingUp, ArrowLeftRight } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
@@ -37,7 +37,8 @@ const mainItems = [
   { id: 'historico',    icon: History,         label: 'Histórico',            path: '/historico' },
   { id: 'pdf',          icon: FileDown,        label: 'Gerar PDF',            path: '/pdf/gerar' },
   { id: 'reincidencia', icon: Repeat2,         label: 'Reincidência',         path: '/reincidencia' },
-  { id: 'resultados',   icon: TrendingUp,      label: 'Painel de Resultados', path: '/resultados' },
+  { id: 'resultados',   icon: TrendingUp,       label: 'Painel de Resultados', path: '/resultados' },
+  { id: 'realocacao',   icon: ArrowLeftRight,  label: 'Painel de Realocação', path: '/realocacao' },
   // Administração: visível para todos (admin + gestores)
   { id: 'gestao',       icon: Building2,       label: 'Administração',        path: '/gestao/filiais' },
 ] as const
