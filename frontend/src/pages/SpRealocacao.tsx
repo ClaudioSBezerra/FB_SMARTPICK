@@ -73,7 +73,7 @@ function SlotRow({
       className={[
         'border-b text-xs select-none transition-colors',
         isDragging    ? 'opacity-40' : '',
-        isDragOver    ? 'border-t-2 border-blue-400 bg-blue-50' : '',
+        isDragOver && !isDragging ? 'bg-blue-100 ring-2 ring-inset ring-blue-400' : '',
         selected      ? 'bg-green-100 hover:bg-green-200'
                       : moved ? 'bg-orange-100 hover:bg-orange-200' : 'bg-white hover:bg-slate-50',
       ].join(' ')}
@@ -125,7 +125,7 @@ function SlotRow({
             className="h-5 w-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-25"
             disabled={index === 0}
             onClick={onMoveUp}
-            title="Mover para cima"
+            title="Trocar endereço com o produto acima"
           >
             <ArrowUp className="h-3 w-3" />
           </button>
@@ -133,7 +133,7 @@ function SlotRow({
             className="h-5 w-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-25"
             disabled={index === total - 1}
             onClick={onMoveDown}
-            title="Mover para baixo"
+            title="Trocar endereço com o produto abaixo"
           >
             <ArrowDown className="h-3 w-3" />
           </button>
@@ -292,10 +292,10 @@ export default function SpRealocacao() {
       const from = dragIdxRef.current
       const to   = overIdxRef.current
       if (from !== null && to !== null && from !== to) {
+        // Troca pareada (mobile): mesmo comportamento do drop com mouse.
         setItems(prev => {
           const next = [...prev]
-          const [moved] = next.splice(from, 1)
-          next.splice(to, 0, moved)
+          ;[next[from], next[to]] = [next[to], next[from]]
           return next
         })
       }
@@ -372,10 +372,10 @@ export default function SpRealocacao() {
   }
   function handleDrop(i: number) {
     if (dragIdx === null || dragIdx === i) return
+    // Troca pareada: A vai pro endereço de B, B vai pro endereço de A. Demais slots intactos.
     setItems(prev => {
       const next = [...prev]
-      const [moved] = next.splice(dragIdx, 1)
-      next.splice(i, 0, moved)
+      ;[next[dragIdx], next[i]] = [next[i], next[dragIdx]]
       return next
     })
     setDragIdx(null)
@@ -409,7 +409,7 @@ export default function SpRealocacao() {
       <div>
         <h2 className="text-sm font-semibold">Painel de Realocação</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Selecione a rua, arraste os produtos para reorganizar os slots e gere o lote de movimentação em PDF.
+          Selecione a rua, arraste um produto sobre outro para trocá-los de endereço e gere o lote de movimentação em PDF.
         </p>
       </div>
 
@@ -491,7 +491,7 @@ export default function SpRealocacao() {
               : <span className="text-green-700 font-medium">Nenhuma alteração</span>
             }
             <span className="ml-auto text-muted-foreground text-[10px]">
-              🖱 Arraste as linhas para reorganizar &nbsp;·&nbsp; 📱 No mobile, arraste pelo punho ⋮⋮ ou use ↑↓
+              🖱 Arraste um produto sobre outro para trocar endereços &nbsp;·&nbsp; 📱 No mobile use o punho ⋮⋮ ou ↑↓
             </span>
           </div>
 
