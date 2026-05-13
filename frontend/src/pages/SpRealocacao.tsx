@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { ArrowUp, ArrowDown, GripVertical, RotateCcw, FileDown, Loader2 } from 'lucide-react'
+import { ArrowUp, ArrowDown, Check, ArrowLeftRight, RotateCcw, FileDown, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -37,20 +37,18 @@ function fmt(s: Slot) {
 // ─── Componente de linha arrastável ──────────────────────────────────────────
 
 function SlotRow({
-  item, slot, index, moved, total, selected, onToggleSelect,
+  item, slot, index, moved, total, selected, pendingSwap, onSelect,
   onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
-  onTouchDragStart,
   isDragOver, isDragging,
 }: {
   item: Slot; slot: Slot; index: number; moved: boolean; total: number
-  selected: boolean; onToggleSelect: () => void
+  selected: boolean; pendingSwap: boolean; onSelect: () => void
   onMoveUp: () => void; onMoveDown: () => void
   onDragStart: (i: number) => void
   onDragOver: (e: React.DragEvent, i: number) => void
   onDrop: (i: number) => void
   onDragEnd: () => void
-  onTouchDragStart: (i: number) => void
   isDragOver: boolean; isDragging: boolean
 }) {
   const sug = item.sugestao_editada ?? item.sugestao_calibragem
@@ -78,18 +76,50 @@ function SlotRow({
                       : moved ? 'bg-orange-400 hover:bg-orange-500' : 'bg-white hover:bg-slate-50',
       ].join(' ')}
     >
-      {/* Drag handle */}
-      <td
-        className="py-2 px-1 text-slate-400 cursor-grab active:cursor-grabbing touch-none"
-        onTouchStart={() => onTouchDragStart(index)}
-      >
-        <GripVertical className="h-4 w-4" />
+      {/* Botão quadrado de seleção (tap-to-swap) */}
+      <td className="py-1 px-1.5 align-middle">
+        <button
+          type="button"
+          onPointerDown={e => { e.stopPropagation(); (e.currentTarget as any)._downXY = { x: e.clientX, y: e.clientY } }}
+          onPointerUp={e => {
+            const s = (e.currentTarget as any)._downXY as { x: number; y: number } | undefined
+            ;(e.currentTarget as any)._downXY = undefined
+            if (!s) return
+            if (Math.hypot(e.clientX - s.x, e.clientY - s.y) < 8) onSelect()
+          }}
+          className={[
+            'h-8 w-8 flex items-center justify-center rounded border-2 transition-colors touch-manipulation',
+            selected
+              ? 'bg-green-500 border-green-700 text-white shadow-md'
+              : pendingSwap
+                ? 'bg-blue-50 border-blue-500 text-blue-600 ring-2 ring-blue-200'
+                : moved
+                  ? 'bg-orange-500 border-orange-700 text-white'
+                  : 'bg-white border-slate-400 text-slate-400 hover:border-slate-700 hover:text-slate-700',
+          ].join(' ')}
+          title={
+            selected
+              ? 'Selecionado — toque em outro produto p/ trocar de endereço, ou aqui p/ cancelar'
+              : pendingSwap
+                ? 'Toque para trocar de endereço com o produto VERDE'
+                : 'Toque para selecionar este produto p/ trocar de endereço'
+          }
+          aria-pressed={selected}
+        >
+          {selected
+            ? <Check className="h-4 w-4" strokeWidth={3} />
+            : pendingSwap
+              ? <ArrowLeftRight className="h-4 w-4" />
+              : moved
+                ? <Check className="h-4 w-4" strokeWidth={3} />
+                : null}
+        </button>
       </td>
       {/* Seq */}
       <td className="py-2 px-2 text-center text-slate-400 font-mono w-8">{index + 1}</td>
       {/* Endereço slot (destino fixo) */}
       <td className="py-2 px-2 font-mono font-medium whitespace-nowrap">{fmt(slot)}</td>
-      {/* Produto — tap/click via Pointer Events com threshold p/ não disparar em drag */}
+      {/* Produto — tap/click no nome também aciona seleção/troca */}
       <td
         className="py-2 px-2 max-w-[200px] cursor-pointer select-none touch-manipulation"
         onPointerDown={e => { (e.currentTarget as any)._downXY = { x: e.clientX, y: e.clientY } }}
@@ -97,9 +127,7 @@ function SlotRow({
           const s = (e.currentTarget as any)._downXY as { x: number; y: number } | undefined
           ;(e.currentTarget as any)._downXY = undefined
           if (!s) return
-          const dx = e.clientX - s.x
-          const dy = e.clientY - s.y
-          if (Math.hypot(dx, dy) < 8) onToggleSelect()
+          if (Math.hypot(e.clientX - s.x, e.clientY - s.y) < 8) onSelect()
         }}
       >
         <div className="truncate font-medium">{item.produto}</div>
@@ -253,70 +281,34 @@ export default function SpRealocacao() {
   const [dragIdx,   setDragIdx]   = useState<number | null>(null)
   const [overIdx,   setOverIdx]   = useState<number | null>(null)
   const [loading,   setLoading]   = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  // Refs para os índices, lidos pelos listeners globais de touch (evita closure stale)
-  const dragIdxRef = useRef<number | null>(null)
-  const overIdxRef = useRef<number | null>(null)
+  // Single-select: produto atualmente marcado como "origem da troca pendente".
+  // Próximo tap em outro produto efetua o swap. Tap no mesmo produto cancela.
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
-  function toggleSelect(id: number) {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
+  function handleSelect(id: number, idx: number) {
+    // Nada selecionado → marca este produto como origem da troca
+    if (selectedId === null) {
+      setSelectedId(id)
+      return
+    }
+    // Mesmo produto → cancela seleção
+    if (selectedId === id) {
+      setSelectedId(null)
+      return
+    }
+    // Outro produto → executa a troca pareada
+    const fromIdx = items.findIndex(it => it.id === selectedId)
+    if (fromIdx === -1) {
+      // origem sumiu (não deveria acontecer) → trata como nova seleção
+      setSelectedId(id)
+      return
+    }
+    setItems(prev => {
+      const next = [...prev]
+      ;[next[fromIdx], next[idx]] = [next[idx], next[fromIdx]]
       return next
     })
-  }
-
-  // Touch-drag p/ mobile/tablet — HTML5 drag não suporta touch.
-  // Os listeners globais são registrados SINCRONAMENTE dentro do onTouchStart
-  // (não via useEffect) p/ evitar perder o primeiro touchmove enquanto o React re-renderiza.
-  function handleTouchDragStart(i: number) {
-    dragIdxRef.current = i
-    overIdxRef.current = i
-    setDragIdx(i)
-    setOverIdx(i)
-
-    function onMove(e: TouchEvent) {
-      // passive:false → preventDefault funciona e bloqueia scroll durante o arrasto
-      e.preventDefault()
-      const t = e.touches[0]
-      if (!t) return
-      const el = document.elementFromPoint(t.clientX, t.clientY)
-      const tr = (el as Element | null)?.closest('tr[data-row-index]') as HTMLElement | null
-      if (!tr) return
-      const idx = parseInt(tr.dataset.rowIndex ?? '-1', 10)
-      if (idx >= 0 && idx !== overIdxRef.current) {
-        overIdxRef.current = idx
-        setOverIdx(idx)
-      }
-    }
-
-    function cleanup() {
-      document.removeEventListener('touchmove',   onMove)
-      document.removeEventListener('touchend',    onEnd)
-      document.removeEventListener('touchcancel', onEnd)
-    }
-
-    function onEnd() {
-      cleanup()
-      const from = dragIdxRef.current
-      const to   = overIdxRef.current
-      if (from !== null && to !== null && from !== to) {
-        // Troca pareada (mobile): mesmo comportamento do drop com mouse.
-        setItems(prev => {
-          const next = [...prev]
-          ;[next[from], next[to]] = [next[to], next[from]]
-          return next
-        })
-      }
-      dragIdxRef.current = null
-      overIdxRef.current = null
-      setDragIdx(null)
-      setOverIdx(null)
-    }
-
-    document.addEventListener('touchmove',   onMove, { passive: false })
-    document.addEventListener('touchend',    onEnd)
-    document.addEventListener('touchcancel', onEnd)
+    // selectedId permanece — produto VERDE acompanhou a troca p/ o novo slot.
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────
@@ -412,7 +404,7 @@ export default function SpRealocacao() {
       <div>
         <h2 className="text-sm font-semibold">Painel de Realocação</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Selecione a rua, arraste um produto sobre outro para trocá-los de endereço e gere o lote de movimentação em PDF.
+          Toque no quadrado ▢ à esquerda de um produto p/ marcá-lo (verde), depois toque no quadrado de outro produto p/ trocar os endereços. No desktop você também pode arrastar e soltar.
         </p>
       </div>
 
@@ -494,15 +486,15 @@ export default function SpRealocacao() {
               : <span className="text-green-700 font-medium">Nenhuma alteração</span>
             }
             <span className="ml-auto text-muted-foreground text-[10px]">
-              🖱 Arraste um produto sobre outro para trocar endereços &nbsp;·&nbsp; 📱 No mobile use o punho ⋮⋮ ou ↑↓
+              📱 Tap no ▢ p/ marcar (verde) → tap em outro ▢ p/ trocar &nbsp;·&nbsp; 🖱 Ou arraste a linha
             </span>
           </div>
 
           {/* Legenda */}
-          <div className="flex gap-4 text-[11px] text-muted-foreground">
+          <div className="flex flex-wrap gap-4 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-white border inline-block" />Sem alteração</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-500 border border-green-700 inline-block" />Selecionado p/ troca</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-400 border border-orange-500 inline-block" />Produto realocado</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-400 border border-green-500 inline-block" />Conferido (clique no produto)</span>
             <span className="flex items-center gap-1 ml-auto text-[10px]">
               Endereço Destino = coluna fixa (slot físico) · Endereço Origem = de onde o produto virá
             </span>
@@ -512,7 +504,7 @@ export default function SpRealocacao() {
             <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="bg-slate-800 text-white text-[11px]">
-                  <th className="py-2 px-1 w-6"></th>
+                  <th className="py-2 px-1 w-12 text-center" title="Tap p/ selecionar / trocar"></th>
                   <th className="py-2 px-2 w-8 text-center">#</th>
                   <th className="py-2 px-2 text-left whitespace-nowrap">End. Destino</th>
                   <th className="py-2 px-2 text-left">Produto</th>
@@ -533,15 +525,15 @@ export default function SpRealocacao() {
                     index={i}
                     moved={item.id !== slots[i].id}
                     total={items.length}
-                    selected={selectedIds.has(item.id)}
-                    onToggleSelect={() => toggleSelect(item.id)}
+                    selected={selectedId === item.id}
+                    pendingSwap={selectedId !== null && selectedId !== item.id}
+                    onSelect={() => handleSelect(item.id, i)}
                     onMoveUp={() => moveItem(i, -1)}
                     onMoveDown={() => moveItem(i, 1)}
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
                     onDragEnd={handleDragEnd}
-                    onTouchDragStart={handleTouchDragStart}
                     isDragOver={overIdx === i}
                     isDragging={dragIdx === i}
                   />
