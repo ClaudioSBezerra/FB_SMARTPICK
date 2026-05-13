@@ -74,8 +74,8 @@ function SlotRow({
         'border-b text-xs select-none transition-colors',
         isDragging    ? 'opacity-40' : '',
         isDragOver && !isDragging ? 'bg-blue-100 ring-2 ring-inset ring-blue-400' : '',
-        selected      ? 'bg-green-100 hover:bg-green-200'
-                      : moved ? 'bg-orange-100 hover:bg-orange-200' : 'bg-white hover:bg-slate-50',
+        selected      ? 'bg-green-400 hover:bg-green-500'
+                      : moved ? 'bg-orange-400 hover:bg-orange-500' : 'bg-white hover:bg-slate-50',
       ].join(' ')}
     >
       {/* Drag handle */}
@@ -115,7 +115,7 @@ function SlotRow({
         {plt != null ? `${plt} plt` : '—'}
       </td>
       {/* Origem (endereço atual do produto) — destaca se moveu */}
-      <td className={`py-2 px-2 font-mono whitespace-nowrap ${moved ? 'text-orange-800 font-semibold' : 'text-slate-300'}`}>
+      <td className={`py-2 px-2 font-mono whitespace-nowrap ${moved ? 'text-orange-950 font-bold' : 'text-slate-300'}`}>
         {moved ? fmt(item) : '—'}
       </td>
       {/* Botões ↑↓ (alternativa touch) */}
@@ -157,7 +157,7 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
     const plt = m.product.norma_palete && m.product.norma_palete > 0
       ? Math.ceil(sug / m.product.norma_palete)
       : '—'
-    const rowBg = m.moved ? 'background:#ffedd5;' : ''
+    const rowBg = m.moved ? 'background:#fb923c;' : ''
     return `
       <tr style="${rowBg}">
         <td>${i + 1}</td>
@@ -168,7 +168,7 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
         <td style="text-align:right">${m.product.capacidade_atual ?? '—'} cx</td>
         <td style="text-align:right;font-weight:600">${sug} cx</td>
         <td style="text-align:right">${plt}${typeof plt === 'number' ? ' plt' : ''}</td>
-        <td style="color:${m.moved ? '#9a3412' : '#94a3b8'};font-weight:${m.moved ? '600' : '400'}">${m.moved ? fmt(m.product) : '—'}</td>
+        <td style="color:${m.moved ? '#431407' : '#94a3b8'};font-weight:${m.moved ? '700' : '400'}">${m.moved ? fmt(m.product) : '—'}</td>
       </tr>`
   }).join('')
 
@@ -184,7 +184,7 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
     h1 { font-size: 16px; margin: 0 0 2px; }
     .meta { font-size: 10px; color: #64748b; margin-bottom: 10px; }
     .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
-    .badge-amber { background:#ffedd5; color:#9a3412; }
+    .badge-amber { background:#f97316; color:#fff; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     th { background: #1e3a5f; color: #fff; padding: 5px 6px; text-align: left; font-size: 10px; white-space: nowrap; }
     td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; font-size: 10px; vertical-align: middle; }
@@ -487,7 +487,7 @@ export default function SpRealocacao() {
             <span>{slots.length} slots</span>
             <span className="text-muted-foreground">|</span>
             {totalMoves > 0
-              ? <span className="px-2 py-0.5 bg-orange-100 text-orange-800 rounded font-semibold">{totalMoves} movimentaç{totalMoves === 1 ? 'ão' : 'ões'} identificada{totalMoves === 1 ? '' : 's'}</span>
+              ? <span className="px-2 py-0.5 bg-orange-500 text-white rounded font-semibold">{totalMoves} movimentaç{totalMoves === 1 ? 'ão' : 'ões'} identificada{totalMoves === 1 ? '' : 's'}</span>
               : <span className="text-green-700 font-medium">Nenhuma alteração</span>
             }
             <span className="ml-auto text-muted-foreground text-[10px]">
@@ -498,8 +498,8 @@ export default function SpRealocacao() {
           {/* Legenda */}
           <div className="flex gap-4 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-white border inline-block" />Sem alteração</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-100 border border-orange-300 inline-block" />Produto realocado</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-100 border border-green-300 inline-block" />Conferido (clique no produto)</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-400 border border-orange-500 inline-block" />Produto realocado</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-400 border border-green-500 inline-block" />Conferido (clique no produto)</span>
             <span className="flex items-center gap-1 ml-auto text-[10px]">
               Endereço Destino = coluna fixa (slot físico) · Endereço Origem = de onde o produto virá
             </span>
