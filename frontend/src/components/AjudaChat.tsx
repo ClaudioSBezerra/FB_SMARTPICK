@@ -289,10 +289,11 @@ export function AjudaChat() {
               </button>
               <button
                 onClick={() => setOpen(false)}
-                className="p-1.5 rounded hover:bg-white/20 transition-colors"
-                title="Fechar"
+                className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/20 transition-colors text-xs font-medium"
+                title="Sair do Assistente"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
+                Sair
               </button>
             </div>
           </div>

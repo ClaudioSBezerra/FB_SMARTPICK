@@ -376,6 +376,24 @@ export default function SpRealocacao() {
           {loading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : null}
           Carregar rua
         </Button>
+
+        {/* Ações de reorganização — visíveis logo após carregar */}
+        {loaded && slots.length > 0 && (
+          <>
+            <div className="w-px h-8 bg-border mx-1" />
+            <Button size="sm" variant="outline" onClick={resetar} disabled={totalMoves === 0}>
+              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Resetar ordem
+            </Button>
+            <Button
+              size="sm"
+              disabled={totalMoves === 0}
+              onClick={() => gerarPDF(ruaSel, slots, items)}
+            >
+              <FileDown className="h-3.5 w-3.5 mr-1" />
+              Gerar PDF do lote{totalMoves > 0 ? ` (${totalMoves} mov.)` : ''}
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Tabela de slots */}
@@ -444,22 +462,8 @@ export default function SpRealocacao() {
             </table>
           </div>
 
-          {/* Ações */}
-          <div className="flex items-center gap-3 pt-1">
-            <Button size="sm" variant="outline" onClick={resetar} disabled={totalMoves === 0}>
-              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Resetar ordem
-            </Button>
-            <Button
-              size="sm"
-              disabled={totalMoves === 0}
-              onClick={() => gerarPDF(ruaSel, slots, items)}
-            >
-              <FileDown className="h-3.5 w-3.5 mr-1" />
-              Gerar PDF do lote ({totalMoves} mov.)
-            </Button>
-            <span className="text-[10px] text-muted-foreground ml-2">
-              O PDF abrirá em nova aba — use Ctrl+P ou "Imprimir" e escolha "Salvar como PDF"
-            </span>
+          <div className="text-[10px] text-muted-foreground pt-1">
+            O PDF abrirá em nova aba — use Ctrl+P ou "Imprimir" e escolha "Salvar como PDF"
           </div>
         </>
       )}
