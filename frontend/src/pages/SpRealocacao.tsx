@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import {
@@ -72,8 +72,8 @@ function SlotRow({
       onDragEnd={onDragEnd}
       className={[
         'border-b text-xs select-none transition-colors',
-        isDragging    ? 'opacity-40' : '',
-        isDragOver && !isDragging ? 'bg-blue-100 ring-2 ring-inset ring-blue-400' : '',
+        isDragging    ? 'opacity-50 ring-4 ring-inset ring-blue-600' : '',
+        isDragOver && !isDragging ? 'bg-blue-200 ring-4 ring-inset ring-blue-500' : '',
         selected      ? 'bg-green-400 hover:bg-green-500'
                       : moved ? 'bg-orange-400 hover:bg-orange-500' : 'bg-white hover:bg-slate-50',
       ].join(' ')}
@@ -89,11 +89,18 @@ function SlotRow({
       <td className="py-2 px-2 text-center text-slate-400 font-mono w-8">{index + 1}</td>
       {/* Endereço slot (destino fixo) */}
       <td className="py-2 px-2 font-mono font-medium whitespace-nowrap">{fmt(slot)}</td>
-      {/* Produto */}
+      {/* Produto — tap/click via Pointer Events com threshold p/ não disparar em drag */}
       <td
-        className="py-2 px-2 max-w-[200px] cursor-pointer"
-        onClick={onToggleSelect}
-        title={selected ? 'Clique para desmarcar' : 'Clique para marcar como conferido'}
+        className="py-2 px-2 max-w-[200px] cursor-pointer select-none touch-manipulation"
+        onPointerDown={e => { (e.currentTarget as any)._downXY = { x: e.clientX, y: e.clientY } }}
+        onPointerUp={e => {
+          const s = (e.currentTarget as any)._downXY as { x: number; y: number } | undefined
+          ;(e.currentTarget as any)._downXY = undefined
+          if (!s) return
+          const dx = e.clientX - s.x
+          const dy = e.clientY - s.y
+          if (Math.hypot(dx, dy) < 8) onToggleSelect()
+        }}
       >
         <div className="truncate font-medium">{item.produto}</div>
         <div className="text-[10px] text-muted-foreground">{item.codprod}</div>
@@ -247,8 +254,6 @@ export default function SpRealocacao() {
   const [overIdx,   setOverIdx]   = useState<number | null>(null)
   const [loading,   setLoading]   = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  const [touchDragging, setTouchDragging] = useState(false)
-
   // Refs para os índices, lidos pelos listeners globais de touch (evita closure stale)
   const dragIdxRef = useRef<number | null>(null)
   const overIdxRef = useRef<number | null>(null)
@@ -261,20 +266,17 @@ export default function SpRealocacao() {
     })
   }
 
-  // Touch-drag para mobile/tablet: HTML5 drag não suporta touch, então atachamos
-  // listeners globais enquanto o usuário mantém o dedo no punho ⋮⋮ da linha.
+  // Touch-drag p/ mobile/tablet — HTML5 drag não suporta touch.
+  // Os listeners globais são registrados SINCRONAMENTE dentro do onTouchStart
+  // (não via useEffect) p/ evitar perder o primeiro touchmove enquanto o React re-renderiza.
   function handleTouchDragStart(i: number) {
     dragIdxRef.current = i
     overIdxRef.current = i
     setDragIdx(i)
     setOverIdx(i)
-    setTouchDragging(true)
-  }
-
-  useEffect(() => {
-    if (!touchDragging) return
 
     function onMove(e: TouchEvent) {
+      // passive:false → preventDefault funciona e bloqueia scroll durante o arrasto
       e.preventDefault()
       const t = e.touches[0]
       if (!t) return
@@ -288,7 +290,14 @@ export default function SpRealocacao() {
       }
     }
 
+    function cleanup() {
+      document.removeEventListener('touchmove',   onMove)
+      document.removeEventListener('touchend',    onEnd)
+      document.removeEventListener('touchcancel', onEnd)
+    }
+
     function onEnd() {
+      cleanup()
       const from = dragIdxRef.current
       const to   = overIdxRef.current
       if (from !== null && to !== null && from !== to) {
@@ -303,18 +312,12 @@ export default function SpRealocacao() {
       overIdxRef.current = null
       setDragIdx(null)
       setOverIdx(null)
-      setTouchDragging(false)
     }
 
     document.addEventListener('touchmove',   onMove, { passive: false })
     document.addEventListener('touchend',    onEnd)
     document.addEventListener('touchcancel', onEnd)
-    return () => {
-      document.removeEventListener('touchmove',   onMove)
-      document.removeEventListener('touchend',    onEnd)
-      document.removeEventListener('touchcancel', onEnd)
-    }
-  }, [touchDragging])
+  }
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: filiais = [] } = useQuery<SpFilial[]>({
