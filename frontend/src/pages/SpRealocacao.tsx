@@ -37,12 +37,13 @@ function fmt(s: Slot) {
 // ─── Componente de linha arrastável ──────────────────────────────────────────
 
 function SlotRow({
-  item, slot, index, moved, total,
+  item, slot, index, moved, total, selected, onToggleSelect,
   onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
   isDragOver, isDragging,
 }: {
   item: Slot; slot: Slot; index: number; moved: boolean; total: number
+  selected: boolean; onToggleSelect: () => void
   onMoveUp: () => void; onMoveDown: () => void
   onDragStart: (i: number) => void
   onDragOver: (e: React.DragEvent, i: number) => void
@@ -70,7 +71,8 @@ function SlotRow({
         'border-b text-xs select-none transition-colors',
         isDragging    ? 'opacity-40' : '',
         isDragOver    ? 'border-t-2 border-blue-400 bg-blue-50' : '',
-        moved         ? 'bg-amber-50' : 'bg-white hover:bg-slate-50',
+        selected      ? 'bg-green-100 hover:bg-green-200'
+                      : moved ? 'bg-amber-50' : 'bg-white hover:bg-slate-50',
       ].join(' ')}
     >
       {/* Drag handle */}
@@ -82,8 +84,12 @@ function SlotRow({
       {/* Endereço slot (destino fixo) */}
       <td className="py-2 px-2 font-mono font-medium whitespace-nowrap">{fmt(slot)}</td>
       {/* Produto */}
-      <td className="py-2 px-2 max-w-[200px]">
-        <div className="truncate font-medium" title={item.produto}>{item.produto}</div>
+      <td
+        className="py-2 px-2 max-w-[200px] cursor-pointer"
+        onClick={onToggleSelect}
+        title={selected ? 'Clique para desmarcar' : 'Clique para marcar como conferido'}
+      >
+        <div className="truncate font-medium">{item.produto}</div>
         <div className="text-[10px] text-muted-foreground">{item.codprod}</div>
       </td>
       {/* Curva */}
@@ -234,6 +240,15 @@ export default function SpRealocacao() {
   const [dragIdx,   setDragIdx]   = useState<number | null>(null)
   const [overIdx,   setOverIdx]   = useState<number | null>(null)
   const [loading,   setLoading]   = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+
+  function toggleSelect(id: number) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: filiais = [] } = useQuery<SpFilial[]>({
@@ -448,6 +463,8 @@ export default function SpRealocacao() {
                     index={i}
                     moved={item.id !== slots[i].id}
                     total={items.length}
+                    selected={selectedIds.has(item.id)}
+                    onToggleSelect={() => toggleSelect(item.id)}
                     onMoveUp={() => moveItem(i, -1)}
                     onMoveDown={() => moveItem(i, 1)}
                     onDragStart={handleDragStart}
