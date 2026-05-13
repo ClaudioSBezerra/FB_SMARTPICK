@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import {
@@ -40,6 +40,7 @@ function SlotRow({
   item, slot, index, moved, total, selected, onToggleSelect,
   onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
+  onTouchDragStart,
   isDragOver, isDragging,
 }: {
   item: Slot; slot: Slot; index: number; moved: boolean; total: number
@@ -49,6 +50,7 @@ function SlotRow({
   onDragOver: (e: React.DragEvent, i: number) => void
   onDrop: (i: number) => void
   onDragEnd: () => void
+  onTouchDragStart: (i: number) => void
   isDragOver: boolean; isDragging: boolean
 }) {
   const sug = item.sugestao_editada ?? item.sugestao_calibragem
@@ -62,6 +64,7 @@ function SlotRow({
 
   return (
     <tr
+      data-row-index={index}
       draggable
       onDragStart={() => onDragStart(index)}
       onDragOver={e => onDragOver(e, index)}
@@ -72,11 +75,14 @@ function SlotRow({
         isDragging    ? 'opacity-40' : '',
         isDragOver    ? 'border-t-2 border-blue-400 bg-blue-50' : '',
         selected      ? 'bg-green-100 hover:bg-green-200'
-                      : moved ? 'bg-amber-50' : 'bg-white hover:bg-slate-50',
+                      : moved ? 'bg-orange-100 hover:bg-orange-200' : 'bg-white hover:bg-slate-50',
       ].join(' ')}
     >
       {/* Drag handle */}
-      <td className="py-2 px-1 text-slate-300 cursor-grab active:cursor-grabbing touch-none">
+      <td
+        className="py-2 px-1 text-slate-400 cursor-grab active:cursor-grabbing touch-none"
+        onTouchStart={() => onTouchDragStart(index)}
+      >
         <GripVertical className="h-4 w-4" />
       </td>
       {/* Seq */}
@@ -109,7 +115,7 @@ function SlotRow({
         {plt != null ? `${plt} plt` : '—'}
       </td>
       {/* Origem (endereço atual do produto) — destaca se moveu */}
-      <td className={`py-2 px-2 font-mono whitespace-nowrap ${moved ? 'text-amber-700 font-semibold' : 'text-slate-300'}`}>
+      <td className={`py-2 px-2 font-mono whitespace-nowrap ${moved ? 'text-orange-800 font-semibold' : 'text-slate-300'}`}>
         {moved ? fmt(item) : '—'}
       </td>
       {/* Botões ↑↓ (alternativa touch) */}
@@ -151,7 +157,7 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
     const plt = m.product.norma_palete && m.product.norma_palete > 0
       ? Math.ceil(sug / m.product.norma_palete)
       : '—'
-    const rowBg = m.moved ? 'background:#fefce8;' : ''
+    const rowBg = m.moved ? 'background:#ffedd5;' : ''
     return `
       <tr style="${rowBg}">
         <td>${i + 1}</td>
@@ -162,7 +168,7 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
         <td style="text-align:right">${m.product.capacidade_atual ?? '—'} cx</td>
         <td style="text-align:right;font-weight:600">${sug} cx</td>
         <td style="text-align:right">${plt}${typeof plt === 'number' ? ' plt' : ''}</td>
-        <td style="color:${m.moved ? '#b45309' : '#94a3b8'};font-weight:${m.moved ? '600' : '400'}">${m.moved ? fmt(m.product) : '—'}</td>
+        <td style="color:${m.moved ? '#9a3412' : '#94a3b8'};font-weight:${m.moved ? '600' : '400'}">${m.moved ? fmt(m.product) : '—'}</td>
       </tr>`
   }).join('')
 
@@ -178,7 +184,7 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
     h1 { font-size: 16px; margin: 0 0 2px; }
     .meta { font-size: 10px; color: #64748b; margin-bottom: 10px; }
     .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
-    .badge-amber { background:#fef3c7; color:#92400e; }
+    .badge-amber { background:#ffedd5; color:#9a3412; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     th { background: #1e3a5f; color: #fff; padding: 5px 6px; text-align: left; font-size: 10px; white-space: nowrap; }
     td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; font-size: 10px; vertical-align: middle; }
@@ -211,7 +217,7 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
     <tbody>${tableRows}</tbody>
   </table>
   <div class="footer">
-    SmartPick &mdash; Painel de Realocação &mdash; Linhas em amarelo indicam produtos a mover.
+    SmartPick &mdash; Painel de Realocação &mdash; Linhas em laranja indicam produtos a mover.
     Endereço Origem = localização atual do produto. Endereço Destino = onde deve ser colocado.
   </div>
 </body>
@@ -241,6 +247,11 @@ export default function SpRealocacao() {
   const [overIdx,   setOverIdx]   = useState<number | null>(null)
   const [loading,   setLoading]   = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [touchDragging, setTouchDragging] = useState(false)
+
+  // Refs para os índices, lidos pelos listeners globais de touch (evita closure stale)
+  const dragIdxRef = useRef<number | null>(null)
+  const overIdxRef = useRef<number | null>(null)
 
   function toggleSelect(id: number) {
     setSelectedIds(prev => {
@@ -249,6 +260,61 @@ export default function SpRealocacao() {
       return next
     })
   }
+
+  // Touch-drag para mobile/tablet: HTML5 drag não suporta touch, então atachamos
+  // listeners globais enquanto o usuário mantém o dedo no punho ⋮⋮ da linha.
+  function handleTouchDragStart(i: number) {
+    dragIdxRef.current = i
+    overIdxRef.current = i
+    setDragIdx(i)
+    setOverIdx(i)
+    setTouchDragging(true)
+  }
+
+  useEffect(() => {
+    if (!touchDragging) return
+
+    function onMove(e: TouchEvent) {
+      e.preventDefault()
+      const t = e.touches[0]
+      if (!t) return
+      const el = document.elementFromPoint(t.clientX, t.clientY)
+      const tr = (el as Element | null)?.closest('tr[data-row-index]') as HTMLElement | null
+      if (!tr) return
+      const idx = parseInt(tr.dataset.rowIndex ?? '-1', 10)
+      if (idx >= 0 && idx !== overIdxRef.current) {
+        overIdxRef.current = idx
+        setOverIdx(idx)
+      }
+    }
+
+    function onEnd() {
+      const from = dragIdxRef.current
+      const to   = overIdxRef.current
+      if (from !== null && to !== null && from !== to) {
+        setItems(prev => {
+          const next = [...prev]
+          const [moved] = next.splice(from, 1)
+          next.splice(to, 0, moved)
+          return next
+        })
+      }
+      dragIdxRef.current = null
+      overIdxRef.current = null
+      setDragIdx(null)
+      setOverIdx(null)
+      setTouchDragging(false)
+    }
+
+    document.addEventListener('touchmove',   onMove, { passive: false })
+    document.addEventListener('touchend',    onEnd)
+    document.addEventListener('touchcancel', onEnd)
+    return () => {
+      document.removeEventListener('touchmove',   onMove)
+      document.removeEventListener('touchend',    onEnd)
+      document.removeEventListener('touchcancel', onEnd)
+    }
+  }, [touchDragging])
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: filiais = [] } = useQuery<SpFilial[]>({
@@ -421,18 +487,19 @@ export default function SpRealocacao() {
             <span>{slots.length} slots</span>
             <span className="text-muted-foreground">|</span>
             {totalMoves > 0
-              ? <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold">{totalMoves} movimentaç{totalMoves === 1 ? 'ão' : 'ões'} identificada{totalMoves === 1 ? '' : 's'}</span>
+              ? <span className="px-2 py-0.5 bg-orange-100 text-orange-800 rounded font-semibold">{totalMoves} movimentaç{totalMoves === 1 ? 'ão' : 'ões'} identificada{totalMoves === 1 ? '' : 's'}</span>
               : <span className="text-green-700 font-medium">Nenhuma alteração</span>
             }
             <span className="ml-auto text-muted-foreground text-[10px]">
-              🖱 Arraste as linhas para reorganizar &nbsp;·&nbsp; 📱 Use ↑↓ no mobile
+              🖱 Arraste as linhas para reorganizar &nbsp;·&nbsp; 📱 No mobile, arraste pelo punho ⋮⋮ ou use ↑↓
             </span>
           </div>
 
           {/* Legenda */}
           <div className="flex gap-4 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-white border inline-block" />Sem alteração</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-amber-50 border border-amber-200 inline-block" />Produto realocado</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-100 border border-orange-300 inline-block" />Produto realocado</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-100 border border-green-300 inline-block" />Conferido (clique no produto)</span>
             <span className="flex items-center gap-1 ml-auto text-[10px]">
               Endereço Destino = coluna fixa (slot físico) · Endereço Origem = de onde o produto virá
             </span>
@@ -471,6 +538,7 @@ export default function SpRealocacao() {
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
                     onDragEnd={handleDragEnd}
+                    onTouchDragStart={handleTouchDragStart}
                     isDragOver={overIdx === i}
                     isDragging={dragIdx === i}
                   />
