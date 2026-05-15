@@ -61,6 +61,8 @@ type PropostaResponse struct {
 	PontoReposicao     *int      `json:"ponto_reposicao,omitempty"`
 	Participacao       *float64  `json:"participacao,omitempty"` // % participação na curva ABC
 	NormaPalete        *int      `json:"norma_palete,omitempty"` // caixas por palete (para Sug. Pallet)
+	QtAcesso90         *int      `json:"qt_acesso_90,omitempty"` // acessos ao picking nos últimos 90 dias
+	ForaLinha          *bool     `json:"fora_linha,omitempty"`   // produto descontinuado (S no CSV)
 	Prioridade         int       `json:"prioridade"`              // score 0..100 calculado em runtime
 }
 
@@ -128,7 +130,9 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			       e.med_venda_cx,
 			       e.ponto_reposicao,
 			       e.participacao,
-			       e.norma_palete
+			       e.norma_palete,
+			       e.qt_acesso_90,
+			       e.fora_linha
 			FROM smartpick.sp_propostas p
 			LEFT JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
 			WHERE p.empresa_id = $1
@@ -194,6 +198,7 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 				&p.SugestaoEditada, &p.EditadoPor, &p.EditadoEm,
 				&p.CreatedAt, &p.GiroDiaCx,
 				&p.MedVendaCx, &p.PontoReposicao, &p.Participacao, &p.NormaPalete,
+				&p.QtAcesso90, &p.ForaLinha,
 			); err != nil {
 				continue
 			}

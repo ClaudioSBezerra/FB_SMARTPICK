@@ -20,13 +20,44 @@ interface Slot {
   rua: number | null
   predio: number | null
   apto: number | null
-  classe_venda: string | null
+  classe_venda: string | null      // curva A/B/C — remodelada por acesso ao picking
   capacidade_atual: number | null
   sugestao_calibragem: number
   sugestao_editada: number | null
   norma_palete: number | null
   status: string
   delta: number
+  giro_dia_cx: number | null
+  qt_acesso_90: number | null      // acessos ao picking em 90 dias
+  fora_linha: boolean | null        // produto descontinuado
+}
+
+type PredioFilter = 'todos' | 'par' | 'impar'
+
+// Cores da curva ABC por acesso: A=verde (alta rotatividade), B=amarelo, C=vermelho
+const curvaBadge: Record<string, string> = {
+  A: 'bg-green-600 text-white',
+  B: 'bg-yellow-400 text-yellow-900',
+  C: 'bg-red-600 text-white',
+}
+
+// Heat map p/ QTACESSO — escala relativa ao dataset carregado
+function qtacessoHeatClass(value: number | null, max: number): string {
+  if (value == null || max <= 0) return ''
+  const r = value / max
+  if (r >= 0.80) return 'bg-red-300 text-red-950 font-bold'
+  if (r >= 0.60) return 'bg-orange-300 text-orange-950 font-semibold'
+  if (r >= 0.40) return 'bg-yellow-200 text-yellow-900'
+  if (r >= 0.20) return 'bg-lime-100 text-lime-900'
+  return 'bg-green-100 text-green-900'
+}
+
+// Ação derivada do delta (AUMENTAR / REDUZIR / OK / CALIBRADO)
+function acaoFromDelta(delta: number, status: string): { label: string; cls: string } {
+  if (status === 'calibrado') return { label: 'Calibrado', cls: 'bg-blue-100 text-blue-800' }
+  if (delta > 0)  return { label: 'Aumentar', cls: 'bg-emerald-100 text-emerald-800 font-semibold' }
+  if (delta < 0)  return { label: 'Reduzir',  cls: 'bg-rose-100 text-rose-800 font-semibold' }
+  return { label: 'OK', cls: 'text-slate-500' }
 }
 
 // Endereço formatado
@@ -38,12 +69,14 @@ function fmt(s: Slot) {
 
 function SlotRow({
   item, slot, index, moved, total, selected, pendingSwap, onSelect,
+  qtacessoMax,
   onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
   isDragOver, isDragging,
 }: {
   item: Slot; slot: Slot; index: number; moved: boolean; total: number
   selected: boolean; pendingSwap: boolean; onSelect: () => void
+  qtacessoMax: number
   onMoveUp: () => void; onMoveDown: () => void
   onDragStart: (i: number) => void
   onDragOver: (e: React.DragEvent, i: number) => void
@@ -52,13 +85,18 @@ function SlotRow({
   isDragOver: boolean; isDragging: boolean
 }) {
   const sug = item.sugestao_editada ?? item.sugestao_calibragem
-  const plt = item.norma_palete && item.norma_palete > 0
-    ? Math.ceil(sug / item.norma_palete)
+  // Sugestão em paletes (decimal, 2 casas)
+  const sugPlt = item.norma_palete && item.norma_palete > 0
+    ? sug / item.norma_palete
     : null
-
-  const curvaColor: Record<string, string> = {
-    A: 'text-red-700 font-bold', B: 'text-yellow-700 font-semibold', C: 'text-green-700',
-  }
+  // Palete atual = capacidade_atual / norma_palete (2 casas)
+  const pltAtual = item.capacidade_atual != null && item.norma_palete && item.norma_palete > 0
+    ? item.capacidade_atual / item.norma_palete
+    : null
+  const acao = acaoFromDelta(item.delta, item.status)
+  const heatCls = qtacessoHeatClass(item.qt_acesso_90, qtacessoMax)
+  const curvaCls = curvaBadge[item.classe_venda ?? ''] ?? 'bg-slate-200 text-slate-600'
+  const isFL = item.fora_linha === true
 
   return (
     <tr
@@ -119,9 +157,9 @@ function SlotRow({
       <td className="py-2 px-2 text-center text-slate-400 font-mono w-8">{index + 1}</td>
       {/* Endereço slot (destino fixo) */}
       <td className="py-2 px-2 font-mono font-medium whitespace-nowrap">{fmt(slot)}</td>
-      {/* Produto — tap/click no nome também aciona seleção/troca */}
+      {/* Produto — tap/click no nome também aciona seleção/troca. Badge FL vermelho se fora_linha */}
       <td
-        className="py-2 px-2 max-w-[200px] cursor-pointer select-none touch-manipulation"
+        className="py-2 px-2 max-w-[220px] cursor-pointer select-none touch-manipulation"
         onPointerDown={e => { (e.currentTarget as any)._downXY = { x: e.clientX, y: e.clientY } }}
         onPointerUp={e => {
           const s = (e.currentTarget as any)._downXY as { x: number; y: number } | undefined
@@ -130,24 +168,45 @@ function SlotRow({
           if (Math.hypot(e.clientX - s.x, e.clientY - s.y) < 8) onSelect()
         }}
       >
-        <div className="truncate font-medium">{item.produto}</div>
+        <div className="flex items-center gap-1">
+          <span className="truncate font-medium" title={item.produto}>{item.produto}</span>
+          {isFL && <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-600 text-white" title="Produto Fora de Linha">FL</span>}
+        </div>
         <div className="text-[10px] text-muted-foreground">{item.codprod}</div>
       </td>
-      {/* Curva */}
-      <td className={`py-2 px-2 ${curvaColor[item.classe_venda ?? ''] ?? 'text-gray-600'}`}>
-        {item.classe_venda ?? '—'}
+      {/* Curva — A=verde, B=amarelo, C=vermelho (por acesso ao picking) */}
+      <td className="py-2 px-2 text-center">
+        <span className={`inline-flex items-center justify-center h-6 w-6 rounded text-[11px] font-bold ${curvaCls}`}>
+          {item.classe_venda ?? '—'}
+        </span>
       </td>
-      {/* Cap */}
+      {/* QTACESSO — heat map relativo ao dataset */}
+      <td className={`py-2 px-2 text-right whitespace-nowrap font-mono ${heatCls}`} title="Acessos ao picking nos últimos 90 dias">
+        {item.qt_acesso_90 != null ? item.qt_acesso_90.toLocaleString('pt-BR') : '—'}
+      </td>
+      {/* Giro/dia */}
+      <td className="py-2 px-2 text-right whitespace-nowrap text-slate-600" title="Giro médio diário em caixas">
+        {item.giro_dia_cx != null ? item.giro_dia_cx.toFixed(2) : '—'}
+      </td>
+      {/* Ação */}
+      <td className="py-2 px-2 text-center whitespace-nowrap">
+        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] ${acao.cls}`}>{acao.label}</span>
+      </td>
+      {/* Cap. Atual */}
       <td className="py-2 px-2 text-right whitespace-nowrap">
         {item.capacidade_atual != null ? `${item.capacidade_atual} cx` : '—'}
       </td>
-      {/* Sugestão */}
+      {/* Plt. Atual (decimal, 2 casas) */}
+      <td className="py-2 px-2 text-right whitespace-nowrap text-slate-600" title="Paletes que cabem na capacidade atual (capacidade ÷ norma_palete)">
+        {pltAtual != null ? pltAtual.toFixed(2) : '—'}
+      </td>
+      {/* Sugestão (cx) */}
       <td className="py-2 px-2 text-right whitespace-nowrap font-semibold">
         {sug} cx
       </td>
-      {/* Sug. Pallet */}
-      <td className="py-2 px-2 text-right whitespace-nowrap text-slate-500">
-        {plt != null ? `${plt} plt` : '—'}
+      {/* Sug. Pallet (decimal, 2 casas) */}
+      <td className="py-2 px-2 text-right whitespace-nowrap text-slate-500" title="Sugestão convertida em paletes (sug ÷ norma_palete)">
+        {sugPlt != null ? sugPlt.toFixed(2) : '—'}
       </td>
       {/* Origem (endereço atual do produto) — destaca se moveu */}
       <td className={`py-2 px-2 font-mono whitespace-nowrap ${moved ? 'text-orange-950 font-bold' : 'text-slate-300'}`}>
@@ -186,23 +245,62 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
 
   const totalMoves = moves.filter(m => m.moved).length
   const now = new Date().toLocaleString('pt-BR')
+  const qtacessoMax = items.reduce((acc, it) => Math.max(acc, it.qt_acesso_90 ?? 0), 0)
+
+  // Cores curva ABC (A=verde, B=amarelo, C=vermelho)
+  const curvaBg: Record<string, string> = { A: '#16a34a', B: '#facc15', C: '#dc2626' }
+  const curvaFg: Record<string, string> = { A: '#fff',    B: '#713f12', C: '#fff' }
+
+  // Heat map QTACESSO (mesma escala da UI)
+  const heatStyle = (v: number | null): string => {
+    if (v == null || qtacessoMax <= 0) return ''
+    const r = v / qtacessoMax
+    if (r >= 0.80) return 'background:#fca5a5;color:#450a0a;font-weight:700'
+    if (r >= 0.60) return 'background:#fdba74;color:#431407;font-weight:600'
+    if (r >= 0.40) return 'background:#fef08a;color:#713f12'
+    if (r >= 0.20) return 'background:#ecfccb;color:#365314'
+    return 'background:#dcfce7;color:#14532d'
+  }
+
+  // Ação derivada do delta
+  const acaoLabel = (delta: number, status: string): { label: string; bg: string; fg: string } => {
+    if (status === 'calibrado') return { label: 'Calibrado', bg: '#dbeafe', fg: '#1e3a8a' }
+    if (delta > 0)  return { label: 'Aumentar', bg: '#d1fae5', fg: '#065f46' }
+    if (delta < 0)  return { label: 'Reduzir',  bg: '#ffe4e6', fg: '#9f1239' }
+    return { label: 'OK', bg: 'transparent', fg: '#64748b' }
+  }
 
   const tableRows = moves.map((m, i) => {
     const sug = m.product.sugestao_editada ?? m.product.sugestao_calibragem
-    const plt = m.product.norma_palete && m.product.norma_palete > 0
-      ? Math.ceil(sug / m.product.norma_palete)
+    const sugPlt = m.product.norma_palete && m.product.norma_palete > 0
+      ? (sug / m.product.norma_palete).toFixed(2)
       : '—'
+    const pltAtual = m.product.capacidade_atual != null && m.product.norma_palete && m.product.norma_palete > 0
+      ? (m.product.capacidade_atual / m.product.norma_palete).toFixed(2)
+      : '—'
+    const cv = m.product.classe_venda ?? '—'
+    const cvStyle = curvaBg[cv] ? `background:${curvaBg[cv]};color:${curvaFg[cv]};font-weight:700;text-align:center` : 'text-align:center'
+    const heat = heatStyle(m.product.qt_acesso_90)
+    const a = acaoLabel(m.product.delta, m.product.status)
+    const acaoStyle = `background:${a.bg};color:${a.fg};text-align:center;font-weight:600`
     const rowBg = m.moved ? 'background:#fb923c;' : ''
+    const flBadge = m.product.fora_linha
+      ? ` <span style="background:#dc2626;color:#fff;padding:1px 4px;border-radius:3px;font-size:8px;font-weight:700;margin-left:4px">FL</span>`
+      : ''
     return `
       <tr style="${rowBg}">
         <td>${i + 1}</td>
         <td><strong>${fmt(m.slot)}</strong></td>
-        <td>${m.product.produto}</td>
+        <td>${m.product.produto}${flBadge}</td>
         <td>${m.product.codprod}</td>
-        <td style="text-align:center">${m.product.classe_venda ?? '—'}</td>
+        <td style="${cvStyle}">${cv}</td>
+        <td style="text-align:right;${heat}">${m.product.qt_acesso_90 != null ? m.product.qt_acesso_90.toLocaleString('pt-BR') : '—'}</td>
+        <td style="text-align:right">${m.product.giro_dia_cx != null ? m.product.giro_dia_cx.toFixed(2) : '—'}</td>
+        <td style="${acaoStyle}">${a.label}</td>
         <td style="text-align:right">${m.product.capacidade_atual ?? '—'} cx</td>
+        <td style="text-align:right">${pltAtual}</td>
         <td style="text-align:right;font-weight:600">${sug} cx</td>
-        <td style="text-align:right">${plt}${typeof plt === 'number' ? ' plt' : ''}</td>
+        <td style="text-align:right">${sugPlt}</td>
         <td style="color:${m.moved ? '#431407' : '#94a3b8'};font-weight:${m.moved ? '700' : '400'}">${m.moved ? fmt(m.product) : '—'}</td>
       </tr>`
   }).join('')
@@ -239,14 +337,18 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
     <thead>
       <tr>
         <th>#</th>
-        <th>Endereço Destino</th>
+        <th>End. Destino</th>
         <th>Produto</th>
         <th>Código</th>
         <th>Curva</th>
+        <th>QTACESSO</th>
+        <th>Giro/dia</th>
+        <th>Ação</th>
         <th>Cap. Atual</th>
+        <th>Plt. Atual</th>
         <th>Sugestão</th>
-        <th>Sug. Pallet</th>
-        <th>Endereço Origem</th>
+        <th>Sug. Plt</th>
+        <th>End. Origem</th>
       </tr>
     </thead>
     <tbody>${tableRows}</tbody>
@@ -284,6 +386,21 @@ export default function SpRealocacao() {
   // Single-select: produto atualmente marcado como "origem da troca pendente".
   // Próximo tap em outro produto efetua o swap. Tap no mesmo produto cancela.
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [predioFilter, setPredioFilter] = useState<PredioFilter>('todos')
+
+  // Índices visíveis após filtro par/ímpar. Mapeiam para os índices reais em items/slots.
+  // A reordenação/troca continua usando os índices reais — o filtro é só visual.
+  const visibleIdx = items
+    .map((_, i) => i)
+    .filter(i => {
+      const pred = slots[i]?.predio ?? 0
+      if (predioFilter === 'par')   return pred % 2 === 0
+      if (predioFilter === 'impar') return pred % 2 !== 0
+      return true
+    })
+
+  // Heat map p/ QTACESSO usa o máximo do dataset visível
+  const qtacessoMax = items.reduce((acc, it) => Math.max(acc, it.qt_acesso_90 ?? 0), 0)
 
   function handleSelect(id: number, idx: number) {
     // Nada selecionado → marca este produto como origem da troca
@@ -479,65 +596,108 @@ export default function SpRealocacao() {
           <div className="flex flex-wrap items-center gap-3 text-xs border rounded-lg px-3 py-2 bg-slate-50">
             <span className="font-medium">Rua {ruaSel}</span>
             <span className="text-muted-foreground">|</span>
-            <span>{slots.length} slots</span>
+            <span>
+              {slots.length} slots
+              {predioFilter !== 'todos' && (
+                <span className="ml-1 text-muted-foreground">({visibleIdx.length} visíveis)</span>
+              )}
+            </span>
             <span className="text-muted-foreground">|</span>
             {totalMoves > 0
               ? <span className="px-2 py-0.5 bg-orange-500 text-white rounded font-semibold">{totalMoves} movimentaç{totalMoves === 1 ? 'ão' : 'ões'} identificada{totalMoves === 1 ? '' : 's'}</span>
               : <span className="text-green-700 font-medium">Nenhuma alteração</span>
             }
+            <span className="text-muted-foreground">|</span>
+            {/* Filtro prédio par/ímpar/todos */}
+            <div className="inline-flex rounded-md border bg-white overflow-hidden" role="group" aria-label="Filtro de prédio">
+              {(['todos','par','impar'] as PredioFilter[]).map(opt => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setPredioFilter(opt)}
+                  className={`px-2.5 py-1 text-[11px] font-medium border-l first:border-l-0 transition-colors ${
+                    predioFilter === opt ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
+                  }`}
+                  aria-pressed={predioFilter === opt}
+                >
+                  {opt === 'todos' ? 'Todos' : opt === 'par' ? 'Pares' : 'Ímpares'}
+                </button>
+              ))}
+            </div>
             <span className="ml-auto text-muted-foreground text-[10px]">
               📱 Tap no ▢ p/ marcar (verde) → tap em outro ▢ p/ trocar &nbsp;·&nbsp; 🖱 Ou arraste a linha
             </span>
           </div>
 
           {/* Legenda */}
-          <div className="flex flex-wrap gap-4 text-[11px] text-muted-foreground">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground items-center">
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-white border inline-block" />Sem alteração</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-500 border border-green-700 inline-block" />Selecionado p/ troca</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-400 border border-orange-500 inline-block" />Produto realocado</span>
-            <span className="flex items-center gap-1 ml-auto text-[10px]">
-              Endereço Destino = coluna fixa (slot físico) · Endereço Origem = de onde o produto virá
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-500 border border-green-700 inline-block" />Selecionado</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-400 border border-orange-500 inline-block" />Realocado</span>
+            <span className="text-muted-foreground">|</span>
+            <span className="flex items-center gap-1">Curva:
+              <span className="inline-flex items-center justify-center h-4 w-4 rounded text-[9px] font-bold bg-green-600 text-white">A</span>
+              <span className="inline-flex items-center justify-center h-4 w-4 rounded text-[9px] font-bold bg-yellow-400 text-yellow-900">B</span>
+              <span className="inline-flex items-center justify-center h-4 w-4 rounded text-[9px] font-bold bg-red-600 text-white">C</span>
             </span>
+            <span className="text-muted-foreground">|</span>
+            <span className="flex items-center gap-1">QTACESSO:
+              <span className="inline-block w-3 h-3 rounded-sm bg-green-100 border border-green-300" />
+              <span className="inline-block w-3 h-3 rounded-sm bg-yellow-200 border border-yellow-400" />
+              <span className="inline-block w-3 h-3 rounded-sm bg-orange-300 border border-orange-400" />
+              <span className="inline-block w-3 h-3 rounded-sm bg-red-300 border border-red-400" />
+              <span className="text-[10px]">baixo → alto</span>
+            </span>
+            <span className="text-muted-foreground">|</span>
+            <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-600 text-white">FL</span>Fora de Linha</span>
           </div>
 
           <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full min-w-[700px]">
+            <table className="w-full min-w-[1180px]">
               <thead>
                 <tr className="bg-slate-800 text-white text-[11px]">
                   <th className="py-2 px-1 w-12 text-center" title="Tap p/ selecionar / trocar"></th>
                   <th className="py-2 px-2 w-8 text-center">#</th>
                   <th className="py-2 px-2 text-left whitespace-nowrap">End. Destino</th>
                   <th className="py-2 px-2 text-left">Produto</th>
-                  <th className="py-2 px-2 text-left w-12">Curva</th>
+                  <th className="py-2 px-2 w-12 text-center" title="Curva ABC por acesso ao picking">Curva</th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Acessos ao picking nos últimos 90 dias">QTACESSO</th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Giro médio diário em caixas">Giro/dia</th>
+                  <th className="py-2 px-2 text-center whitespace-nowrap">Ação</th>
                   <th className="py-2 px-2 text-right whitespace-nowrap">Cap. Atual</th>
-                  <th className="py-2 px-2 text-right">Sugestão</th>
-                  <th className="py-2 px-2 text-right whitespace-nowrap">Sug. Pallet</th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Paletes na capacidade atual">Plt. Atual</th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap">Sugestão</th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Sugestão em paletes">Sug. Plt</th>
                   <th className="py-2 px-2 text-left whitespace-nowrap">End. Origem</th>
                   <th className="py-2 px-1 w-8"></th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item, i) => (
-                  <SlotRow
-                    key={item.id}
-                    item={item}
-                    slot={slots[i]}
-                    index={i}
-                    moved={item.id !== slots[i].id}
-                    total={items.length}
-                    selected={selectedId === item.id}
-                    pendingSwap={selectedId !== null && selectedId !== item.id}
-                    onSelect={() => handleSelect(item.id, i)}
-                    onMoveUp={() => moveItem(i, -1)}
-                    onMoveDown={() => moveItem(i, 1)}
-                    onDragStart={handleDragStart}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                    onDragEnd={handleDragEnd}
-                    isDragOver={overIdx === i}
-                    isDragging={dragIdx === i}
-                  />
-                ))}
+                {visibleIdx.map(i => {
+                  const item = items[i]
+                  return (
+                    <SlotRow
+                      key={item.id}
+                      item={item}
+                      slot={slots[i]}
+                      index={i}
+                      moved={item.id !== slots[i].id}
+                      total={items.length}
+                      selected={selectedId === item.id}
+                      pendingSwap={selectedId !== null && selectedId !== item.id}
+                      onSelect={() => handleSelect(item.id, i)}
+                      qtacessoMax={qtacessoMax}
+                      onMoveUp={() => moveItem(i, -1)}
+                      onMoveDown={() => moveItem(i, 1)}
+                      onDragStart={handleDragStart}
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
+                      onDragEnd={handleDragEnd}
+                      isDragOver={overIdx === i}
+                      isDragging={dragIdx === i}
+                    />
+                  )
+                })}
               </tbody>
             </table>
           </div>
