@@ -89,7 +89,7 @@ export default function SpUploadCSV() {
     queryKey: ['sp-cds-filial', filialID],
     enabled: !!filialID,
     queryFn: async () => {
-      const r = await fetch(`/api/sp/filiais/${filialID}/cds`, { headers })
+      const r = await fetch(`/api/sp/filiais/${filialID}/cds?ativo=true`, { headers })
       if (!r.ok) throw new Error()
       return r.json()
     },

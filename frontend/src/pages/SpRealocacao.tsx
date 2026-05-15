@@ -437,7 +437,7 @@ export default function SpRealocacao() {
   const { data: cds = [] } = useQuery<SpCD[]>({
     queryKey: ['sp-cds-filial', filialID],
     enabled: !!filialID,
-    queryFn: async () => (await fetch(`/api/sp/filiais/${filialID}/cds`, { headers })).json(),
+    queryFn: async () => (await fetch(`/api/sp/filiais/${filialID}/cds?ativo=true`, { headers })).json(),
   })
 
   const { data: ruas = [] } = useQuery<number[]>({

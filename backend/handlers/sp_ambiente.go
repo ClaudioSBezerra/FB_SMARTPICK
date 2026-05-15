@@ -340,12 +340,18 @@ func SpCDsHandler(db *sql.DB) http.HandlerFunc {
 
 		switch r.Method {
 		case http.MethodGet:
-			rows, err := db.Query(`
+			// Filtro opcional ?ativo=true → telas operacionais (upload CSV, realocação,
+			// gerar PDF, resumo executivo) pedem só CDs ativos. A Administração chama
+			// sem o filtro p/ poder reativar CDs desativados.
+			query := `
 				SELECT id, filial_id, nome, COALESCE(descricao,''), ativo, fonte_cd_id, created_at
 				FROM smartpick.sp_centros_dist
-				WHERE filial_id = $1
-				ORDER BY nome ASC
-			`, filialID)
+				WHERE filial_id = $1`
+			if r.URL.Query().Get("ativo") == "true" {
+				query += ` AND ativo = TRUE`
+			}
+			query += ` ORDER BY nome ASC`
+			rows, err := db.Query(query, filialID)
 			if err != nil {
 				http.Error(w, "Database error", http.StatusInternalServerError)
 				return
