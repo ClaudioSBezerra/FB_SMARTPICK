@@ -203,22 +203,32 @@ func SpFiliaisHandler(db *sql.DB) http.HandlerFunc {
 				return
 			}
 			var id int
+			var inserted bool
+			// ON CONFLICT: se já existir filial com mesmo (empresa_id, cod_filial),
+			// reativa em vez de retornar 409. Evita o estado quebrado em que uma filial
+			// soft-deleted (ativo=FALSE) trava recadastros e fica invisível nos módulos
+			// que filtram por ativo=TRUE (CSV upload, Realocação, etc).
+			// (xmax = 0) → linha foi INSERTed; xmax != 0 → já existia e foi UPDATEd.
 			err := db.QueryRow(`
 				INSERT INTO smartpick.sp_filiais (empresa_id, cod_filial, nome)
 				VALUES ($1, $2, $3)
-				RETURNING id
-			`, spCtx.EmpresaID, req.CodFilial, req.Nome).Scan(&id)
+				ON CONFLICT (empresa_id, cod_filial) DO UPDATE
+				    SET nome = EXCLUDED.nome,
+				        ativo = TRUE,
+				        updated_at = now()
+				RETURNING id, (xmax = 0) AS inserted
+			`, spCtx.EmpresaID, req.CodFilial, req.Nome).Scan(&id, &inserted)
 			if err != nil {
-				if strings.Contains(err.Error(), "unique") {
-					http.Error(w, "cod_filial já cadastrado para esta empresa", http.StatusConflict)
-					return
-				}
-				http.Error(w, "Database error", http.StatusInternalServerError)
+				http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-			log.Printf("SpFiliais: criada filial %d (cod=%d) empresa %s por %s", id, req.CodFilial, spCtx.EmpresaID, spCtx.UserID)
+			if inserted {
+				log.Printf("SpFiliais: criada filial %d (cod=%d) empresa %s por %s", id, req.CodFilial, spCtx.EmpresaID, spCtx.UserID)
+			} else {
+				log.Printf("SpFiliais: reativada filial %d (cod=%d) empresa %s por %s", id, req.CodFilial, spCtx.EmpresaID, spCtx.UserID)
+			}
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]int{"id": id})
+			json.NewEncoder(w).Encode(map[string]any{"id": id, "reativada": !inserted})
 
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

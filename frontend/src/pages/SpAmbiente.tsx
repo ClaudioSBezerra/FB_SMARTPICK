@@ -278,6 +278,40 @@ export default function SpAmbiente() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const reativarFilial = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await fetch(`/api/sp/filiais/${id}`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativo: true }),
+      })
+      if (!r.ok) throw new Error('Erro ao reativar filial')
+    },
+    onSuccess: () => {
+      toast.success('Filial reativada')
+      qc.invalidateQueries({ queryKey: ['sp-filiais'] })
+      qc.invalidateQueries({ queryKey: ['sp-plano'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const reativarCD = useMutation({
+    mutationFn: async ({ id }: { id: number; filialID: number }) => {
+      const r = await fetch(`/api/sp/cds/${id}`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativo: true }),
+      })
+      if (!r.ok) throw new Error('Erro ao reativar CD')
+    },
+    onSuccess: (_data, vars) => {
+      toast.success('CD reativado')
+      qc.invalidateQueries({ queryKey: ['sp-cds', vars.filialID] })
+      qc.invalidateQueries({ queryKey: ['sp-plano'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const limparCalibragem = useMutation({
     mutationFn: async () => {
       const r = await fetch('/api/sp/admin/limpar-calibragem', {
@@ -832,8 +866,18 @@ export default function SpAmbiente() {
                     <Badge variant="outline" className="text-xs">Cód. {f.cod_filial}</Badge>
                     <span className="text-xs text-muted-foreground">{f.num_cds} CD(s)</span>
                     {!f.ativo && <Badge variant="secondary" className="text-xs">Inativo</Badge>}
+                    {!f.ativo && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs border-green-600 text-green-700 hover:bg-green-50"
+                        onClick={() => reativarFilial.mutate(f.id)}
+                        disabled={reativarFilial.isPending}
+                        title="Reativar filial p/ que volte a aparecer nos demais módulos">
+                        Ativar
+                      </Button>
+                    )}
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500"
-                      onClick={() => desativarFilial.mutate(f.id)}>
+                      onClick={() => desativarFilial.mutate(f.id)}
+                      disabled={!f.ativo}
+                      title={f.ativo ? 'Desativar filial' : 'Filial já está inativa'}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -858,6 +902,14 @@ export default function SpAmbiente() {
                             <Badge variant="outline" className="text-[10px]">cópia</Badge>
                           )}
                           {!cd.ativo && <Badge variant="secondary" className="text-xs">Inativo</Badge>}
+                          {!cd.ativo && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs border-green-600 text-green-700 hover:bg-green-50"
+                              onClick={() => reativarCD.mutate({ id: cd.id, filialID: f.id })}
+                              disabled={reativarCD.isPending}
+                              title="Reativar CD p/ que volte a aparecer nos demais módulos">
+                              Ativar
+                            </Button>
+                          )}
                           <Button size="icon" variant="ghost" className="h-7 w-7" title="Parâmetros"
                             onClick={() => openParams(cd)}>
                             <Settings2 className="h-3.5 w-3.5" />
