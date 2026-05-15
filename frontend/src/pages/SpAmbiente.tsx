@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { Plus, Copy, Settings2, Trash2, ChevronDown, ChevronRight, AlertTriangle, HelpCircle } from 'lucide-react'
+import { Plus, Copy, Pencil, Settings2, Trash2, ChevronDown, ChevronRight, AlertTriangle, HelpCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -97,6 +97,8 @@ export default function SpAmbiente() {
 
   const [filialDialog,   setFilialDialog]   = useState(false)
   const [cdDialog,       setCdDialog]       = useState<{ filialID: number } | null>(null)
+  const [editCdDialog,   setEditCdDialog]   = useState<SpCD | null>(null)
+  const [delCdDialog,    setDelCdDialog]    = useState<SpCD | null>(null)
   const [dupDialog,      setDupDialog]      = useState<SpCD | null>(null)
   const [paramsDialog,   setParamsDialog]   = useState<SpMotorParams | null>(null)
 
@@ -104,6 +106,8 @@ export default function SpAmbiente() {
   const [newFilialNome,  setNewFilialNome]  = useState('')
   const [newCDNome,      setNewCDNome]      = useState('')
   const [newCDDesc,      setNewCDDesc]      = useState('')
+  const [editCdNome,     setEditCdNome]     = useState('')
+  const [editCdDesc,     setEditCdDesc]     = useState('')
   const [dupNome,        setDupNome]        = useState('')
   const [editParams,     setEditParams]     = useState<Partial<SpMotorParams>>({})
   const [limparDialog,   setLimparDialog]   = useState(false)
@@ -308,6 +312,41 @@ export default function SpAmbiente() {
       toast.success('CD reativado')
       qc.invalidateQueries({ queryKey: ['sp-cds', vars.filialID] })
       qc.invalidateQueries({ queryKey: ['sp-plano'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const editarCD = useMutation({
+    mutationFn: async () => {
+      if (!editCdDialog) throw new Error('Nenhum CD em edição')
+      const r = await fetch(`/api/sp/cds/${editCdDialog.id}`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: editCdNome, descricao: editCdDesc }),
+      })
+      if (!r.ok) throw new Error('Erro ao editar CD')
+    },
+    onSuccess: () => {
+      toast.success('CD atualizado')
+      if (editCdDialog) qc.invalidateQueries({ queryKey: ['sp-cds', editCdDialog.filial_id] })
+      qc.invalidateQueries({ queryKey: ['sp-todos-cds'] })
+      setEditCdDialog(null); setEditCdNome(''); setEditCdDesc('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const desativarCD = useMutation({
+    mutationFn: async ({ id }: { id: number; filialID: number }) => {
+      const r = await fetch(`/api/sp/cds/${id}`, {
+        method: 'DELETE', headers,
+      })
+      if (!r.ok) throw new Error('Erro ao desativar CD')
+    },
+    onSuccess: (_data, vars) => {
+      toast.success('CD desativado')
+      qc.invalidateQueries({ queryKey: ['sp-cds', vars.filialID] })
+      qc.invalidateQueries({ queryKey: ['sp-plano'] })
+      setDelCdDialog(null)
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -830,6 +869,47 @@ export default function SpAmbiente() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!editCdDialog} onOpenChange={v => { if (!v) { setEditCdDialog(null); setEditCdNome(''); setEditCdDesc('') } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Editar CD</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid gap-1.5">
+              <Label>Nome do CD</Label>
+              <Input value={editCdNome} onChange={e => setEditCdNome(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Descrição (opcional)</Label>
+              <Textarea value={editCdDesc} onChange={e => setEditCdDesc(e.target.value)} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditCdDialog(null); setEditCdNome(''); setEditCdDesc('') }}>Cancelar</Button>
+            <Button disabled={editarCD.isPending || !editCdNome} onClick={() => editarCD.mutate()}>
+              {editarCD.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!delCdDialog} onOpenChange={v => { if (!v) setDelCdDialog(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Excluir CD?</DialogTitle></DialogHeader>
+          <div className="space-y-2 py-2 text-sm">
+            <p>O CD <strong>"{delCdDialog?.nome}"</strong> será desativado.</p>
+            <p className="text-muted-foreground text-xs">
+              Os dados (propostas, importações, parâmetros) permanecem no banco. Você pode reativar depois pelo botão "Ativar".
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDelCdDialog(null)}>Cancelar</Button>
+            <Button variant="destructive" disabled={desativarCD.isPending}
+              onClick={() => delCdDialog && desativarCD.mutate({ id: delCdDialog.id, filialID: delCdDialog.filial_id })}>
+              {desativarCD.isPending ? 'Excluindo...' : 'Excluir'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 
@@ -914,9 +994,19 @@ export default function SpAmbiente() {
                             onClick={() => openParams(cd)}>
                             <Settings2 className="h-3.5 w-3.5" />
                           </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Editar nome e descrição"
+                            onClick={() => { setEditCdDialog(cd); setEditCdNome(cd.nome); setEditCdDesc(cd.descricao ?? '') }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
                           <Button size="icon" variant="ghost" className="h-7 w-7" title="Duplicar"
                             onClick={() => { setDupDialog(cd); setDupNome(cd.nome + ' (cópia)') }}>
                             <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500"
+                            onClick={() => setDelCdDialog(cd)}
+                            disabled={!cd.ativo}
+                            title={cd.ativo ? 'Excluir CD' : 'CD já está inativo'}>
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       ))}
