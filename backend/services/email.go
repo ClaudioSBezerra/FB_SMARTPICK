@@ -232,7 +232,7 @@ func SendAIReportEmail(recipients []string, companyName, periodo, narrativaMarkd
 
 	appURL := os.Getenv("APP_URL")
 	if appURL == "" {
-		appURL = "http://localhost:3000"
+		appURL = "http://localhost:3082"
 	}
 
 	narrativaHTML := convertMarkdownToHTML(narrativaMarkdown)

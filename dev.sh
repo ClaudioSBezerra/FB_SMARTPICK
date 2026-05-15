@@ -18,11 +18,14 @@ set -a
 source "$BACKEND/.env"
 set +a
 
+# Porta do Vite dev: padrão 3082 (espelha backend 8082). Override via VITE_DEV_PORT.
+VITE_PORT="${VITE_DEV_PORT:-3082}"
+
 echo "======================================================"
 echo "  FB_SMARTPICK — Ambiente de Desenvolvimento Local"
 echo "======================================================"
 echo "  Backend  → http://localhost:$PORT"
-echo "  Frontend → http://localhost:3000"
+echo "  Frontend → http://localhost:$VITE_PORT"
 echo "  Banco    → $DATABASE_URL"
 echo "======================================================"
 echo ""
@@ -36,6 +39,8 @@ fi
 
 # Mata processos anteriores nas portas usadas (se houver)
 fuser -k "$PORT/tcp" 2>/dev/null || true
+fuser -k "$VITE_PORT/tcp" 2>/dev/null || true
+# Compat: também limpa a antiga 3000 caso ainda esteja em uso por dev legado
 fuser -k 3000/tcp 2>/dev/null || true
 
 # Inicia backend em background
@@ -57,8 +62,9 @@ for i in $(seq 1 20); do
   sleep 1
 done
 
-# Inicia frontend
-echo "[frontend] Iniciando Vite na porta 3000..."
+# Inicia frontend (Vite respeita VITE_DEV_PORT exportado abaixo)
+echo "[frontend] Iniciando Vite na porta $VITE_PORT..."
+export VITE_DEV_PORT="$VITE_PORT"
 (
   cd "$FRONTEND"
   npm run dev 2>&1 | sed 's/^/[frontend] /'

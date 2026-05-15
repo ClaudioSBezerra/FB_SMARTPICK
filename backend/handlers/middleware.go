@@ -19,8 +19,9 @@ func GetAllowedOrigins() map[string]bool {
 		list = []string{
 			"https://smartpick.fbtax.cloud",
 			"https://fbtax.cloud",
-			"http://localhost:3000",
-			"http://localhost:5173",
+			"http://localhost:3082", // Vite dev padrão SMARTPICK (alinhado c/ backend 8082)
+			"http://localhost:3000", // compat: porta antiga, antes da padronização
+			"http://localhost:5173", // Vite default puro
 		}
 	}
 	m := make(map[string]bool, len(list))
