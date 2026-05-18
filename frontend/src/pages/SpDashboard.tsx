@@ -17,7 +17,8 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, EyeOff, Flame } from 'lucide-react'
+import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, EyeOff, Flame, Filter } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuth } from '@/contexts/AuthContext'
 import { BatchStatusBar } from '@/components/BatchStatusBar'
 
@@ -301,6 +302,38 @@ function SugestaoCell({
   )
 }
 
+// ─── Funil de filtro no cabeçalho (estilo Excel) ─────────────────────────────
+
+function HeaderFilter({
+  active, children, label,
+}: {
+  active: boolean
+  children: React.ReactNode
+  label?: string
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label ? `Filtrar ${label}` : 'Filtrar coluna'}
+          className={`inline-flex items-center justify-center h-5 w-5 rounded transition-colors ${
+            active
+              ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+              : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted'
+          }`}
+        >
+          <Filter className="h-3 w-3" fill={active ? 'currentColor' : 'none'} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto min-w-[200px] p-2" align="start">
+        {label && <div className="text-[10px] font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">{label}</div>}
+        {children}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 // ─── Filtro de faixa numérica (min/max) ──────────────────────────────────────
 
 function NumRangeFilter({
@@ -486,150 +519,23 @@ function PropostasTable({
   const propostasKey = `${propostas.length}:${propostas[0]?.id ?? ''}`
   useEffect(() => { setPage(1) }, [filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, filterPrio, filterCurva, filterStatus, filterCapMin, filterCapMax, filterGiroMin, filterGiroMax, filterSugMin, filterSugMax, filterDeltaMin, filterDeltaMax, filterPltMin, filterPltMax, propostasKey])
 
+  function limparTodosFiltros() {
+    setFilterSearch(''); setFilterDepto(''); setFilterSecao(''); setFilterEnder('')
+    setFilterGiroCap(''); setFilterGiroPR(''); setFilterCapDias(''); setFilterPrio('')
+    setFilterCurva(''); setFilterStatus('')
+    setFilterCapMin(''); setFilterCapMax(''); setFilterGiroMin(''); setFilterGiroMax('')
+    setFilterSugMin(''); setFilterSugMax(''); setFilterDeltaMin(''); setFilterDeltaMax('')
+    setFilterPltMin(''); setFilterPltMax('')
+  }
+
   return (
     <div className="space-y-2">
-      {/* ── Filtros — Linha 1: identificação (busca → seção) ── */}
+      {/* ── Barra slim de ações (filtros agora ficam nos próprios cabeçalhos) ── */}
       <div className="flex flex-wrap gap-2 items-center">
-        <Input
-          placeholder="Código ou descrição do produto..."
-          value={filterSearch}
-          onChange={e => setFilterSearch(e.target.value)}
-          className="h-7 text-xs w-56"
-        />
-        <Select value={filterPrio || 'all'} onValueChange={v => setFilterPrio(v === 'all' ? '' : v)}>
-          <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Prioridade" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as prioridades</SelectItem>
-            <SelectItem value="critico">🔥 Críticos (≥80)</SelectItem>
-            <SelectItem value="alto">⚡ Alta (≥60)</SelectItem>
-            <SelectItem value="medio">⬆ Média (≥40)</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filterDepto || 'all'} onValueChange={v => { setFilterDepto(v === 'all' ? '' : v); setFilterSecao('') }}>
-          <SelectTrigger className="h-7 text-xs w-44"><SelectValue placeholder="Departamento" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os depto.</SelectItem>
-            {deptos.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={filterSecao || 'all'} onValueChange={v => setFilterSecao(v === 'all' ? '' : v)}>
-          <SelectTrigger className="h-7 text-xs w-44"><SelectValue placeholder="Seção" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as seções</SelectItem>
-            {secoes.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* ── Filtros — Linha 2: endereço & capacidades ── */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <Input
-          placeholder="Endereço (ex: 12-3-5)"
-          value={filterEnder}
-          onChange={e => setFilterEnder(e.target.value)}
-          className="h-7 text-xs w-36"
-        />
-        <TooltipProvider delayDuration={200}>
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap cursor-help underline decoration-dotted">GiroCap.</label>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-56 text-xs">
-                <p className="font-semibold">Giro e Capacidade</p>
-                <p>Analisa se o Giro/Dia é ≥ à capacidade atual do endereço. Indica risco de ruptura de estoque.</p>
-              </TooltipContent>
-            </Tooltip>
-            <Select value={filterGiroCap || 'all'} onValueChange={v => setFilterGiroCap(v === 'all' ? '' : v)}>
-              <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="OK">OK</SelectItem>
-                <SelectItem value="Urgencia">Urgencia</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap cursor-help underline decoration-dotted">GPRepos.</label>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-56 text-xs">
-                <p className="font-semibold">Giro e Ponto de Reposição</p>
-                <p>Analisa se o Giro/Dia é ≥ ao ponto de reposição. Indica que o produto é reposto antes de zerar o estoque.</p>
-              </TooltipContent>
-            </Tooltip>
-            <Select value={filterGiroPR || 'all'} onValueChange={v => setFilterGiroPR(v === 'all' ? '' : v)}>
-              <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="OK">OK</SelectItem>
-                <SelectItem value="Ajustar">Ajustar</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap cursor-help underline decoration-dotted">CMEN2DDV</label>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-56 text-xs">
-                <p className="font-semibold">Capacidade Menor que 2 DDVs</p>
-                <p>Analisa se a capacidade atual do endereço suporta pelo menos 2 dias de venda. Abaixo disso o risco de ruptura é alto.</p>
-              </TooltipContent>
-            </Tooltip>
-            <Select value={filterCapDias || 'all'} onValueChange={v => setFilterCapDias(v === 'all' ? '' : v)}>
-              <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="OK">OK</SelectItem>
-                <SelectItem value="CAP Menor">CAP Menor</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </TooltipProvider>
-        <NumRangeFilter label="Cap."  min={filterCapMin}   max={filterCapMax}   onMin={setFilterCapMin}   onMax={setFilterCapMax} />
-      </div>
-
-      {/* ── Filtros — Linha 3: restante + ações ── */}
-      <div className="flex flex-wrap gap-2 items-center">
-        {curvaOptions.length > 1 && (
-          <Select value={filterCurva || 'all'} onValueChange={v => setFilterCurva(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Curva" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as curvas</SelectItem>
-              {curvaOptions.sort().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
-        {statusOptions.length > 1 && (
-          <Select value={filterStatus || 'all'} onValueChange={v => setFilterStatus(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-32"><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
-              {statusOptions.sort().map(s => (
-                <SelectItem key={s} value={s}>
-                  {({ pendente: 'Pendente', aprovada: 'Aprovada', rejeitada: 'Rejeitada', calibrado: 'Calibrado', ignorado: 'Ignorado' } as Record<string,string>)[s] ?? s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <NumRangeFilter label="Giro"  min={filterGiroMin}  max={filterGiroMax}  onMin={setFilterGiroMin}  onMax={setFilterGiroMax} />
-        <NumRangeFilter label="Sug."  min={filterSugMin}   max={filterSugMax}   onMin={setFilterSugMin}   onMax={setFilterSugMax} />
-        <NumRangeFilter label="Δ"     min={filterDeltaMin} max={filterDeltaMax} onMin={setFilterDeltaMin} onMax={setFilterDeltaMax} />
-        <NumRangeFilter label="Plt."  min={filterPltMin}   max={filterPltMax}   onMin={setFilterPltMin}   onMax={setFilterPltMax} />
         {hasFilters && (
           <button
             className="text-[11px] text-muted-foreground hover:text-foreground underline"
-            onClick={() => {
-              setFilterSearch(''); setFilterDepto(''); setFilterSecao(''); setFilterEnder('')
-              setFilterGiroCap(''); setFilterGiroPR(''); setFilterCapDias(''); setFilterPrio('')
-              setFilterCurva(''); setFilterStatus('')
-              setFilterCapMin(''); setFilterCapMax(''); setFilterGiroMin(''); setFilterGiroMax('')
-              setFilterSugMin(''); setFilterSugMax(''); setFilterDeltaMin(''); setFilterDeltaMax('')
-              setFilterPltMin(''); setFilterPltMax('')
-            }}
+            onClick={limparTodosFiltros}
           >
             limpar filtros
           </button>
@@ -640,7 +546,7 @@ function PropostasTable({
             <Button
               size="sm"
               variant="outline"
-              className="h-9 text-xs font-semibold px-4 text-green-700 border-green-300 hover:bg-green-50 ml-4"
+              className="h-9 text-xs font-semibold px-4 text-green-700 border-green-300 hover:bg-green-50"
               disabled={pendingIds.length === 0 || loteLoading}
               onClick={() => onAprovarLote(pendingIds)}
             >
@@ -718,60 +624,142 @@ function PropostasTable({
           <TableHeader>
             <TableRow className="text-xs">
               <TableHead className="py-2 w-[52px] text-center">
-                <button
-                  className={`cursor-pointer ${sortBy === 'prioridade' ? 'font-bold text-primary' : ''}`}
-                  onClick={() => {
-                    if (sortBy === 'prioridade') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
-                    else { setSortBy('prioridade'); setSortDir('desc') }
-                  }}
-                  title="Clique para ordenar por prioridade"
-                >
-                  🔥{sortBy === 'prioridade' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
-                </button>
+                <div className="inline-flex items-center gap-0.5">
+                  <button
+                    className={`cursor-pointer ${sortBy === 'prioridade' ? 'font-bold text-primary' : ''}`}
+                    onClick={() => {
+                      if (sortBy === 'prioridade') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
+                      else { setSortBy('prioridade'); setSortDir('desc') }
+                    }}
+                    title="Clique para ordenar por prioridade"
+                  >
+                    🔥{sortBy === 'prioridade' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                  </button>
+                  <HeaderFilter active={!!filterPrio} label="Prioridade">
+                    <Select value={filterPrio || 'all'} onValueChange={v => setFilterPrio(v === 'all' ? '' : v)}>
+                      <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Prioridade" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas</SelectItem>
+                        <SelectItem value="critico">🔥 Críticos (≥80)</SelectItem>
+                        <SelectItem value="alto">⚡ Alta (≥60)</SelectItem>
+                        <SelectItem value="medio">⬆ Média (≥40)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </HeaderFilter>
+                </div>
               </TableHead>
-              <TableHead className="py-2 w-[88px]">Depto / Seção</TableHead>
-              <TableHead className="py-2">Produto</TableHead>
-              <TableHead className="py-2 w-[180px]">Cód. · Endereço</TableHead>
+              <TableHead className="py-2 w-[88px]">
+                <div className="inline-flex items-center gap-1">
+                  <span>Depto / Seção</span>
+                  <HeaderFilter active={!!(filterDepto || filterSecao)} label="Depto / Seção">
+                    <div className="space-y-2 w-56">
+                      <Select value={filterDepto || 'all'} onValueChange={v => { setFilterDepto(v === 'all' ? '' : v); setFilterSecao('') }}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Departamento" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos os depto.</SelectItem>
+                          {deptos.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Select value={filterSecao || 'all'} onValueChange={v => setFilterSecao(v === 'all' ? '' : v)}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Seção" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas as seções</SelectItem>
+                          {secoes.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </HeaderFilter>
+                </div>
+              </TableHead>
+              <TableHead className="py-2">
+                <div className="inline-flex items-center gap-1">
+                  <span>Produto</span>
+                  <HeaderFilter active={!!filterSearch} label="Código ou descrição">
+                    <Input
+                      placeholder="Código ou descrição…"
+                      value={filterSearch}
+                      onChange={e => setFilterSearch(e.target.value)}
+                      className="h-7 text-xs w-56"
+                    />
+                  </HeaderFilter>
+                </div>
+              </TableHead>
+              <TableHead className="py-2 w-[180px]">
+                <div className="inline-flex items-center gap-1">
+                  <span>Cód. · Endereço</span>
+                  <HeaderFilter active={!!filterEnder} label="Endereço">
+                    <Input
+                      placeholder="Endereço (ex: 12-3-5)"
+                      value={filterEnder}
+                      onChange={e => setFilterEnder(e.target.value)}
+                      className="h-7 text-xs w-44"
+                    />
+                  </HeaderFilter>
+                </div>
+              </TableHead>
               <TableHead className="w-[100px] py-2">
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted">Curva</TooltipTrigger>
-                    <TooltipContent className="text-xs">CURVA ABC de Acesso ao PICKING — letra + % participação</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <div className="inline-flex items-center gap-1">
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger className="cursor-help underline decoration-dotted">Curva</TooltipTrigger>
+                      <TooltipContent className="text-xs">CURVA ABC de Acesso ao PICKING — letra + % participação</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  {curvaOptions.length > 1 && (
+                    <HeaderFilter active={!!filterCurva} label="Curva">
+                      <Select value={filterCurva || 'all'} onValueChange={v => setFilterCurva(v === 'all' ? '' : v)}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Curva" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas</SelectItem>
+                          {curvaOptions.sort().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </HeaderFilter>
+                  )}
+                </div>
               </TableHead>
               <TableHead className="text-right py-2 w-[68px]">
-                <button
-                  className={`cursor-pointer ${sortBy === 'capacidade' ? 'font-bold text-primary' : ''}`}
-                  onClick={() => {
-                    if (sortBy === 'capacidade') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
-                    else { setSortBy('capacidade'); setSortDir('desc') }
-                  }}
-                  title="Clique para ordenar por capacidade atual"
-                >
-                  Cap.{sortBy === 'capacidade' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
-                </button>
+                <div className="inline-flex items-center gap-0.5 justify-end">
+                  <button
+                    className={`cursor-pointer ${sortBy === 'capacidade' ? 'font-bold text-primary' : ''}`}
+                    onClick={() => {
+                      if (sortBy === 'capacidade') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
+                      else { setSortBy('capacidade'); setSortDir('desc') }
+                    }}
+                    title="Clique para ordenar por capacidade atual"
+                  >
+                    Cap.{sortBy === 'capacidade' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                  </button>
+                  <HeaderFilter active={!!(filterCapMin || filterCapMax)} label="Capacidade (cx)">
+                    <NumRangeFilter label="Cap." min={filterCapMin} max={filterCapMax} onMin={setFilterCapMin} onMax={setFilterCapMax} />
+                  </HeaderFilter>
+                </div>
               </TableHead>
               <TableHead className="text-right py-2 w-[68px]">
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        className={`cursor-pointer leading-tight text-[10px] font-mono text-right ${sortBy === 'giro' ? 'font-bold text-primary underline' : 'underline decoration-dotted'}`}
-                        onClick={() => {
-                          if (sortBy === 'giro') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
-                          else { setSortBy('giro'); setSortDir('desc') }
-                        }}
-                      >
-                        MED_VENDA<br/>DIAS_CX{sortBy === 'giro' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-64 text-xs">
-                      <p className="font-semibold">MED_VENDA_DIAS_CX (motor)</p>
-                      <p className="text-muted-foreground">Média de vendas diária em caixas — fonte primária do motor de calibragem · Clique para ordenar</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <div className="inline-flex items-center gap-0.5 justify-end">
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          className={`cursor-pointer leading-tight text-[10px] font-mono text-right ${sortBy === 'giro' ? 'font-bold text-primary underline' : 'underline decoration-dotted'}`}
+                          onClick={() => {
+                            if (sortBy === 'giro') setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
+                            else { setSortBy('giro'); setSortDir('desc') }
+                          }}
+                        >
+                          MED_VENDA<br/>DIAS_CX{sortBy === 'giro' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-64 text-xs">
+                        <p className="font-semibold">MED_VENDA_DIAS_CX (motor)</p>
+                        <p className="text-muted-foreground">Média de vendas diária em caixas — fonte primária do motor de calibragem · Clique para ordenar</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <HeaderFilter active={!!(filterGiroMin || filterGiroMax)} label="MED_VENDA_DIAS_CX">
+                    <NumRangeFilter label="Giro" min={filterGiroMin} max={filterGiroMax} onMin={setFilterGiroMin} onMax={setFilterGiroMax} />
+                  </HeaderFilter>
+                </div>
               </TableHead>
               <TableHead className="py-2 w-[140px]">
                 <span className="inline-flex items-center gap-2">
@@ -796,24 +784,93 @@ function PropostasTable({
                   >
                     Δ{sortBy === 'delta' ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
                   </button>
+                  <HeaderFilter active={!!(filterSugMin || filterSugMax || filterDeltaMin || filterDeltaMax)} label="Sugestão / Δ">
+                    <div className="space-y-2">
+                      <NumRangeFilter label="Sug." min={filterSugMin}   max={filterSugMax}   onMin={setFilterSugMin}   onMax={setFilterSugMax} />
+                      <NumRangeFilter label="Δ"    min={filterDeltaMin} max={filterDeltaMax} onMin={setFilterDeltaMin} onMax={setFilterDeltaMax} />
+                    </div>
+                  </HeaderFilter>
                 </span>
               </TableHead>
               <TableHead className="py-2 w-[68px] text-right">
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted text-[11px] font-mono leading-tight whitespace-nowrap">Sug.<br/>Pallet</TooltipTrigger>
-                    <TooltipContent className="text-xs">⌈Sugestão ÷ Norma_Palete⌉ — paletes necessários</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <div className="inline-flex items-center gap-0.5 justify-end">
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger className="cursor-help underline decoration-dotted text-[11px] font-mono leading-tight whitespace-nowrap">Sug.<br/>Pallet</TooltipTrigger>
+                      <TooltipContent className="text-xs">⌈Sugestão ÷ Norma_Palete⌉ — paletes necessários</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <HeaderFilter active={!!(filterPltMin || filterPltMax)} label="Sug. Pallet">
+                    <NumRangeFilter label="Plt." min={filterPltMin} max={filterPltMax} onMin={setFilterPltMin} onMax={setFilterPltMax} />
+                  </HeaderFilter>
+                </div>
               </TableHead>
-              <TableHead className="py-2 w-[72px]">Status</TableHead>
+              <TableHead className="py-2 w-[72px]">
+                <div className="inline-flex items-center gap-1">
+                  <span>Status</span>
+                  {statusOptions.length > 1 && (
+                    <HeaderFilter active={!!filterStatus} label="Status">
+                      <Select value={filterStatus || 'all'} onValueChange={v => setFilterStatus(v === 'all' ? '' : v)}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos</SelectItem>
+                          {statusOptions.sort().map(s => (
+                            <SelectItem key={s} value={s}>
+                              {({ pendente: 'Pendente', aprovada: 'Aprovada', rejeitada: 'Rejeitada', calibrado: 'Calibrado', ignorado: 'Ignorado' } as Record<string,string>)[s] ?? s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </HeaderFilter>
+                  )}
+                </div>
+              </TableHead>
               <TableHead className="w-[50px] py-2 text-center">
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger className="cursor-help underline decoration-dotted">⚠ Aler.</TooltipTrigger>
-                    <TooltipContent className="text-xs">GiroCap · GPRepos · CMEN2DDV</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <div className="inline-flex items-center gap-0.5 justify-center">
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger className="cursor-help underline decoration-dotted">⚠ Aler.</TooltipTrigger>
+                      <TooltipContent className="text-xs">GiroCap · GPRepos · CMEN2DDV</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <HeaderFilter active={!!(filterGiroCap || filterGiroPR || filterCapDias)} label="Alertas">
+                    <div className="space-y-2 w-44">
+                      <div>
+                        <div className="text-[10px] font-medium text-muted-foreground mb-1">GiroCap.</div>
+                        <Select value={filterGiroCap || 'all'} onValueChange={v => setFilterGiroCap(v === 'all' ? '' : v)}>
+                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="OK">OK</SelectItem>
+                            <SelectItem value="Urgencia">Urgencia</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-medium text-muted-foreground mb-1">GPRepos.</div>
+                        <Select value={filterGiroPR || 'all'} onValueChange={v => setFilterGiroPR(v === 'all' ? '' : v)}>
+                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="OK">OK</SelectItem>
+                            <SelectItem value="Ajustar">Ajustar</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-medium text-muted-foreground mb-1">CMEN2DDV</div>
+                        <Select value={filterCapDias || 'all'} onValueChange={v => setFilterCapDias(v === 'all' ? '' : v)}>
+                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="OK">OK</SelectItem>
+                            <SelectItem value="CAP Menor">CAP Menor</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </HeaderFilter>
+                </div>
               </TableHead>
               <TableHead className="w-36 py-2">Ações</TableHead>
             </TableRow>
