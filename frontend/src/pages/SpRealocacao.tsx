@@ -6,8 +6,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { ArrowUp, ArrowDown, Check, ArrowLeftRight, RotateCcw, FileDown, Loader2, Filter } from 'lucide-react'
+import { ArrowUp, ArrowDown, Check, ArrowLeftRight, RotateCcw, FileDown, Loader2, Filter, StickyNote } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -69,9 +70,12 @@ function fmt(s: Slot) {
 
 // ─── Componente de linha arrastável ──────────────────────────────────────────
 
+const OBS_MAX = 70
+
 function SlotRow({
   item, slot, index, moved, total, selected, pendingSwap, onSelect,
   qtacessoMax,
+  observacao, onObservacaoChange,
   onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
   isDragOver, isDragging,
@@ -79,6 +83,8 @@ function SlotRow({
   item: Slot; slot: Slot; index: number; moved: boolean; total: number
   selected: boolean; pendingSwap: boolean; onSelect: () => void
   qtacessoMax: number
+  observacao: string
+  onObservacaoChange: (value: string) => void
   onMoveUp: () => void; onMoveDown: () => void
   onDragStart: (i: number) => void
   onDragOver: (e: React.DragEvent, i: number) => void
@@ -214,6 +220,54 @@ function SlotRow({
       <td className={`py-2 px-2 font-mono whitespace-nowrap ${moved ? 'text-orange-950 font-bold' : 'text-slate-300'}`}>
         {moved ? fmt(item) : '—'}
       </td>
+      {/* Observação — clique p/ editar (até 70 chars), vai p/ PDF */}
+      <td className="py-1 px-1.5 max-w-[140px]" onClick={e => e.stopPropagation()}>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className={`flex items-center gap-1 w-full text-left rounded px-1.5 py-1 transition-colors ${
+                observacao
+                  ? 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200'
+                  : 'text-slate-300 hover:text-slate-700 hover:bg-slate-100'
+              }`}
+              title={observacao || 'Clique para adicionar observação (até 70 caracteres)'}
+            >
+              <StickyNote className={`h-3.5 w-3.5 shrink-0 ${observacao ? 'text-amber-600' : ''}`} />
+              <span className="truncate text-[10px]">
+                {observacao || 'add. obs.'}
+              </span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-2" align="end" onClick={e => e.stopPropagation()}>
+            <div className="text-[10px] font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
+              Observação · {item.produto}
+            </div>
+            <Textarea
+              value={observacao}
+              onChange={e => onObservacaoChange(e.target.value.slice(0, OBS_MAX))}
+              placeholder="Anote algo sobre este item (sairá no PDF)…"
+              className="text-xs min-h-[60px] resize-none"
+              maxLength={OBS_MAX}
+              autoFocus
+            />
+            <div className="flex items-center justify-between mt-1">
+              <span className={`text-[10px] ${observacao.length >= OBS_MAX ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
+                {observacao.length}/{OBS_MAX}
+              </span>
+              {observacao && (
+                <button
+                  type="button"
+                  className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                  onClick={() => onObservacaoChange('')}
+                >
+                  limpar
+                </button>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
+      </td>
       {/* Botões ↑↓ (alternativa touch) */}
       <td className="py-1 px-1">
         <div className="flex flex-col gap-0.5">
@@ -241,7 +295,12 @@ function SlotRow({
 
 // ─── Geração do PDF via window.print() ───────────────────────────────────────
 
-function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
+// Escapa HTML para evitar injeção via observação digitada pelo usuário
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+}
+
+function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[], observacoes: Record<number, string>) {
   const moves = slots
     .map((s, i) => ({ slot: s, product: items[i], moved: items[i].id !== s.id }))
 
@@ -289,11 +348,15 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
     const flBadge = m.product.fora_linha
       ? ` <span style="background:#dc2626;color:#fff;padding:1px 4px;border-radius:3px;font-size:8px;font-weight:700;margin-left:4px">FL</span>`
       : ''
+    const obs = observacoes[m.product.id] ?? ''
+    const obsCell = obs
+      ? `<td style="background:#fef3c7;color:#78350f;font-style:italic;white-space:normal;max-width:160px">${escapeHtml(obs)}</td>`
+      : `<td style="color:#cbd5e1">—</td>`
     return `
       <tr style="${rowBg}">
         <td>${i + 1}</td>
         <td><strong>${fmt(m.slot)}</strong></td>
-        <td>${m.product.produto}${flBadge}</td>
+        <td>${escapeHtml(m.product.produto)}${flBadge}</td>
         <td>${m.product.codprod}</td>
         <td style="${cvStyle}">${cv}</td>
         <td style="text-align:right;${heat}">${m.product.qt_acesso_90 != null ? m.product.qt_acesso_90.toLocaleString('pt-BR') : '—'}</td>
@@ -304,6 +367,7 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
         <td style="text-align:right;font-weight:600">${sug} cx</td>
         <td style="text-align:right">${sugPlt}</td>
         <td style="color:${m.moved ? '#431407' : '#94a3b8'};font-weight:${m.moved ? '700' : '400'}">${m.moved ? fmt(m.product) : '—'}</td>
+        ${obsCell}
       </tr>`
   }).join('')
 
@@ -351,6 +415,7 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
         <th>Sugestão</th>
         <th>Sug. Plt</th>
         <th>End. Origem</th>
+        <th>Observação</th>
       </tr>
     </thead>
     <tbody>${tableRows}</tbody>
@@ -457,6 +522,17 @@ export default function SpRealocacao() {
   // Próximo tap em outro produto efetua o swap. Tap no mesmo produto cancela.
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [predioFilter, setPredioFilter] = useState<PredioFilter>('todos')
+  // Observações por produto (item.id) — escopo de sessão. Acompanham o produto
+  // mesmo após swap (chave é o id do produto, não do slot/destino).
+  const [observacoes, setObservacoes] = useState<Record<number, string>>({})
+  function setObservacao(id: number, value: string) {
+    setObservacoes(prev => {
+      const next = { ...prev }
+      if (value) next[id] = value
+      else delete next[id]
+      return next
+    })
+  }
 
   // ── Filtros por coluna (estilo Excel — visibilidade apenas, não altera ordem) ──
   const [fProduto,    setFProduto]    = useState('')
@@ -726,7 +802,7 @@ export default function SpRealocacao() {
             <Button
               size="sm"
               disabled={totalMoves === 0}
-              onClick={() => gerarPDF(ruaSel, slots, items)}
+              onClick={() => gerarPDF(ruaSel, slots, items, observacoes)}
             >
               <FileDown className="h-3.5 w-3.5 mr-1" />
               Gerar PDF do lote{totalMoves > 0 ? ` (${totalMoves} mov.)` : ''}
@@ -811,7 +887,7 @@ export default function SpRealocacao() {
           </div>
 
           <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full min-w-[1180px]">
+            <table className="w-full min-w-[1320px]">
               <thead>
                 <tr className="bg-slate-800 text-white text-[11px]">
                   <th className="py-2 px-1 w-12 text-center" title="Tap p/ selecionar / trocar"></th>
@@ -951,6 +1027,11 @@ export default function SpRealocacao() {
                       </HeaderFilter>
                     </span>
                   </th>
+                  <th className="py-2 px-2 text-left whitespace-nowrap" title="Observações por produto — vão para o PDF">
+                    <span className="inline-flex items-center gap-1">
+                      <StickyNote className="h-3 w-3" /> Obs.
+                    </span>
+                  </th>
                   <th className="py-2 px-1 w-8"></th>
                 </tr>
               </thead>
@@ -969,6 +1050,8 @@ export default function SpRealocacao() {
                       pendingSwap={selectedId !== null && selectedId !== item.id}
                       onSelect={() => handleSelect(item.id, i)}
                       qtacessoMax={qtacessoMax}
+                      observacao={observacoes[item.id] ?? ''}
+                      onObservacaoChange={v => setObservacao(item.id, v)}
                       onMoveUp={() => moveItem(i, -1)}
                       onMoveDown={() => moveItem(i, 1)}
                       onDragStart={handleDragStart}
