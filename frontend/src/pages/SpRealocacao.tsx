@@ -6,7 +6,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { ArrowUp, ArrowDown, Check, ArrowLeftRight, RotateCcw, FileDown, Loader2 } from 'lucide-react'
+import { ArrowUp, ArrowDown, Check, ArrowLeftRight, RotateCcw, FileDown, Loader2, Filter } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -367,6 +368,42 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
   win.document.close()
   win.focus()
   setTimeout(() => win.print(), 400)
+}
+
+// ─── Funil de filtro no cabeçalho (estilo Excel) ─────────────────────────────
+
+function HeaderFilter({
+  active, children, label, dark,
+}: {
+  active: boolean
+  children: React.ReactNode
+  label?: string
+  dark?: boolean
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label ? `Filtrar ${label}` : 'Filtrar coluna'}
+          className={`inline-flex items-center justify-center h-5 w-5 rounded transition-colors ${
+            active
+              ? 'bg-blue-200 text-blue-900 hover:bg-blue-300'
+              : dark
+                ? 'text-white/60 hover:text-white hover:bg-white/10'
+                : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted'
+          }`}
+          onClick={e => e.stopPropagation()}
+        >
+          <Filter className="h-3 w-3" fill={active ? 'currentColor' : 'none'} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto min-w-[200px] p-2" align="start">
+        {label && <div className="text-[10px] font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">{label}</div>}
+        {children}
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 // ─── Filtro de faixa numérica (min/max) ──────────────────────────────────────
@@ -738,70 +775,17 @@ export default function SpRealocacao() {
             </span>
           </div>
 
-          {/* Barra de filtros por coluna */}
-          <div className="flex flex-wrap gap-2 items-center border rounded-lg px-3 py-2">
-            <Input
-              placeholder="Produto (cód. ou descrição)"
-              value={fProduto}
-              onChange={e => setFProduto(e.target.value)}
-              className="h-7 text-xs w-48"
-            />
-            <Input
-              placeholder="End. Destino (ex: 12-3)"
-              value={fEndDestino}
-              onChange={e => setFEndDestino(e.target.value)}
-              className="h-7 text-xs w-36"
-            />
-            <Select value={fCurva || 'all'} onValueChange={v => setFCurva(v === 'all' ? '' : v)}>
-              <SelectTrigger className="h-7 text-xs w-24"><SelectValue placeholder="Curva" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Curva: todas</SelectItem>
-                <SelectItem value="A">A</SelectItem>
-                <SelectItem value="B">B</SelectItem>
-                <SelectItem value="C">C</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={fAcao || 'all'} onValueChange={v => setFAcao(v === 'all' ? '' : v)}>
-              <SelectTrigger className="h-7 text-xs w-32"><SelectValue placeholder="Ação" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Ação: todas</SelectItem>
-                <SelectItem value="Aumentar">Aumentar</SelectItem>
-                <SelectItem value="Reduzir">Reduzir</SelectItem>
-                <SelectItem value="OK">OK</SelectItem>
-                <SelectItem value="Calibrado">Calibrado</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={fFL || 'all'} onValueChange={v => setFFL(v === 'all' ? '' : v)}>
-              <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="FL" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">FL: todos</SelectItem>
-                <SelectItem value="sim">Apenas FL</SelectItem>
-                <SelectItem value="nao">Excluir FL</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={fEndOrigem || 'all'} onValueChange={v => setFEndOrigem(v === 'all' ? '' : v)}>
-              <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="End. Origem" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Origem: todos</SelectItem>
-                <SelectItem value="movidos">Apenas movidos</SelectItem>
-                <SelectItem value="parados">Sem movimento</SelectItem>
-              </SelectContent>
-            </Select>
-            <NumRange label="QTACESSO" min={fQtacMin}   max={fQtacMax}   onMin={setFQtacMin}   onMax={setFQtacMax} />
-            <NumRange label="Giro"     min={fGiroMin}   max={fGiroMax}   onMin={setFGiroMin}   onMax={setFGiroMax} />
-            <NumRange label="Cap."     min={fCapMin}    max={fCapMax}    onMin={setFCapMin}    onMax={setFCapMax} />
-            <NumRange label="Plt.At."  min={fPltAtMin}  max={fPltAtMax}  onMin={setFPltAtMin}  onMax={setFPltAtMax} />
-            <NumRange label="Sug."     min={fSugMin}    max={fSugMax}    onMin={setFSugMin}    onMax={setFSugMax} />
-            <NumRange label="Sug.Plt"  min={fSugPltMin} max={fSugPltMax} onMin={setFSugPltMin} onMax={setFSugPltMax} />
-            {hasFilters && (
+          {/* Barra slim — filtros agora ficam nos cabeçalhos da grid */}
+          {hasFilters && (
+            <div className="flex items-center">
               <button
-                className="text-[11px] text-muted-foreground hover:text-foreground underline ml-1"
+                className="text-[11px] text-muted-foreground hover:text-foreground underline"
                 onClick={limparFiltros}
               >
                 limpar filtros
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Legenda */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground items-center">
@@ -832,17 +816,141 @@ export default function SpRealocacao() {
                 <tr className="bg-slate-800 text-white text-[11px]">
                   <th className="py-2 px-1 w-12 text-center" title="Tap p/ selecionar / trocar"></th>
                   <th className="py-2 px-2 w-8 text-center">#</th>
-                  <th className="py-2 px-2 text-left whitespace-nowrap">End. Destino</th>
-                  <th className="py-2 px-2 text-left">Produto</th>
-                  <th className="py-2 px-2 w-12 text-center" title="Curva ABC por acesso ao picking">Curva</th>
-                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Acessos ao picking nos últimos 90 dias">QTACESSO</th>
-                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Giro médio diário em caixas">Giro/dia</th>
-                  <th className="py-2 px-2 text-center whitespace-nowrap">Ação</th>
-                  <th className="py-2 px-2 text-right whitespace-nowrap">Cap. Atual</th>
-                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Paletes na capacidade atual">Plt. Atual</th>
-                  <th className="py-2 px-2 text-right whitespace-nowrap">Sugestão</th>
-                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Sugestão em paletes">Sug. Plt</th>
-                  <th className="py-2 px-2 text-left whitespace-nowrap">End. Origem</th>
+                  <th className="py-2 px-2 text-left whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">
+                      End. Destino
+                      <HeaderFilter active={!!fEndDestino} label="End. Destino" dark>
+                        <Input
+                          placeholder="ex: 12-3"
+                          value={fEndDestino}
+                          onChange={e => setFEndDestino(e.target.value)}
+                          className="h-7 text-xs w-40"
+                        />
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 text-left">
+                    <span className="inline-flex items-center gap-1">
+                      Produto
+                      <HeaderFilter active={!!(fProduto || fFL)} label="Produto" dark>
+                        <div className="space-y-2 w-56">
+                          <Input
+                            placeholder="Código ou descrição…"
+                            value={fProduto}
+                            onChange={e => setFProduto(e.target.value)}
+                            className="h-7 text-xs"
+                          />
+                          <div>
+                            <div className="text-[10px] font-medium text-muted-foreground mb-1">Fora de linha (FL)</div>
+                            <Select value={fFL || 'all'} onValueChange={v => setFFL(v === 'all' ? '' : v)}>
+                              <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">Todos</SelectItem>
+                                <SelectItem value="sim">Apenas FL</SelectItem>
+                                <SelectItem value="nao">Excluir FL</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 w-12 text-center" title="Curva ABC por acesso ao picking">
+                    <span className="inline-flex items-center gap-1 justify-center">
+                      Curva
+                      <HeaderFilter active={!!fCurva} label="Curva" dark>
+                        <Select value={fCurva || 'all'} onValueChange={v => setFCurva(v === 'all' ? '' : v)}>
+                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todas</SelectItem>
+                            <SelectItem value="A">A</SelectItem>
+                            <SelectItem value="B">B</SelectItem>
+                            <SelectItem value="C">C</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Acessos ao picking nos últimos 90 dias">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      QTACESSO
+                      <HeaderFilter active={!!(fQtacMin || fQtacMax)} label="QTACESSO" dark>
+                        <NumRange label="QTAC" min={fQtacMin} max={fQtacMax} onMin={setFQtacMin} onMax={setFQtacMax} />
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Giro médio diário em caixas">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      Giro/dia
+                      <HeaderFilter active={!!(fGiroMin || fGiroMax)} label="Giro/dia" dark>
+                        <NumRange label="Giro" min={fGiroMin} max={fGiroMax} onMin={setFGiroMin} onMax={setFGiroMax} />
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 text-center whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1 justify-center">
+                      Ação
+                      <HeaderFilter active={!!fAcao} label="Ação" dark>
+                        <Select value={fAcao || 'all'} onValueChange={v => setFAcao(v === 'all' ? '' : v)}>
+                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todas</SelectItem>
+                            <SelectItem value="Aumentar">Aumentar</SelectItem>
+                            <SelectItem value="Reduzir">Reduzir</SelectItem>
+                            <SelectItem value="OK">OK</SelectItem>
+                            <SelectItem value="Calibrado">Calibrado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      Cap. Atual
+                      <HeaderFilter active={!!(fCapMin || fCapMax)} label="Cap. Atual" dark>
+                        <NumRange label="Cap." min={fCapMin} max={fCapMax} onMin={setFCapMin} onMax={setFCapMax} />
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Paletes na capacidade atual">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      Plt. Atual
+                      <HeaderFilter active={!!(fPltAtMin || fPltAtMax)} label="Plt. Atual" dark>
+                        <NumRange label="Plt." min={fPltAtMin} max={fPltAtMax} onMin={setFPltAtMin} onMax={setFPltAtMax} />
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      Sugestão
+                      <HeaderFilter active={!!(fSugMin || fSugMax)} label="Sugestão" dark>
+                        <NumRange label="Sug." min={fSugMin} max={fSugMax} onMin={setFSugMin} onMax={setFSugMax} />
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Sugestão em paletes">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      Sug. Plt
+                      <HeaderFilter active={!!(fSugPltMin || fSugPltMax)} label="Sug. Plt" dark>
+                        <NumRange label="Plt" min={fSugPltMin} max={fSugPltMax} onMin={setFSugPltMin} onMax={setFSugPltMax} />
+                      </HeaderFilter>
+                    </span>
+                  </th>
+                  <th className="py-2 px-2 text-left whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">
+                      End. Origem
+                      <HeaderFilter active={!!fEndOrigem} label="End. Origem" dark>
+                        <Select value={fEndOrigem || 'all'} onValueChange={v => setFEndOrigem(v === 'all' ? '' : v)}>
+                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="movidos">Apenas movidos</SelectItem>
+                            <SelectItem value="parados">Sem movimento</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </HeaderFilter>
+                    </span>
+                  </th>
                   <th className="py-2 px-1 w-8"></th>
                 </tr>
               </thead>
