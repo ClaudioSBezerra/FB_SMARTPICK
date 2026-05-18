@@ -396,6 +396,16 @@ function PropostasTable({
     )] as string[],
     [rows, filterDepto],
   )
+  // Status e curvas que de fato existem nos dados carregados — efeito Excel:
+  // o filtro só lista valores presentes (e some quando só há 1 opção).
+  const statusOptions = useMemo(() =>
+    [...new Set(rows.map(r => r.status).filter(Boolean))] as string[],
+    [rows],
+  )
+  const curvaOptions = useMemo(() =>
+    [...new Set(rows.map(r => r.classe_venda).filter(Boolean))] as string[],
+    [rows],
+  )
 
   const filtered = useMemo(() => {
     const capMin   = filterCapMin   !== '' ? Number(filterCapMin)   : null
@@ -583,26 +593,28 @@ function PropostasTable({
 
       {/* ── Filtros — Linha 3: restante + ações ── */}
       <div className="flex flex-wrap gap-2 items-center">
-        <Select value={filterCurva || 'all'} onValueChange={v => setFilterCurva(v === 'all' ? '' : v)}>
-          <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Curva" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as curvas</SelectItem>
-            <SelectItem value="A">A</SelectItem>
-            <SelectItem value="B">B</SelectItem>
-            <SelectItem value="C">C</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filterStatus || 'all'} onValueChange={v => setFilterStatus(v === 'all' ? '' : v)}>
-          <SelectTrigger className="h-7 text-xs w-32"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os status</SelectItem>
-            <SelectItem value="pendente">Pendente</SelectItem>
-            <SelectItem value="aprovada">Aprovada</SelectItem>
-            <SelectItem value="rejeitada">Rejeitada</SelectItem>
-            <SelectItem value="calibrado">Calibrado</SelectItem>
-            <SelectItem value="ignorado">Ignorado</SelectItem>
-          </SelectContent>
-        </Select>
+        {curvaOptions.length > 1 && (
+          <Select value={filterCurva || 'all'} onValueChange={v => setFilterCurva(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Curva" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as curvas</SelectItem>
+              {curvaOptions.sort().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {statusOptions.length > 1 && (
+          <Select value={filterStatus || 'all'} onValueChange={v => setFilterStatus(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-7 text-xs w-32"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os status</SelectItem>
+              {statusOptions.sort().map(s => (
+                <SelectItem key={s} value={s}>
+                  {({ pendente: 'Pendente', aprovada: 'Aprovada', rejeitada: 'Rejeitada', calibrado: 'Calibrado', ignorado: 'Ignorado' } as Record<string,string>)[s] ?? s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <NumRangeFilter label="Giro"  min={filterGiroMin}  max={filterGiroMax}  onMin={setFilterGiroMin}  onMax={setFilterGiroMax} />
         <NumRangeFilter label="Sug."  min={filterSugMin}   max={filterSugMax}   onMin={setFilterSugMin}   onMax={setFilterSugMax} />
         <NumRangeFilter label="Δ"     min={filterDeltaMin} max={filterDeltaMax} onMin={setFilterDeltaMin} onMax={setFilterDeltaMax} />
