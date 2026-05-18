@@ -478,7 +478,7 @@ function PropostasTable({
 
   return (
     <div className="space-y-2">
-      {/* ── Filtros ── */}
+      {/* ── Filtros — Linha 1: identificação (busca → seção) ── */}
       <div className="flex flex-wrap gap-2 items-center">
         <Input
           placeholder="Código ou descrição do produto..."
@@ -509,6 +509,10 @@ function PropostasTable({
             {secoes.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
           </SelectContent>
         </Select>
+      </div>
+
+      {/* ── Filtros — Linha 2: endereço & capacidades ── */}
+      <div className="flex flex-wrap gap-2 items-center">
         <Input
           placeholder="Endereço (ex: 12-3-5)"
           value={filterEnder}
@@ -574,6 +578,11 @@ function PropostasTable({
             </Select>
           </div>
         </TooltipProvider>
+        <NumRangeFilter label="Cap."  min={filterCapMin}   max={filterCapMax}   onMin={setFilterCapMin}   onMax={setFilterCapMax} />
+      </div>
+
+      {/* ── Filtros — Linha 3: restante + ações ── */}
+      <div className="flex flex-wrap gap-2 items-center">
         <Select value={filterCurva || 'all'} onValueChange={v => setFilterCurva(v === 'all' ? '' : v)}>
           <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Curva" /></SelectTrigger>
           <SelectContent>
@@ -594,7 +603,6 @@ function PropostasTable({
             <SelectItem value="ignorado">Ignorado</SelectItem>
           </SelectContent>
         </Select>
-        <NumRangeFilter label="Cap."  min={filterCapMin}   max={filterCapMax}   onMin={setFilterCapMin}   onMax={setFilterCapMax} />
         <NumRangeFilter label="Giro"  min={filterGiroMin}  max={filterGiroMax}  onMin={setFilterGiroMin}  onMax={setFilterGiroMax} />
         <NumRangeFilter label="Sug."  min={filterSugMin}   max={filterSugMax}   onMin={setFilterSugMin}   onMax={setFilterSugMax} />
         <NumRangeFilter label="Δ"     min={filterDeltaMin} max={filterDeltaMax} onMin={setFilterDeltaMin} onMax={setFilterDeltaMax} />
@@ -620,11 +628,11 @@ function PropostasTable({
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-[10px] text-green-700 border-green-200 hover:bg-green-50"
+              className="h-9 text-xs font-semibold px-4 text-green-700 border-green-300 hover:bg-green-50 ml-4"
               disabled={pendingIds.length === 0 || loteLoading}
               onClick={() => onAprovarLote(pendingIds)}
             >
-              <CheckCheck className="h-3.5 w-3.5 mr-1" />
+              <CheckCheck className="h-4 w-4 mr-1.5" />
               {hasFilters
                 ? `Aprovar filtrados (${pendingIds.length})`
                 : `Aprovar todos (${pendingIds.length})`}
