@@ -301,6 +301,38 @@ function SugestaoCell({
   )
 }
 
+// ─── Filtro de faixa numérica (min/max) ──────────────────────────────────────
+
+function NumRangeFilter({
+  label, min, max, onMin, onMax,
+}: {
+  label: string
+  min: string
+  max: string
+  onMin: (v: string) => void
+  onMax: (v: string) => void
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">{label}</label>
+      <Input
+        type="number"
+        placeholder="min"
+        value={min}
+        onChange={e => onMin(e.target.value)}
+        className="h-7 text-xs w-16"
+      />
+      <Input
+        type="number"
+        placeholder="máx"
+        value={max}
+        onChange={e => onMax(e.target.value)}
+        className="h-7 text-xs w-16"
+      />
+    </div>
+  )
+}
+
 // ─── Tabela de propostas ──────────────────────────────────────────────────────
 
 function PropostasTable({
@@ -323,6 +355,18 @@ function PropostasTable({
   const [filterGiroPR,   setFilterGiroPR]   = useState('')
   const [filterCapDias,  setFilterCapDias]  = useState('')
   const [filterPrio,     setFilterPrio]     = useState('') // '' | 'critico' | 'alto' | 'medio'
+  const [filterCurva,    setFilterCurva]    = useState('') // '' | 'A' | 'B' | 'C'
+  const [filterStatus,   setFilterStatus]   = useState('') // '' | 'pendente' | 'aprovada' | ...
+  const [filterCapMin,   setFilterCapMin]   = useState('')
+  const [filterCapMax,   setFilterCapMax]   = useState('')
+  const [filterGiroMin,  setFilterGiroMin]  = useState('')
+  const [filterGiroMax,  setFilterGiroMax]  = useState('')
+  const [filterSugMin,   setFilterSugMin]   = useState('')
+  const [filterSugMax,   setFilterSugMax]   = useState('')
+  const [filterDeltaMin, setFilterDeltaMin] = useState('')
+  const [filterDeltaMax, setFilterDeltaMax] = useState('')
+  const [filterPltMin,   setFilterPltMin]   = useState('')
+  const [filterPltMax,   setFilterPltMax]   = useState('')
   const [sortBy,  setSortBy]  = useState<'prioridade'|'delta'|'sugestao'|'capacidade'|'giro'>('prioridade')
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc')
   const [page, setPage] = useState(1)
@@ -353,8 +397,18 @@ function PropostasTable({
     [rows, filterDepto],
   )
 
-  const filtered = useMemo(() =>
-    rows.filter(r => {
+  const filtered = useMemo(() => {
+    const capMin   = filterCapMin   !== '' ? Number(filterCapMin)   : null
+    const capMax   = filterCapMax   !== '' ? Number(filterCapMax)   : null
+    const giroMin  = filterGiroMin  !== '' ? Number(filterGiroMin)  : null
+    const giroMax  = filterGiroMax  !== '' ? Number(filterGiroMax)  : null
+    const sugMin   = filterSugMin   !== '' ? Number(filterSugMin)   : null
+    const sugMax   = filterSugMax   !== '' ? Number(filterSugMax)   : null
+    const deltaMin = filterDeltaMin !== '' ? Number(filterDeltaMin) : null
+    const deltaMax = filterDeltaMax !== '' ? Number(filterDeltaMax) : null
+    const pltMin   = filterPltMin   !== '' ? Number(filterPltMin)   : null
+    const pltMax   = filterPltMax   !== '' ? Number(filterPltMax)   : null
+    return rows.filter(r => {
       if (filterSearch) {
         const q = filterSearch.toLowerCase()
         const matchCode = String(r.codprod).includes(q)
@@ -370,6 +424,24 @@ function PropostasTable({
       if (filterPrio === 'critico' && r.prioridade < 80) return false
       if (filterPrio === 'alto'    && r.prioridade < 60) return false
       if (filterPrio === 'medio'   && r.prioridade < 40) return false
+      if (filterCurva && r.classe_venda !== filterCurva) return false
+      if (filterStatus && r.status !== filterStatus) return false
+      if (capMin != null && (r.capacidade_atual ?? -Infinity) < capMin) return false
+      if (capMax != null && (r.capacidade_atual ??  Infinity) > capMax) return false
+      if (giroMin != null && (r.giro_dia_cx ?? -Infinity) < giroMin) return false
+      if (giroMax != null && (r.giro_dia_cx ??  Infinity) > giroMax) return false
+      const sug = r.sugestao_editada ?? r.sugestao_calibragem
+      if (sugMin != null && sug < sugMin) return false
+      if (sugMax != null && sug > sugMax) return false
+      if (deltaMin != null && (r.delta ?? 0) < deltaMin) return false
+      if (deltaMax != null && (r.delta ?? 0) > deltaMax) return false
+      if (pltMin != null || pltMax != null) {
+        const np = r.norma_palete
+        const plt = np && np > 0 ? Math.ceil(sug / np) : null
+        if (plt == null) return false
+        if (pltMin != null && plt < pltMin) return false
+        if (pltMax != null && plt > pltMax) return false
+      }
       return true
     }).sort((a, b) => {
       const dir = sortDir === 'desc' ? -1 : 1
@@ -383,11 +455,14 @@ function PropostasTable({
         }
       }
       return (valor(a) - valor(b)) * dir
-    }),
-    [rows, filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, filterPrio, sortBy, sortDir],
-  )
+    })
+  }, [rows, filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, filterPrio, filterCurva, filterStatus, filterCapMin, filterCapMax, filterGiroMin, filterGiroMax, filterSugMin, filterSugMax, filterDeltaMin, filterDeltaMax, filterPltMin, filterPltMax, sortBy, sortDir])
 
   const hasFilters = filterSearch || filterDepto || filterSecao || filterEnder || filterGiroCap || filterGiroPR || filterCapDias || filterPrio
+    || filterCurva || filterStatus
+    || filterCapMin || filterCapMax || filterGiroMin || filterGiroMax
+    || filterSugMin || filterSugMax || filterDeltaMin || filterDeltaMax
+    || filterPltMin || filterPltMax
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
@@ -399,7 +474,7 @@ function PropostasTable({
   // M5 fix: reset usa hash estável (length + primeiro id) em vez da referência
   // do array, evitando volta à página 1 em refetches cuja data é idêntica.
   const propostasKey = `${propostas.length}:${propostas[0]?.id ?? ''}`
-  useEffect(() => { setPage(1) }, [filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, filterPrio, propostasKey])
+  useEffect(() => { setPage(1) }, [filterSearch, filterDepto, filterSecao, filterEnder, filterGiroCap, filterGiroPR, filterCapDias, filterPrio, filterCurva, filterStatus, filterCapMin, filterCapMax, filterGiroMin, filterGiroMax, filterSugMin, filterSugMax, filterDeltaMin, filterDeltaMax, filterPltMin, filterPltMax, propostasKey])
 
   return (
     <div className="space-y-2">
@@ -499,10 +574,42 @@ function PropostasTable({
             </Select>
           </div>
         </TooltipProvider>
+        <Select value={filterCurva || 'all'} onValueChange={v => setFilterCurva(v === 'all' ? '' : v)}>
+          <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Curva" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as curvas</SelectItem>
+            <SelectItem value="A">A</SelectItem>
+            <SelectItem value="B">B</SelectItem>
+            <SelectItem value="C">C</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterStatus || 'all'} onValueChange={v => setFilterStatus(v === 'all' ? '' : v)}>
+          <SelectTrigger className="h-7 text-xs w-32"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="pendente">Pendente</SelectItem>
+            <SelectItem value="aprovada">Aprovada</SelectItem>
+            <SelectItem value="rejeitada">Rejeitada</SelectItem>
+            <SelectItem value="calibrado">Calibrado</SelectItem>
+            <SelectItem value="ignorado">Ignorado</SelectItem>
+          </SelectContent>
+        </Select>
+        <NumRangeFilter label="Cap."  min={filterCapMin}   max={filterCapMax}   onMin={setFilterCapMin}   onMax={setFilterCapMax} />
+        <NumRangeFilter label="Giro"  min={filterGiroMin}  max={filterGiroMax}  onMin={setFilterGiroMin}  onMax={setFilterGiroMax} />
+        <NumRangeFilter label="Sug."  min={filterSugMin}   max={filterSugMax}   onMin={setFilterSugMin}   onMax={setFilterSugMax} />
+        <NumRangeFilter label="Δ"     min={filterDeltaMin} max={filterDeltaMax} onMin={setFilterDeltaMin} onMax={setFilterDeltaMax} />
+        <NumRangeFilter label="Plt."  min={filterPltMin}   max={filterPltMax}   onMin={setFilterPltMin}   onMax={setFilterPltMax} />
         {hasFilters && (
           <button
             className="text-[11px] text-muted-foreground hover:text-foreground underline"
-            onClick={() => { setFilterSearch(''); setFilterDepto(''); setFilterSecao(''); setFilterEnder(''); setFilterGiroCap(''); setFilterGiroPR(''); setFilterCapDias(''); setFilterPrio('') }}
+            onClick={() => {
+              setFilterSearch(''); setFilterDepto(''); setFilterSecao(''); setFilterEnder('')
+              setFilterGiroCap(''); setFilterGiroPR(''); setFilterCapDias(''); setFilterPrio('')
+              setFilterCurva(''); setFilterStatus('')
+              setFilterCapMin(''); setFilterCapMax(''); setFilterGiroMin(''); setFilterGiroMax('')
+              setFilterSugMin(''); setFilterSugMax(''); setFilterDeltaMin(''); setFilterDeltaMax('')
+              setFilterPltMin(''); setFilterPltMax('')
+            }}
           >
             limpar filtros
           </button>

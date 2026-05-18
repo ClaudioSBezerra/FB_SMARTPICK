@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -368,6 +369,38 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[]) {
   setTimeout(() => win.print(), 400)
 }
 
+// ─── Filtro de faixa numérica (min/max) ──────────────────────────────────────
+
+function NumRange({
+  label, min, max, onMin, onMax,
+}: {
+  label: string
+  min: string
+  max: string
+  onMin: (v: string) => void
+  onMax: (v: string) => void
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <label className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">{label}</label>
+      <Input
+        type="number"
+        placeholder="min"
+        value={min}
+        onChange={e => onMin(e.target.value)}
+        className="h-7 text-xs w-14"
+      />
+      <Input
+        type="number"
+        placeholder="máx"
+        value={max}
+        onChange={e => onMax(e.target.value)}
+        className="h-7 text-xs w-14"
+      />
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SpRealocacao() {
@@ -388,14 +421,90 @@ export default function SpRealocacao() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [predioFilter, setPredioFilter] = useState<PredioFilter>('todos')
 
-  // Índices visíveis após filtro par/ímpar. Mapeiam para os índices reais em items/slots.
+  // ── Filtros por coluna (estilo Excel — visibilidade apenas, não altera ordem) ──
+  const [fProduto,    setFProduto]    = useState('')
+  const [fCurva,      setFCurva]      = useState('')   // '' | 'A' | 'B' | 'C'
+  const [fAcao,       setFAcao]       = useState('')   // '' | 'Aumentar' | 'Reduzir' | 'OK' | 'Calibrado'
+  const [fFL,         setFFL]         = useState('')   // '' | 'sim' | 'nao'
+  const [fEndDestino, setFEndDestino] = useState('')
+  const [fEndOrigem,  setFEndOrigem]  = useState('')   // '' | 'movidos' | 'parados'
+  const [fQtacMin,    setFQtacMin]    = useState('')
+  const [fQtacMax,    setFQtacMax]    = useState('')
+  const [fGiroMin,    setFGiroMin]    = useState('')
+  const [fGiroMax,    setFGiroMax]    = useState('')
+  const [fCapMin,     setFCapMin]     = useState('')
+  const [fCapMax,     setFCapMax]     = useState('')
+  const [fPltAtMin,   setFPltAtMin]   = useState('')
+  const [fPltAtMax,   setFPltAtMax]   = useState('')
+  const [fSugMin,     setFSugMin]     = useState('')
+  const [fSugMax,     setFSugMax]     = useState('')
+  const [fSugPltMin,  setFSugPltMin]  = useState('')
+  const [fSugPltMax,  setFSugPltMax]  = useState('')
+
+  const hasFilters = !!(fProduto || fCurva || fAcao || fFL || fEndDestino || fEndOrigem
+    || fQtacMin || fQtacMax || fGiroMin || fGiroMax || fCapMin || fCapMax
+    || fPltAtMin || fPltAtMax || fSugMin || fSugMax || fSugPltMin || fSugPltMax)
+
+  function limparFiltros() {
+    setFProduto(''); setFCurva(''); setFAcao(''); setFFL('')
+    setFEndDestino(''); setFEndOrigem('')
+    setFQtacMin(''); setFQtacMax(''); setFGiroMin(''); setFGiroMax('')
+    setFCapMin(''); setFCapMax(''); setFPltAtMin(''); setFPltAtMax('')
+    setFSugMin(''); setFSugMax(''); setFSugPltMin(''); setFSugPltMax('')
+  }
+
+  // Índices visíveis após filtros. Mapeiam para os índices reais em items/slots.
   // A reordenação/troca continua usando os índices reais — o filtro é só visual.
   const visibleIdx = items
     .map((_, i) => i)
     .filter(i => {
-      const pred = slots[i]?.predio ?? 0
-      if (predioFilter === 'par')   return pred % 2 === 0
-      if (predioFilter === 'impar') return pred % 2 !== 0
+      const slot = slots[i]
+      const it = items[i]
+      if (!slot || !it) return false
+
+      const pred = slot.predio ?? 0
+      if (predioFilter === 'par'   && pred % 2 !== 0) return false
+      if (predioFilter === 'impar' && pred % 2 === 0) return false
+
+      if (fProduto) {
+        const q = fProduto.toLowerCase()
+        const matchDesc = it.produto?.toLowerCase().includes(q) ?? false
+        const matchCode = String(it.codprod).includes(q)
+        if (!matchDesc && !matchCode) return false
+      }
+      if (fCurva && it.classe_venda !== fCurva) return false
+      if (fFL === 'sim' && it.fora_linha !== true) return false
+      if (fFL === 'nao' && it.fora_linha === true) return false
+
+      if (fAcao) {
+        const a = acaoFromDelta(it.delta, it.status).label
+        if (a !== fAcao) return false
+      }
+
+      if (fEndDestino && !fmt(slot).includes(fEndDestino)) return false
+      const moved = it.id !== slot.id
+      if (fEndOrigem === 'movidos' && !moved) return false
+      if (fEndOrigem === 'parados' && moved)  return false
+
+      const range = (v: number | null, mn: string, mx: string) => {
+        if (mn !== '' && (v ?? -Infinity) < Number(mn)) return false
+        if (mx !== '' && (v ??  Infinity) > Number(mx)) return false
+        return true
+      }
+      if (!range(it.qt_acesso_90,    fQtacMin,   fQtacMax))   return false
+      if (!range(it.giro_dia_cx,     fGiroMin,   fGiroMax))   return false
+      if (!range(it.capacidade_atual, fCapMin,    fCapMax))   return false
+
+      const np = it.norma_palete
+      const pltAtual = it.capacidade_atual != null && np && np > 0 ? it.capacidade_atual / np : null
+      if (!range(pltAtual, fPltAtMin, fPltAtMax)) return false
+
+      const sug = it.sugestao_editada ?? it.sugestao_calibragem
+      if (!range(sug, fSugMin, fSugMax)) return false
+
+      const sugPlt = np && np > 0 ? sug / np : null
+      if (!range(sugPlt, fSugPltMin, fSugPltMax)) return false
+
       return true
     })
 
@@ -598,7 +707,7 @@ export default function SpRealocacao() {
             <span className="text-muted-foreground">|</span>
             <span>
               {slots.length} slots
-              {predioFilter !== 'todos' && (
+              {(predioFilter !== 'todos' || hasFilters) && (
                 <span className="ml-1 text-muted-foreground">({visibleIdx.length} visíveis)</span>
               )}
             </span>
@@ -627,6 +736,71 @@ export default function SpRealocacao() {
             <span className="ml-auto text-muted-foreground text-[10px]">
               📱 Tap no ▢ p/ marcar (verde) → tap em outro ▢ p/ trocar &nbsp;·&nbsp; 🖱 Ou arraste a linha
             </span>
+          </div>
+
+          {/* Barra de filtros por coluna */}
+          <div className="flex flex-wrap gap-2 items-center border rounded-lg px-3 py-2">
+            <Input
+              placeholder="Produto (cód. ou descrição)"
+              value={fProduto}
+              onChange={e => setFProduto(e.target.value)}
+              className="h-7 text-xs w-48"
+            />
+            <Input
+              placeholder="End. Destino (ex: 12-3)"
+              value={fEndDestino}
+              onChange={e => setFEndDestino(e.target.value)}
+              className="h-7 text-xs w-36"
+            />
+            <Select value={fCurva || 'all'} onValueChange={v => setFCurva(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-24"><SelectValue placeholder="Curva" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Curva: todas</SelectItem>
+                <SelectItem value="A">A</SelectItem>
+                <SelectItem value="B">B</SelectItem>
+                <SelectItem value="C">C</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={fAcao || 'all'} onValueChange={v => setFAcao(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-32"><SelectValue placeholder="Ação" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Ação: todas</SelectItem>
+                <SelectItem value="Aumentar">Aumentar</SelectItem>
+                <SelectItem value="Reduzir">Reduzir</SelectItem>
+                <SelectItem value="OK">OK</SelectItem>
+                <SelectItem value="Calibrado">Calibrado</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={fFL || 'all'} onValueChange={v => setFFL(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="FL" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">FL: todos</SelectItem>
+                <SelectItem value="sim">Apenas FL</SelectItem>
+                <SelectItem value="nao">Excluir FL</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={fEndOrigem || 'all'} onValueChange={v => setFEndOrigem(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="End. Origem" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Origem: todos</SelectItem>
+                <SelectItem value="movidos">Apenas movidos</SelectItem>
+                <SelectItem value="parados">Sem movimento</SelectItem>
+              </SelectContent>
+            </Select>
+            <NumRange label="QTACESSO" min={fQtacMin}   max={fQtacMax}   onMin={setFQtacMin}   onMax={setFQtacMax} />
+            <NumRange label="Giro"     min={fGiroMin}   max={fGiroMax}   onMin={setFGiroMin}   onMax={setFGiroMax} />
+            <NumRange label="Cap."     min={fCapMin}    max={fCapMax}    onMin={setFCapMin}    onMax={setFCapMax} />
+            <NumRange label="Plt.At."  min={fPltAtMin}  max={fPltAtMax}  onMin={setFPltAtMin}  onMax={setFPltAtMax} />
+            <NumRange label="Sug."     min={fSugMin}    max={fSugMax}    onMin={setFSugMin}    onMax={setFSugMax} />
+            <NumRange label="Sug.Plt"  min={fSugPltMin} max={fSugPltMax} onMin={setFSugPltMin} onMax={setFSugPltMax} />
+            {hasFilters && (
+              <button
+                className="text-[11px] text-muted-foreground hover:text-foreground underline ml-1"
+                onClick={limparFiltros}
+              >
+                limpar filtros
+              </button>
+            )}
           </div>
 
           {/* Legenda */}
