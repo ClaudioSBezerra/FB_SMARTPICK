@@ -188,14 +188,14 @@ function SlotRow({
         </div>
         <div className="text-[10px] text-muted-foreground">{item.codprod}</div>
       </td>
-      {/* Curva — A=verde, B=amarelo, C=vermelho (por acesso ao picking) + % participação */}
-      <td className="py-2 px-2 text-center">
-        <div className="flex flex-col items-center gap-0.5">
-          <span className={`inline-flex items-center justify-center h-6 w-6 rounded text-[11px] font-bold ${curvaCls}`}>
+      {/* Curva — A=verde, B=amarelo, C=vermelho (por acesso ao picking) + % participação à direita */}
+      <td className="py-2 px-2">
+        <div className="flex items-center justify-center gap-1.5">
+          <span className={`inline-flex items-center justify-center h-6 w-6 rounded text-[11px] font-bold shrink-0 ${curvaCls}`}>
             {item.classe_venda ?? '—'}
           </span>
           {item.participacao != null && (
-            <span className="text-[9px] text-slate-500 leading-none whitespace-nowrap">{item.participacao.toFixed(2)}%</span>
+            <span className="text-sm font-bold text-slate-700 whitespace-nowrap">{item.participacao.toFixed(2)}%</span>
           )}
         </div>
       </td>
@@ -984,7 +984,7 @@ export default function SpRealocacao() {
           )}
 
           <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full min-w-[1320px]">
+            <table className="w-full min-w-[1380px]">
               <thead>
                 <tr className="bg-slate-800 text-white text-[11px]">
                   <th className="py-2 px-1 w-12 text-center" title="Tap p/ selecionar / trocar"></th>
@@ -1028,7 +1028,7 @@ export default function SpRealocacao() {
                       </HeaderFilter>
                     </span>
                   </th>
-                  <th className="py-2 px-2 w-12 text-center" title="Curva ABC por acesso ao picking">
+                  <th className="py-2 px-2 w-24 text-center" title="Curva ABC por acesso ao picking — letra + % participação">
                     <span className="inline-flex items-center gap-1 justify-center">
                       <SortLabel label="Curva" col="curva" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!(fCurva || fPartMin || fPartMax)} label="Curva / % participação" dark>
