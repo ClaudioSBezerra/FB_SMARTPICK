@@ -102,6 +102,7 @@ func processNextJob(db *sql.DB) {
 // csvCols agrupa os índices de colunas detectados pelo cabeçalho do CSV.
 // Suporta múltiplos formatos WMS (com ou sem QTUNITCX).
 type csvCols struct {
+	tipoRel                                         int
 	codFilial, codEpto, departamento, codSec, secao int
 	codProd, produto, embalagem, qtUnitCx, foraLinha int
 	rua, predio, apto                               int
@@ -127,6 +128,7 @@ func detectCols(header []string) csvCols {
 		return -1
 	}
 	return csvCols{
+		tipoRel:      get("TIPO_REL"),
 		codFilial:    get("CODFILIAL"),
 		codEpto:      get("CODEPTO"),
 		departamento: get("DEPARTAMENTO"),
@@ -229,11 +231,12 @@ func parseAndInsertCSV(db *sql.DB, jobID, filePath, _ string, filialID int) (ok,
 				participacao, acumulado,
 				classe_venda, classe_venda_dias,
 				qt_giro_dia, qt_acesso_90, qt_mov_picking_90, qt_dias, qt_prod, qt_prod_cx,
-				med_venda_cx, med_venda_dias, med_dias_estoque, med_venda_cx_aa, unidade_master
+				med_venda_cx, med_venda_dias, med_dias_estoque, med_venda_cx_aa, unidade_master,
+				tipo_rel
 			) VALUES (
 				$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
 				$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,
-				$28,$29,$30,$31,$32
+				$28,$29,$30,$31,$32,$33
 			)
 		`)
 		if stmtErr != nil {
@@ -365,6 +368,7 @@ func rowToArgs(jobID string, filialID int, row []string, cols csvCols) []any {
 		parseFloat(cols.medDiasEst),   // $30 med_dias_estoque
 		parseFloat(cols.medVendaCxAA), // $31 med_venda_cx_aa
 		parseInt(cols.qtUnitCx),       // $32 unidade_master (QTUNITCX; nil quando ausente)
+		nilIfEmpty(NormalizeTipoRel(get(cols.tipoRel))), // $33 tipo_rel (CALIBRACAO|REALOCACAO)
 	}
 }
 
@@ -373,4 +377,19 @@ func nilIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// NormalizeTipoRel canoniza o TIPO_REL: maiúsculas, sem acento, sem espaços.
+// "Calibração" → "CALIBRACAO", "Realocação" → "REALOCACAO". Vazio → "".
+func NormalizeTipoRel(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	repl := strings.NewReplacer(
+		"Á", "A", "À", "A", "Â", "A", "Ã", "A", "Ä", "A",
+		"É", "E", "Ê", "E", "È", "E", "Ë", "E",
+		"Í", "I", "Î", "I", "Ì", "I", "Ï", "I",
+		"Ó", "O", "Ô", "O", "Õ", "O", "Ò", "O", "Ö", "O",
+		"Ú", "U", "Û", "U", "Ù", "U", "Ü", "U",
+		"Ç", "C", "Ñ", "N",
+	)
+	return repl.Replace(s)
 }

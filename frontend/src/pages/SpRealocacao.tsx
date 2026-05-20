@@ -666,7 +666,7 @@ export default function SpRealocacao() {
     queryKey: ['sp-ruas', cdID],
     enabled: !!cdID,
     queryFn: async () => {
-      const r = await fetch(`/api/sp/propostas/ruas?cd_id=${cdID}`, { headers })
+      const r = await fetch(`/api/sp/propostas/ruas?cd_id=${cdID}&tipo_rel=REALOCACAO`, { headers })
       if (!r.ok) throw new Error()
       return r.json()
     },
@@ -677,7 +677,8 @@ export default function SpRealocacao() {
     if (!cdID || !ruaSel) return
     setLoading(true)
     try {
-      const p = new URLSearchParams({ cd_id: cdID, rua: ruaSel, limit: '9999' })
+      // Painel de Realocação mostra apenas propostas do processo REALOCACAO.
+      const p = new URLSearchParams({ cd_id: cdID, rua: ruaSel, tipo_rel: 'REALOCACAO', limit: '9999' })
       const r = await fetch(`/api/sp/propostas?${p}`, { headers })
       if (!r.ok) throw new Error('Erro ao carregar propostas')
       const data: Slot[] = await r.json()

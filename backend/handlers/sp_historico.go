@@ -108,6 +108,7 @@ func FecharHistoricoAuto(db *sql.DB, historicoID int64, jobID string) {
 				COUNT(*) FILTER (WHERE classe_venda NOT IN ('A','B') OR classe_venda IS NULL) AS curva_c
 			FROM smartpick.sp_propostas
 			WHERE job_id = $1
+			  AND tipo_rel = 'CALIBRACAO'
 		) sub
 		WHERE h.id = $2
 	`, jobID, historicoID)
@@ -248,6 +249,7 @@ func SpHistoricoFecharHandler(db *sql.DB) http.HandlerFunc {
 					COUNT(*) FILTER (WHERE classe_venda NOT IN ('A','B') OR classe_venda IS NULL) AS curva_c
 				FROM smartpick.sp_propostas
 				WHERE job_id = $2
+				  AND tipo_rel = 'CALIBRACAO'
 			) sub
 			WHERE h.id = $3
 		`, time.Now().UTC(), jobID, historicoID)
@@ -335,7 +337,7 @@ func SpComplianceHandler(db *sql.DB) http.HandlerFunc {
 			JOIN smartpick.sp_filiais f ON f.id = cd.filial_id
 			LEFT JOIN smartpick.sp_historico h ON h.cd_id = cd.id AND h.empresa_id = $1
 			LEFT JOIN smartpick.sp_csv_jobs j ON j.cd_id = cd.id AND j.empresa_id = $1
-			LEFT JOIN smartpick.sp_propostas p ON p.cd_id = cd.id AND p.empresa_id = $1
+			LEFT JOIN smartpick.sp_propostas p ON p.cd_id = cd.id AND p.empresa_id = $1 AND p.tipo_rel = 'CALIBRACAO'
 			WHERE cd.empresa_id = $1 AND cd.ativo = true
 		`
 		args := []any{spCtx.EmpresaID}

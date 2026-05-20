@@ -89,6 +89,7 @@ func SpReincidenciaHandler(db *sql.DB) http.HandlerFunc {
 					AND j.empresa_id = $1
 					AND j.status = 'done'
 				WHERE e.capacidade IS NOT NULL
+				  AND e.tipo_rel = 'CALIBRACAO'
 				GROUP BY j.cd_id, e.codprod, e.rua, e.predio, e.apto, e.capacidade
 				HAVING COUNT(DISTINCT j.id) >= $2
 			),
@@ -102,6 +103,7 @@ func SpReincidenciaHandler(db *sql.DB) http.HandlerFunc {
 						WHERE p.codprod    = ea.codprod
 						  AND p.cd_id      = ea.cd_id
 						  AND p.empresa_id = $1
+						  AND p.tipo_rel   = 'CALIBRACAO'
 						  AND p.rua        IS NOT DISTINCT FROM ea.rua
 						  AND p.predio     IS NOT DISTINCT FROM ea.predio
 						  AND p.apto       IS NOT DISTINCT FROM ea.apto
@@ -116,6 +118,7 @@ func SpReincidenciaHandler(db *sql.DB) http.HandlerFunc {
 						WHERE p.codprod    = ea.codprod
 						  AND p.cd_id      = ea.cd_id
 						  AND p.empresa_id = $1
+						  AND p.tipo_rel   = 'CALIBRACAO'
 						  AND p.rua        IS NOT DISTINCT FROM ea.rua
 						  AND p.predio     IS NOT DISTINCT FROM ea.predio
 						  AND p.apto       IS NOT DISTINCT FROM ea.apto

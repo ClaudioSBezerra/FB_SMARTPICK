@@ -98,6 +98,7 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 		jobIDStr := q.Get("job_id")
 		tipo     := q.Get("tipo")   // falta | espaco | "" (todos)
 		status   := q.Get("status") // pendente | aprovada | rejeitada | "" (todos)
+		tipoRel  := services.NormalizeTipoRel(q.Get("tipo_rel")) // CALIBRACAO | REALOCACAO | "" (todos)
 		limitStr := q.Get("limit")
 
 		limit := 200
@@ -161,6 +162,11 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 		if status != "" {
 			query += fmt.Sprintf(" AND p.status = $%d", idx)
 			args = append(args, status)
+			idx++
+		}
+		if tipoRel != "" {
+			query += fmt.Sprintf(" AND p.tipo_rel = $%d", idx)
+			args = append(args, tipoRel)
 			idx++
 		}
 		switch tipo {
@@ -239,6 +245,7 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 		q := r.URL.Query()
 		cdIDStr := q.Get("cd_id")
 		jobIDStr := q.Get("job_id")
+		tipoRel  := services.NormalizeTipoRel(q.Get("tipo_rel"))
 
 		filter := "WHERE empresa_id = $1"
 		args := []interface{}{spCtx.EmpresaID}
@@ -252,6 +259,12 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 		if jobIDStr != "" {
 			filter += fmt.Sprintf(" AND job_id = $%d", idx)
 			args = append(args, jobIDStr)
+			idx++
+		}
+		if tipoRel != "" {
+			filter += fmt.Sprintf(" AND tipo_rel = $%d", idx)
+			args = append(args, tipoRel)
+			idx++
 		}
 
 		query := `
@@ -710,6 +723,7 @@ func SpPropostasRuasHandler(db *sql.DB) http.HandlerFunc {
 		if jobIDStr != "" {
 			filter += fmt.Sprintf(" AND job_id = $%d", idx)
 			args = append(args, jobIDStr)
+			idx++
 		} else {
 			filter += fmt.Sprintf(" AND cd_id = $%d", idx)
 			v, err := strconv.Atoi(cdIDStr)
@@ -718,6 +732,14 @@ func SpPropostasRuasHandler(db *sql.DB) http.HandlerFunc {
 				return
 			}
 			args = append(args, v)
+			idx++
+		}
+
+		// Filtra por processo (CALIBRACAO|REALOCACAO) quando informado
+		if tipoRel := services.NormalizeTipoRel(q.Get("tipo_rel")); tipoRel != "" {
+			filter += fmt.Sprintf(" AND tipo_rel = $%d", idx)
+			args = append(args, tipoRel)
+			idx++
 		}
 
 		rows, err := db.Query(

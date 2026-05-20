@@ -123,6 +123,7 @@ func SpResultadosHandler(db *sql.DB) http.HandlerFunc {
 				       COALESCE(SUM(e.qt_acesso_90), 0) AS acessos_total
 				FROM smartpick.sp_enderecos e
 				WHERE e.job_id IN (SELECT job_id FROM jobs_top4)
+				  AND e.tipo_rel = 'CALIBRACAO'
 				GROUP BY e.job_id
 			),
 			emerg_agg AS (
@@ -130,9 +131,11 @@ func SpResultadosHandler(db *sql.DB) http.HandlerFunc {
 				       COALESCE(SUM(e.qt_acesso_90), 0) AS acessos_emergencia
 				FROM smartpick.sp_enderecos e
 				WHERE e.job_id IN (SELECT job_id FROM jobs_top4)
+				  AND e.tipo_rel = 'CALIBRACAO'
 				  AND EXISTS (
 				      SELECT 1 FROM smartpick.sp_propostas p
 				      WHERE p.job_id = e.job_id AND p.endereco_id = e.id AND p.delta > 0
+				        AND p.tipo_rel = 'CALIBRACAO'
 				  )
 				GROUP BY e.job_id
 			),
@@ -144,6 +147,7 @@ func SpResultadosHandler(db *sql.DB) http.HandlerFunc {
 				       COALESCE(SUM(ABS(p.delta)) FILTER (WHERE p.delta < 0 AND p.status = 'aprovada'), 0) AS caixas_aprovadas
 				FROM smartpick.sp_propostas p
 				WHERE p.job_id IN (SELECT job_id FROM jobs_top4)
+				  AND p.tipo_rel = 'CALIBRACAO'
 				GROUP BY p.job_id
 			)
 			SELECT
@@ -345,6 +349,7 @@ func SpResultadosHistoricoHandler(db *sql.DB) http.HandlerFunc {
 				       COUNT(*) AS total_enderecos
 				FROM smartpick.sp_enderecos e
 				WHERE e.job_id IN (SELECT job_id FROM todos_jobs)
+				  AND e.tipo_rel = 'CALIBRACAO'
 				GROUP BY e.job_id
 			),
 			prop_agg AS (
@@ -354,6 +359,7 @@ func SpResultadosHistoricoHandler(db *sql.DB) http.HandlerFunc {
 				       COUNT(*) FILTER (WHERE p.delta < 0)                               AS ofensores_espaco
 				FROM smartpick.sp_propostas p
 				WHERE p.job_id IN (SELECT job_id FROM todos_jobs)
+				  AND p.tipo_rel = 'CALIBRACAO'
 				GROUP BY p.job_id
 			)
 			SELECT

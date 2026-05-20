@@ -1112,7 +1112,8 @@ export default function SpDashboard() {
   }, [doneJobs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Resumo ────────────────────────────────────────────────────────────────
-  const resumoParams = new URLSearchParams()
+  // Contadores do painel de Calibragem refletem apenas o processo CALIBRACAO.
+  const resumoParams = new URLSearchParams({ tipo_rel: 'CALIBRACAO' })
   if (cdID)  resumoParams.set('cd_id', cdID)
   if (jobID) resumoParams.set('job_id', jobID)
 
@@ -1128,7 +1129,8 @@ export default function SpDashboard() {
 
   // ── Propostas ─────────────────────────────────────────────────────────────
   function buildPropostasUrl(tipo: 'falta' | 'espaco' | 'calibrado' | 'curva_a_mantida', status?: string) {
-    const p = new URLSearchParams({ tipo, limit: '99999' })
+    // Painel de Calibragem mostra apenas propostas do processo CALIBRACAO.
+    const p = new URLSearchParams({ tipo, tipo_rel: 'CALIBRACAO', limit: '99999' })
     if (status) p.set('status', status)
     if (cdID)   p.set('cd_id', cdID)
     if (jobID)  p.set('job_id', jobID)
@@ -1187,7 +1189,7 @@ export default function SpDashboard() {
     enabled: !!(cdID || jobID) && activeTab === 'todos',
     staleTime: 60_000,
     queryFn: async () => {
-      const p = new URLSearchParams({ limit: '99999' })
+      const p = new URLSearchParams({ tipo_rel: 'CALIBRACAO', limit: '99999' })
       if (cdID)  p.set('cd_id', cdID)
       if (jobID) p.set('job_id', jobID)
       const r = await fetch(`/api/sp/propostas?${p}`, { headers })

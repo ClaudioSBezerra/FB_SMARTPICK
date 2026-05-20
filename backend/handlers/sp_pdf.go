@@ -92,7 +92,7 @@ func SpPDFCalibracaoHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		filter := "WHERE p.empresa_id = $1 AND p.status = 'aprovada'"
+		filter := "WHERE p.empresa_id = $1 AND p.status = 'aprovada' AND p.tipo_rel = 'CALIBRACAO'"
 		args   := []any{spCtx.EmpresaID}
 		idx    := 2
 

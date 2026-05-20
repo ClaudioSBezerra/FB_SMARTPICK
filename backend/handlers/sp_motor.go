@@ -59,6 +59,7 @@ type enderecoDB struct {
 	UnidadeMaster   *int
 	QtAcesso90      *int     // QTACESSO_PICKING_PERIODO_90 — acessos ao picking em 90 dias
 	QtDias          *int     // QT_DIAS — dias do período de análise
+	TipoRel         *string  // CALIBRACAO | REALOCACAO — roteia p/ o painel correto
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -187,7 +188,7 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 		SELECT id, cod_filial, codprod, COALESCE(produto,''), rua, predio, apto,
 		       COALESCE(classe_venda,''), classe_venda_dias, capacidade, norma_palete,
 		       med_venda_cx, med_venda_dias, med_dias_estoque, med_venda_cx_aa, unidade_master,
-		       qt_acesso_90, qt_dias
+		       qt_acesso_90, qt_dias, tipo_rel
 		FROM smartpick.sp_enderecos
 		WHERE job_id = $1
 	`, jobID)
@@ -209,6 +210,7 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 		Sugestao          int
 		Justificativa     string
 		Status            string // 'pendente' | 'calibrado'
+		TipoRel           *string
 	}
 
 	var batch []proposta
@@ -229,8 +231,8 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 			INSERT INTO smartpick.sp_propostas
 			  (job_id, endereco_id, empresa_id, cd_id,
 			   cod_filial, codprod, produto, rua, predio, apto,
-			   classe_venda, capacidade_atual, sugestao_calibragem, justificativa, status)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+			   classe_venda, capacidade_atual, sugestao_calibragem, justificativa, status, tipo_rel)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 		`)
 		if err != nil {
 			erros += len(batch)
@@ -243,7 +245,7 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 			_, execErr := stmt.Exec(
 				jobID, p.EnderecoID, empresaID, cdID,
 				p.CodFilial, p.CodProd, p.Produto, p.Rua, p.Predio, p.Apto,
-				nilIfEmptyStr(p.ClasseVenda), p.CapacidadeAtual, p.Sugestao, p.Justificativa, p.Status,
+				nilIfEmptyStr(p.ClasseVenda), p.CapacidadeAtual, p.Sugestao, p.Justificativa, p.Status, p.TipoRel,
 			)
 			if execErr != nil {
 				log.Printf("[Motor] erro ao inserir proposta: %v", execErr)
@@ -264,7 +266,7 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 			&e.ClasseVendaDias, &e.Capacidade, &e.NormaPalete,
 			&e.MedVendaCx, &e.MedVendaDias,
 			&e.MedDiasEstoque, &e.MedVendaCxAA, &e.UnidadeMaster,
-			&e.QtAcesso90, &e.QtDias,
+			&e.QtAcesso90, &e.QtDias, &e.TipoRel,
 		); err != nil {
 			erros++
 			continue
@@ -299,6 +301,7 @@ func executarMotor(db *sql.DB, jobID string, cdID int, empresaID string, params 
 			Sugestao:        sugestao,
 			Justificativa:   justificativa,
 			Status:          status,
+			TipoRel:         e.TipoRel,
 		})
 
 		if len(batch) >= batchSize {

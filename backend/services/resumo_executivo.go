@@ -111,6 +111,7 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		  COUNT(*) FILTER (WHERE status = 'pendente')
 		  FROM smartpick.sp_propostas
 		 WHERE cd_id = $1
+		   AND tipo_rel = 'CALIBRACAO'
 		   AND created_at >= $2 AND created_at < $3
 	`, cdID, inicio, fimExclusivo).Scan(&k.TotalPropostas, &k.TotalAprovadas, &k.TotalRejeitadas, &k.TotalPendentes); err != nil {
 		log.Printf("[resumo] erro totais: %v", err)
@@ -127,6 +128,7 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		  COUNT(*) FILTER (WHERE delta = 0)
 		  FROM smartpick.sp_propostas
 		 WHERE cd_id = $1
+		   AND tipo_rel = 'CALIBRACAO'
 		   AND created_at >= $2 AND created_at < $3
 	`, cdID, inicio, fimExclusivo).Scan(&k.Ampliar, &k.Reduzir, &k.Calibrados)
 
@@ -134,6 +136,7 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 	_ = db.QueryRow(`
 		SELECT COUNT(*) FROM smartpick.sp_propostas
 		 WHERE cd_id = $1
+		   AND tipo_rel = 'CALIBRACAO'
 		   AND classe_venda = 'A'
 		   AND delta < 0
 		   AND status = 'pendente'
@@ -154,7 +157,7 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		SELECT COALESCE(mr.descricao, 'Sem motivo'), COUNT(*) AS qtd
 		  FROM smartpick.sp_propostas p
 	     LEFT JOIN smartpick.sp_tipo_rejeicao mr ON mr.id = p.motivo_rejeicao_id
-		 WHERE p.cd_id = $1 AND p.status = 'rejeitada'
+		 WHERE p.cd_id = $1 AND p.tipo_rel = 'CALIBRACAO' AND p.status = 'rejeitada'
 		   AND p.created_at >= $2 AND p.created_at < $3
 		 GROUP BY mr.descricao
 		 ORDER BY qtd DESC
@@ -175,7 +178,7 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		SELECT COALESCE(e.departamento, '—'), COUNT(*) AS qtd
 		  FROM smartpick.sp_propostas p
 		  JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
-		 WHERE p.cd_id = $1 AND p.status = 'pendente'
+		 WHERE p.cd_id = $1 AND p.tipo_rel = 'CALIBRACAO' AND p.status = 'pendente'
 		   AND p.created_at >= $2 AND p.created_at < $3
 		 GROUP BY e.departamento
 		 ORDER BY qtd DESC
@@ -196,7 +199,7 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		SELECT p.codprod, p.produto, COALESCE(e.departamento,'—'), COALESCE(p.classe_venda,'—'), p.delta
 		  FROM smartpick.sp_propostas p
 		  JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
-		 WHERE p.cd_id = $1 AND p.status = 'pendente'
+		 WHERE p.cd_id = $1 AND p.tipo_rel = 'CALIBRACAO' AND p.status = 'pendente'
 		   AND p.created_at >= $2 AND p.created_at < $3
 		   AND p.classe_venda = 'A'
 		 ORDER BY ABS(p.delta) DESC
