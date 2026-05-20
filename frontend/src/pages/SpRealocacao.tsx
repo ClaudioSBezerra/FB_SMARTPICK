@@ -37,6 +37,10 @@ interface Slot {
 
 type PredioFilter = 'todos' | 'par' | 'impar'
 
+// Colunas ordenáveis na Realocação ('' = ordem física padrão)
+type SortKey = '' | 'destino' | 'produto' | 'curva' | 'qtacesso' | 'giro'
+  | 'acao' | 'cap' | 'pltAtual' | 'sugestao' | 'sugPlt' | 'origem'
+
 // Cores da curva ABC por acesso: A=verde (alta rotatividade), B=amarelo, C=vermelho
 const curvaBadge: Record<string, string> = {
   A: 'bg-green-600 text-white',
@@ -74,7 +78,7 @@ const OBS_MAX = 70
 
 function SlotRow({
   item, slot, index, moved, total, selected, pendingSwap, onSelect,
-  qtacessoMax,
+  qtacessoMax, sortActive,
   observacao, onObservacaoChange,
   onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
@@ -83,6 +87,7 @@ function SlotRow({
   item: Slot; slot: Slot; index: number; moved: boolean; total: number
   selected: boolean; pendingSwap: boolean; onSelect: () => void
   qtacessoMax: number
+  sortActive: boolean   // ordenado por coluna → drag/setas desabilitados
   observacao: string
   onObservacaoChange: (value: string) => void
   onMoveUp: () => void; onMoveDown: () => void
@@ -109,10 +114,10 @@ function SlotRow({
   return (
     <tr
       data-row-index={index}
-      draggable
-      onDragStart={() => onDragStart(index)}
-      onDragOver={e => onDragOver(e, index)}
-      onDrop={() => onDrop(index)}
+      draggable={!sortActive}
+      onDragStart={() => { if (!sortActive) onDragStart(index) }}
+      onDragOver={e => { if (!sortActive) onDragOver(e, index) }}
+      onDrop={() => { if (!sortActive) onDrop(index) }}
       onDragEnd={onDragEnd}
       className={[
         'border-b text-xs select-none transition-colors',
@@ -268,22 +273,22 @@ function SlotRow({
           </PopoverContent>
         </Popover>
       </td>
-      {/* Botões ↑↓ (alternativa touch) */}
+      {/* Botões ↑↓ (alternativa touch) — desabilitados quando ordenado por coluna */}
       <td className="py-1 px-1">
         <div className="flex flex-col gap-0.5">
           <button
             className="h-5 w-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-25"
-            disabled={index === 0}
+            disabled={sortActive || index === 0}
             onClick={onMoveUp}
-            title="Trocar endereço com o produto acima"
+            title={sortActive ? 'Volte à ordem física para mover' : 'Trocar endereço com o produto acima'}
           >
             <ArrowUp className="h-3 w-3" />
           </button>
           <button
             className="h-5 w-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-25"
-            disabled={index === total - 1}
+            disabled={sortActive || index === total - 1}
             onClick={onMoveDown}
-            title="Trocar endereço com o produto abaixo"
+            title={sortActive ? 'Volte à ordem física para mover' : 'Trocar endereço com o produto abaixo'}
           >
             <ArrowDown className="h-3 w-3" />
           </button>
@@ -471,6 +476,30 @@ function HeaderFilter({
   )
 }
 
+// ─── Cabeçalho clicável p/ ordenar (só visualização) ─────────────────────────
+
+function SortLabel({
+  label, col, sortKey, sortDir, onSort,
+}: {
+  label: React.ReactNode
+  col: Exclude<SortKey, ''>
+  sortKey: SortKey
+  sortDir: 'asc' | 'desc'
+  onSort: (c: Exclude<SortKey, ''>) => void
+}) {
+  const active = sortKey === col
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(col)}
+      title="Clique para ordenar (só visualização — não move nada)"
+      className={`inline-flex items-center gap-0.5 hover:text-white transition-colors ${active ? 'font-bold underline' : ''}`}
+    >
+      {label}{active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+    </button>
+  )
+}
+
 // ─── Filtro de faixa numérica (min/max) ──────────────────────────────────────
 
 function NumRange({
@@ -558,6 +587,17 @@ export default function SpRealocacao() {
     || fQtacMin || fQtacMax || fGiroMin || fGiroMax || fCapMin || fCapMax
     || fPltAtMin || fPltAtMax || fSugMin || fSugMax || fSugPltMin || fSugPltMax)
 
+  // Ordenação por coluna — SÓ visualização (não move nada). Quando ativa,
+  // arrastar e setas ↑↓ ficam desabilitados (dependem da posição física).
+  const [sortKey, setSortKey] = useState<SortKey>('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const sortActive = sortKey !== ''
+  function toggleSort(key: Exclude<SortKey, ''>) {
+    if (sortKey !== key) { setSortKey(key); setSortDir('asc'); return }
+    if (sortDir === 'asc') { setSortDir('desc'); return }
+    setSortKey(''); setSortDir('asc')   // 3º clique volta à ordem física
+  }
+
   function limparFiltros() {
     setFProduto(''); setFCurva(''); setFAcao(''); setFFL('')
     setFEndDestino(''); setFEndOrigem('')
@@ -620,6 +660,38 @@ export default function SpRealocacao() {
 
       return true
     })
+
+  // Aplica ordenação por coluna (só visualização). Sem sort → ordem física.
+  const orderedIdx = (() => {
+    if (!sortActive) return visibleIdx
+    const dir = sortDir === 'asc' ? 1 : -1
+    const num = (v: number | null | undefined) => v ?? -Infinity
+    const val = (i: number): number | string => {
+      const it = items[i], slot = slots[i]
+      const np = it.norma_palete
+      switch (sortKey) {
+        case 'destino':  return (slot.rua ?? 0) * 1e6 + (slot.predio ?? 0) * 1e3 + (slot.apto ?? 0)
+        case 'produto':  return it.produto?.toLowerCase() ?? ''
+        case 'curva':    return it.classe_venda ?? 'ZZ'
+        case 'qtacesso': return num(it.qt_acesso_90)
+        case 'giro':     return num(it.giro_dia_cx)
+        case 'acao':     return it.delta ?? 0
+        case 'cap':      return num(it.capacidade_atual)
+        case 'pltAtual': return it.capacidade_atual != null && np && np > 0 ? it.capacidade_atual / np : -Infinity
+        case 'sugestao': return it.sugestao_editada ?? it.sugestao_calibragem ?? 0
+        case 'sugPlt':   return np && np > 0 ? (it.sugestao_editada ?? it.sugestao_calibragem) / np : -Infinity
+        case 'origem':   return it.id !== slot.id ? 1 : 0  // movidos primeiro/depois
+        default:         return 0
+      }
+    }
+    return [...visibleIdx].sort((a, b) => {
+      const va = val(a), vb = val(b)
+      if (typeof va === 'string' || typeof vb === 'string') {
+        return String(va).localeCompare(String(vb)) * dir
+      }
+      return (va - vb) * dir
+    })
+  })()
 
   // Heat map p/ QTACESSO usa o máximo do dataset visível
   const qtacessoMax = items.reduce((acc, it) => Math.max(acc, it.qt_acesso_90 ?? 0), 0)
@@ -887,6 +959,19 @@ export default function SpRealocacao() {
             <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-600 text-white">FL</span>Fora de Linha</span>
           </div>
 
+          {sortActive && (
+            <div className="flex items-center gap-2 text-[11px] rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-900">
+              <span className="font-semibold">Modo visualização (ordenado)</span>
+              <span>— arrastar e setas ↑↓ desabilitados. O tap-trocar continua funcionando.</span>
+              <button
+                className="ml-auto underline font-medium hover:text-amber-950"
+                onClick={() => { setSortKey(''); setSortDir('asc') }}
+              >
+                voltar à ordem física
+              </button>
+            </div>
+          )}
+
           <div className="overflow-x-auto border rounded-lg">
             <table className="w-full min-w-[1320px]">
               <thead>
@@ -895,7 +980,7 @@ export default function SpRealocacao() {
                   <th className="py-2 px-2 w-8 text-center">#</th>
                   <th className="py-2 px-2 text-left whitespace-nowrap">
                     <span className="inline-flex items-center gap-1">
-                      End. Destino
+                      <SortLabel label="End. Destino" col="destino" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!fEndDestino} label="End. Destino" dark>
                         <Input
                           placeholder="ex: 12-3"
@@ -908,7 +993,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-left">
                     <span className="inline-flex items-center gap-1">
-                      Produto
+                      <SortLabel label="Produto" col="produto" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!(fProduto || fFL)} label="Produto" dark>
                         <div className="space-y-2 w-56">
                           <Input
@@ -934,7 +1019,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 w-12 text-center" title="Curva ABC por acesso ao picking">
                     <span className="inline-flex items-center gap-1 justify-center">
-                      Curva
+                      <SortLabel label="Curva" col="curva" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!fCurva} label="Curva" dark>
                         <Select value={fCurva || 'all'} onValueChange={v => setFCurva(v === 'all' ? '' : v)}>
                           <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
@@ -950,7 +1035,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-right whitespace-nowrap" title="Acessos ao picking nos últimos 90 dias">
                     <span className="inline-flex items-center gap-1 justify-end">
-                      QTACESSO
+                      <SortLabel label="QTACESSO" col="qtacesso" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!(fQtacMin || fQtacMax)} label="QTACESSO" dark>
                         <NumRange label="QTAC" min={fQtacMin} max={fQtacMax} onMin={setFQtacMin} onMax={setFQtacMax} />
                       </HeaderFilter>
@@ -958,7 +1043,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-right whitespace-nowrap" title="Giro médio diário em caixas">
                     <span className="inline-flex items-center gap-1 justify-end">
-                      Giro/dia
+                      <SortLabel label="Giro/dia" col="giro" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!(fGiroMin || fGiroMax)} label="Giro/dia" dark>
                         <NumRange label="Giro" min={fGiroMin} max={fGiroMax} onMin={setFGiroMin} onMax={setFGiroMax} />
                       </HeaderFilter>
@@ -966,7 +1051,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-center whitespace-nowrap">
                     <span className="inline-flex items-center gap-1 justify-center">
-                      Ação
+                      <SortLabel label="Ação" col="acao" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!fAcao} label="Ação" dark>
                         <Select value={fAcao || 'all'} onValueChange={v => setFAcao(v === 'all' ? '' : v)}>
                           <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
@@ -983,7 +1068,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-right whitespace-nowrap">
                     <span className="inline-flex items-center gap-1 justify-end">
-                      Cap. Atual
+                      <SortLabel label="Cap. Atual" col="cap" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!(fCapMin || fCapMax)} label="Cap. Atual" dark>
                         <NumRange label="Cap." min={fCapMin} max={fCapMax} onMin={setFCapMin} onMax={setFCapMax} />
                       </HeaderFilter>
@@ -991,7 +1076,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-right whitespace-nowrap" title="Paletes na capacidade atual">
                     <span className="inline-flex items-center gap-1 justify-end">
-                      Plt. Atual
+                      <SortLabel label="Plt. Atual" col="pltAtual" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!(fPltAtMin || fPltAtMax)} label="Plt. Atual" dark>
                         <NumRange label="Plt." min={fPltAtMin} max={fPltAtMax} onMin={setFPltAtMin} onMax={setFPltAtMax} />
                       </HeaderFilter>
@@ -999,7 +1084,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-right whitespace-nowrap">
                     <span className="inline-flex items-center gap-1 justify-end">
-                      Sugestão
+                      <SortLabel label="Sugestão" col="sugestao" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!(fSugMin || fSugMax)} label="Sugestão" dark>
                         <NumRange label="Sug." min={fSugMin} max={fSugMax} onMin={setFSugMin} onMax={setFSugMax} />
                       </HeaderFilter>
@@ -1007,7 +1092,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-right whitespace-nowrap" title="Sugestão em paletes">
                     <span className="inline-flex items-center gap-1 justify-end">
-                      Sug. Plt
+                      <SortLabel label="Sug. Plt" col="sugPlt" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!(fSugPltMin || fSugPltMax)} label="Sug. Plt" dark>
                         <NumRange label="Plt" min={fSugPltMin} max={fSugPltMax} onMin={setFSugPltMin} onMax={setFSugPltMax} />
                       </HeaderFilter>
@@ -1015,7 +1100,7 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-left whitespace-nowrap">
                     <span className="inline-flex items-center gap-1">
-                      End. Origem
+                      <SortLabel label="End. Origem" col="origem" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       <HeaderFilter active={!!fEndOrigem} label="End. Origem" dark>
                         <Select value={fEndOrigem || 'all'} onValueChange={v => setFEndOrigem(v === 'all' ? '' : v)}>
                           <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
@@ -1037,7 +1122,7 @@ export default function SpRealocacao() {
                 </tr>
               </thead>
               <tbody>
-                {visibleIdx.map(i => {
+                {orderedIdx.map(i => {
                   const item = items[i]
                   return (
                     <SlotRow
@@ -1051,6 +1136,7 @@ export default function SpRealocacao() {
                       pendingSwap={selectedId !== null && selectedId !== item.id}
                       onSelect={() => handleSelect(item.id, i)}
                       qtacessoMax={qtacessoMax}
+                      sortActive={sortActive}
                       observacao={observacoes[item.id] ?? ''}
                       onObservacaoChange={v => setObservacao(item.id, v)}
                       onMoveUp={() => moveItem(i, -1)}
