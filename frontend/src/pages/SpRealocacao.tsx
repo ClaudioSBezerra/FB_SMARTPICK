@@ -24,6 +24,7 @@ interface Slot {
   predio: number | null
   apto: number | null
   classe_venda: string | null      // curva A/B/C — remodelada por acesso ao picking
+  participacao: number | null      // % participação na curva ABC (filtrado por tipo_rel=REALOCACAO)
   capacidade_atual: number | null
   sugestao_calibragem: number
   sugestao_editada: number | null
@@ -187,11 +188,16 @@ function SlotRow({
         </div>
         <div className="text-[10px] text-muted-foreground">{item.codprod}</div>
       </td>
-      {/* Curva — A=verde, B=amarelo, C=vermelho (por acesso ao picking) */}
+      {/* Curva — A=verde, B=amarelo, C=vermelho (por acesso ao picking) + % participação */}
       <td className="py-2 px-2 text-center">
-        <span className={`inline-flex items-center justify-center h-6 w-6 rounded text-[11px] font-bold ${curvaCls}`}>
-          {item.classe_venda ?? '—'}
-        </span>
+        <div className="flex flex-col items-center gap-0.5">
+          <span className={`inline-flex items-center justify-center h-6 w-6 rounded text-[11px] font-bold ${curvaCls}`}>
+            {item.classe_venda ?? '—'}
+          </span>
+          {item.participacao != null && (
+            <span className="text-[9px] text-slate-500 leading-none whitespace-nowrap">{item.participacao.toFixed(2)}%</span>
+          )}
+        </div>
       </td>
       {/* QTACESSO — heat map relativo ao dataset */}
       <td className={`py-2 px-2 text-right whitespace-nowrap font-mono ${heatCls}`} title="Acessos ao picking nos últimos 90 dias">
@@ -566,6 +572,8 @@ export default function SpRealocacao() {
   // ── Filtros por coluna (estilo Excel — visibilidade apenas, não altera ordem) ──
   const [fProduto,    setFProduto]    = useState('')
   const [fCurva,      setFCurva]      = useState('')   // '' | 'A' | 'B' | 'C'
+  const [fPartMin,    setFPartMin]    = useState('')   // % participação min
+  const [fPartMax,    setFPartMax]    = useState('')   // % participação máx
   const [fAcao,       setFAcao]       = useState('')   // '' | 'Aumentar' | 'Reduzir' | 'OK' | 'Calibrado'
   const [fFL,         setFFL]         = useState('')   // '' | 'sim' | 'nao'
   const [fEndDestino, setFEndDestino] = useState('')
@@ -584,6 +592,7 @@ export default function SpRealocacao() {
   const [fSugPltMax,  setFSugPltMax]  = useState('')
 
   const hasFilters = !!(fProduto || fCurva || fAcao || fFL || fEndDestino || fEndOrigem
+    || fPartMin || fPartMax
     || fQtacMin || fQtacMax || fGiroMin || fGiroMax || fCapMin || fCapMax
     || fPltAtMin || fPltAtMax || fSugMin || fSugMax || fSugPltMin || fSugPltMax)
 
@@ -600,7 +609,7 @@ export default function SpRealocacao() {
 
   function limparFiltros() {
     setFProduto(''); setFCurva(''); setFAcao(''); setFFL('')
-    setFEndDestino(''); setFEndOrigem('')
+    setFEndDestino(''); setFEndOrigem(''); setFPartMin(''); setFPartMax('')
     setFQtacMin(''); setFQtacMax(''); setFGiroMin(''); setFGiroMax('')
     setFCapMin(''); setFCapMax(''); setFPltAtMin(''); setFPltAtMax('')
     setFSugMin(''); setFSugMax(''); setFSugPltMin(''); setFSugPltMax('')
@@ -626,6 +635,8 @@ export default function SpRealocacao() {
         if (!matchDesc && !matchCode) return false
       }
       if (fCurva && it.classe_venda !== fCurva) return false
+      if (fPartMin !== '' && (it.participacao ?? -Infinity) < Number(fPartMin)) return false
+      if (fPartMax !== '' && (it.participacao ??  Infinity) > Number(fPartMax)) return false
       if (fFL === 'sim' && it.fora_linha !== true) return false
       if (fFL === 'nao' && it.fora_linha === true) return false
 
@@ -672,7 +683,7 @@ export default function SpRealocacao() {
       switch (sortKey) {
         case 'destino':  return (slot.rua ?? 0) * 1e6 + (slot.predio ?? 0) * 1e3 + (slot.apto ?? 0)
         case 'produto':  return it.produto?.toLowerCase() ?? ''
-        case 'curva':    return it.classe_venda ?? 'ZZ'
+        case 'curva':    return num(it.participacao)  // ordena pela % de participação
         case 'qtacesso': return num(it.qt_acesso_90)
         case 'giro':     return num(it.giro_dia_cx)
         case 'acao':     return it.delta ?? 0
@@ -1020,16 +1031,22 @@ export default function SpRealocacao() {
                   <th className="py-2 px-2 w-12 text-center" title="Curva ABC por acesso ao picking">
                     <span className="inline-flex items-center gap-1 justify-center">
                       <SortLabel label="Curva" col="curva" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                      <HeaderFilter active={!!fCurva} label="Curva" dark>
-                        <Select value={fCurva || 'all'} onValueChange={v => setFCurva(v === 'all' ? '' : v)}>
-                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">Todas</SelectItem>
-                            <SelectItem value="A">A</SelectItem>
-                            <SelectItem value="B">B</SelectItem>
-                            <SelectItem value="C">C</SelectItem>
-                          </SelectContent>
-                        </Select>
+                      <HeaderFilter active={!!(fCurva || fPartMin || fPartMax)} label="Curva / % participação" dark>
+                        <div className="space-y-2 w-48">
+                          <Select value={fCurva || 'all'} onValueChange={v => setFCurva(v === 'all' ? '' : v)}>
+                            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Todas as curvas</SelectItem>
+                              <SelectItem value="A">A</SelectItem>
+                              <SelectItem value="B">B</SelectItem>
+                              <SelectItem value="C">C</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div>
+                            <div className="text-[10px] font-medium text-muted-foreground mb-1">% participação</div>
+                            <NumRange label="%" min={fPartMin} max={fPartMax} onMin={setFPartMin} onMax={setFPartMax} />
+                          </div>
+                        </div>
                       </HeaderFilter>
                     </span>
                   </th>
