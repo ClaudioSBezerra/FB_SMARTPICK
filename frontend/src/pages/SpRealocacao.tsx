@@ -40,7 +40,7 @@ type PredioFilter = 'todos' | 'par' | 'impar'
 
 // Colunas ordenáveis na Realocação ('' = ordem física padrão)
 type SortKey = '' | 'destino' | 'produto' | 'curva' | 'qtacesso' | 'giro'
-  | 'acao' | 'cap' | 'pltAtual' | 'sugestao' | 'sugPlt' | 'origem'
+  | 'acao' | 'cap' | 'pltAtual' | 'sugestao' | 'sugPlt' | 'normaPalete' | 'origem' | 'obs'
 
 // Cores da curva ABC por acesso: A=verde (alta rotatividade), B=amarelo, C=vermelho
 const curvaBadge: Record<string, string> = {
@@ -226,6 +226,10 @@ function SlotRow({
       {/* Sug. Pallet (decimal, 2 casas) */}
       <td className="py-2 px-2 text-right whitespace-nowrap text-slate-500" title="Sugestão convertida em paletes (sug ÷ norma_palete)">
         {sugPlt != null ? sugPlt.toFixed(2) : '—'}
+      </td>
+      {/* Norma Palete (caixas por palete) */}
+      <td className="py-2 px-2 text-right whitespace-nowrap text-slate-600" title="Norma de palete — caixas por palete">
+        {item.norma_palete != null ? item.norma_palete : '—'}
       </td>
       {/* Origem (endereço atual do produto) — destaca se moveu */}
       <td className={`py-2 px-2 font-mono whitespace-nowrap ${moved ? 'text-orange-950 font-bold' : 'text-slate-300'}`}>
@@ -590,11 +594,16 @@ export default function SpRealocacao() {
   const [fSugMax,     setFSugMax]     = useState('')
   const [fSugPltMin,  setFSugPltMin]  = useState('')
   const [fSugPltMax,  setFSugPltMax]  = useState('')
+  const [fNormaMin,   setFNormaMin]   = useState('')   // norma palete min
+  const [fNormaMax,   setFNormaMax]   = useState('')   // norma palete máx
+  const [fObs,        setFObs]        = useState('')   // texto da observação
+  const [fObsTipo,    setFObsTipo]    = useState('')   // '' | 'com' | 'sem'
 
   const hasFilters = !!(fProduto || fCurva || fAcao || fFL || fEndDestino || fEndOrigem
     || fPartMin || fPartMax
     || fQtacMin || fQtacMax || fGiroMin || fGiroMax || fCapMin || fCapMax
-    || fPltAtMin || fPltAtMax || fSugMin || fSugMax || fSugPltMin || fSugPltMax)
+    || fPltAtMin || fPltAtMax || fSugMin || fSugMax || fSugPltMin || fSugPltMax
+    || fNormaMin || fNormaMax || fObs || fObsTipo)
 
   // Ordenação por coluna — SÓ visualização (não move nada). Quando ativa,
   // arrastar e setas ↑↓ ficam desabilitados (dependem da posição física).
@@ -613,6 +622,7 @@ export default function SpRealocacao() {
     setFQtacMin(''); setFQtacMax(''); setFGiroMin(''); setFGiroMax('')
     setFCapMin(''); setFCapMax(''); setFPltAtMin(''); setFPltAtMax('')
     setFSugMin(''); setFSugMax(''); setFSugPltMin(''); setFSugPltMax('')
+    setFNormaMin(''); setFNormaMax(''); setFObs(''); setFObsTipo('')
   }
 
   // Índices visíveis após filtros. Mapeiam para os índices reais em items/slots.
@@ -669,6 +679,13 @@ export default function SpRealocacao() {
       const sugPlt = np && np > 0 ? sug / np : null
       if (!range(sugPlt, fSugPltMin, fSugPltMax)) return false
 
+      if (!range(it.norma_palete, fNormaMin, fNormaMax)) return false
+
+      const obs = observacoes[it.id] ?? ''
+      if (fObsTipo === 'com' && !obs) return false
+      if (fObsTipo === 'sem' && obs)  return false
+      if (fObs && !obs.toLowerCase().includes(fObs.toLowerCase())) return false
+
       return true
     })
 
@@ -691,7 +708,9 @@ export default function SpRealocacao() {
         case 'pltAtual': return it.capacidade_atual != null && np && np > 0 ? it.capacidade_atual / np : -Infinity
         case 'sugestao': return it.sugestao_editada ?? it.sugestao_calibragem ?? 0
         case 'sugPlt':   return np && np > 0 ? (it.sugestao_editada ?? it.sugestao_calibragem) / np : -Infinity
+        case 'normaPalete': return num(it.norma_palete)
         case 'origem':   return it.id !== slot.id ? 1 : 0  // movidos primeiro/depois
+        case 'obs':      return (observacoes[it.id] ?? '').toLowerCase()
         default:         return 0
       }
     }
@@ -984,7 +1003,7 @@ export default function SpRealocacao() {
           )}
 
           <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full min-w-[1380px]">
+            <table className="w-full min-w-[1460px]">
               <thead>
                 <tr className="bg-slate-800 text-white text-[11px]">
                   <th className="py-2 px-1 w-12 text-center" title="Tap p/ selecionar / trocar"></th>
@@ -1115,6 +1134,14 @@ export default function SpRealocacao() {
                       </HeaderFilter>
                     </span>
                   </th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" title="Norma de palete — caixas por palete">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      <SortLabel label="Norma Plt" col="normaPalete" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                      <HeaderFilter active={!!(fNormaMin || fNormaMax)} label="Norma Palete" dark>
+                        <NumRange label="Norma" min={fNormaMin} max={fNormaMax} onMin={setFNormaMin} onMax={setFNormaMax} />
+                      </HeaderFilter>
+                    </span>
+                  </th>
                   <th className="py-2 px-2 text-left whitespace-nowrap">
                     <span className="inline-flex items-center gap-1">
                       <SortLabel label="End. Origem" col="origem" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
@@ -1132,7 +1159,26 @@ export default function SpRealocacao() {
                   </th>
                   <th className="py-2 px-2 text-left whitespace-nowrap" title="Observações por produto — vão para o PDF">
                     <span className="inline-flex items-center gap-1">
-                      <StickyNote className="h-3 w-3" /> Obs.
+                      <StickyNote className="h-3 w-3" />
+                      <SortLabel label="Obs." col="obs" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                      <HeaderFilter active={!!(fObs || fObsTipo)} label="Observações" dark>
+                        <div className="space-y-2 w-52">
+                          <Input
+                            placeholder="Buscar no texto…"
+                            value={fObs}
+                            onChange={e => setFObs(e.target.value)}
+                            className="h-7 text-xs"
+                          />
+                          <Select value={fObsTipo || 'all'} onValueChange={v => setFObsTipo(v === 'all' ? '' : v)}>
+                            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Todos</SelectItem>
+                              <SelectItem value="com">Com observação</SelectItem>
+                              <SelectItem value="sem">Sem observação</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </HeaderFilter>
                     </span>
                   </th>
                   <th className="py-2 px-1 w-8"></th>
