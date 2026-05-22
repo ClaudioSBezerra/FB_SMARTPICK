@@ -117,7 +117,8 @@ export default function SpUploadCSV() {
       queryKey: ['sp-resumo-cd', id],
       staleTime: 10_000,
       queryFn: async (): Promise<{ total_pendente: number }> => {
-        const r = await fetch(`/api/sp/propostas/resumo?cd_id=${id}`, { headers })
+        // Só pendentes de CALIBRACAO travam nova ativação (realocação não conta)
+        const r = await fetch(`/api/sp/propostas/resumo?cd_id=${id}&tipo_rel=CALIBRACAO`, { headers })
         if (!r.ok) return { total_pendente: 0 }
         return r.json()
       },
