@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -6,7 +6,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { ArrowUp, ArrowDown, Check, ArrowLeftRight, RotateCcw, FileDown, Loader2, Filter, StickyNote } from 'lucide-react'
+import { ArrowUp, ArrowDown, Check, ArrowLeftRight, RotateCcw, FileDown, Loader2, Filter, StickyNote, Download } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
@@ -41,6 +41,12 @@ type PredioFilter = 'todos' | 'par' | 'impar'
 // Colunas ordenáveis na Realocação ('' = ordem física padrão)
 type SortKey = '' | 'destino' | 'produto' | 'curva' | 'qtacesso' | 'giro'
   | 'acao' | 'cap' | 'pltAtual' | 'sugestao' | 'sugPlt' | 'normaPalete' | 'origem' | 'obs'
+
+// Persistência local — sobrevive a recarga/timeout de sessão dentro do MESMO import.
+// Chave por (cd, rua). Restauração só acontece se os ids do dataset atual cobrem o salvo
+// (caso contrário descarta — ids mudaram após reimport).
+const realocStorageKey = (cd: string, rua: string) => `sp:realoc:${cd}:${rua}`
+interface SavedRealoc { itemIds: number[]; observacoes: Record<number, string> }
 
 // Cores da curva ABC por acesso: A=verde (alta rotatividade), B=amarelo, C=vermelho
 const curvaBadge: Record<string, string> = {
@@ -315,11 +321,12 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 }
 
-function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[], observacoes: Record<number, string>) {
-  const moves = slots
+function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[], observacoes: Record<number, string>, onlyMoves: boolean) {
+  const allMoves = slots
     .map((s, i) => ({ slot: s, product: items[i], moved: items[i].id !== s.id }))
+  const moves = onlyMoves ? allMoves.filter(m => m.moved) : allMoves
 
-  const totalMoves = moves.filter(m => m.moved).length
+  const totalMoves = allMoves.filter(m => m.moved).length
   const now = new Date().toLocaleString('pt-BR')
   const qtacessoMax = items.reduce((acc, it) => Math.max(acc, it.qt_acesso_90 ?? 0), 0)
 
@@ -408,10 +415,10 @@ function gerarPDF(ruaSel: string, slots: Slot[], items: Slot[], observacoes: Rec
   </style>
 </head>
 <body>
-  <h1>Lote de Realocação &mdash; Rua ${ruaSel}</h1>
+  <h1>Lote de Realocação &mdash; Rua ${ruaSel}${onlyMoves ? ' (apenas movimentações)' : ''}</h1>
   <div class="meta">
     Gerado em: ${now} &nbsp;|&nbsp;
-    Total de slots: ${slots.length} &nbsp;|&nbsp;
+    Total de slots: ${slots.length}${onlyMoves ? ` &nbsp;|&nbsp; Exibindo: ${moves.length} movimentaç${moves.length === 1 ? 'ão' : 'ões'}` : ''} &nbsp;|&nbsp;
     <span class="badge badge-amber">${totalMoves} movimentaç${totalMoves === 1 ? 'ão' : 'ões'} necessári${totalMoves === 1 ? 'a' : 'as'}</span>
   </div>
   <table>
@@ -561,6 +568,8 @@ export default function SpRealocacao() {
   // Próximo tap em outro produto efetua o swap. Tap no mesmo produto cancela.
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [predioFilter, setPredioFilter] = useState<PredioFilter>('todos')
+  const [pdfOnlyMoves, setPdfOnlyMoves] = useState(false)   // PDF apenas com movimentações
+  const [isExporting, setIsExporting] = useState(false)     // estado do botão Excel
   // Observações por produto (item.id) — escopo de sessão. Acompanham o produto
   // mesmo após swap (chave é o id do produto, não do slot/destino).
   const [observacoes, setObservacoes] = useState<Record<number, string>>({})
@@ -573,8 +582,21 @@ export default function SpRealocacao() {
     })
   }
 
+  // Persiste items+observações no localStorage chaveado por (cd, rua) — só após
+  // o load, e só quando o usuário escolheu uma rua. Não roda em SSR.
+  useEffect(() => {
+    if (!loaded || !cdID || !ruaSel || items.length === 0) return
+    try {
+      const data: SavedRealoc = { itemIds: items.map(it => it.id), observacoes }
+      localStorage.setItem(realocStorageKey(cdID, ruaSel), JSON.stringify(data))
+    } catch {
+      // localStorage indisponível (modo privativo, quota cheia) — ignora silenciosamente
+    }
+  }, [items, observacoes, loaded, cdID, ruaSel])
+
   // ── Filtros por coluna (estilo Excel — visibilidade apenas, não altera ordem) ──
-  const [fProduto,    setFProduto]    = useState('')
+  const [fProduto,    setFProduto]    = useState('')   // descrição OU código (combinado)
+  const [fCodigo,     setFCodigo]     = useState('')   // somente código do produto
   const [fCurva,      setFCurva]      = useState('')   // '' | 'A' | 'B' | 'C'
   const [fPartMin,    setFPartMin]    = useState('')   // % participação min
   const [fPartMax,    setFPartMax]    = useState('')   // % participação máx
@@ -599,7 +621,7 @@ export default function SpRealocacao() {
   const [fObs,        setFObs]        = useState('')   // texto da observação
   const [fObsTipo,    setFObsTipo]    = useState('')   // '' | 'com' | 'sem'
 
-  const hasFilters = !!(fProduto || fCurva || fAcao || fFL || fEndDestino || fEndOrigem
+  const hasFilters = !!(fProduto || fCodigo || fCurva || fAcao || fFL || fEndDestino || fEndOrigem
     || fPartMin || fPartMax
     || fQtacMin || fQtacMax || fGiroMin || fGiroMax || fCapMin || fCapMax
     || fPltAtMin || fPltAtMax || fSugMin || fSugMax || fSugPltMin || fSugPltMax
@@ -617,7 +639,7 @@ export default function SpRealocacao() {
   }
 
   function limparFiltros() {
-    setFProduto(''); setFCurva(''); setFAcao(''); setFFL('')
+    setFProduto(''); setFCodigo(''); setFCurva(''); setFAcao(''); setFFL('')
     setFEndDestino(''); setFEndOrigem(''); setFPartMin(''); setFPartMax('')
     setFQtacMin(''); setFQtacMax(''); setFGiroMin(''); setFGiroMax('')
     setFCapMin(''); setFCapMax(''); setFPltAtMin(''); setFPltAtMax('')
@@ -644,6 +666,7 @@ export default function SpRealocacao() {
         const matchCode = String(it.codprod).includes(q)
         if (!matchDesc && !matchCode) return false
       }
+      if (fCodigo && !String(it.codprod).includes(fCodigo.trim())) return false
       if (fCurva && it.classe_venda !== fCurva) return false
       if (fPartMin !== '' && (it.participacao ?? -Infinity) < Number(fPartMin)) return false
       if (fPartMax !== '' && (it.participacao ??  Infinity) > Number(fPartMax)) return false
@@ -790,7 +813,39 @@ export default function SpRealocacao() {
         return (a.apto ?? 0) - (b.apto ?? 0)
       })
       setSlots(sorted)
-      setItems([...sorted])
+
+      // Tenta restaurar trabalho anterior (swaps + observações) salvo no localStorage
+      let restoredItems: Slot[] | null = null
+      let restoredObs:   Record<number, string> = {}
+      try {
+        const raw = localStorage.getItem(realocStorageKey(cdID, ruaSel))
+        if (raw) {
+          const saved = JSON.parse(raw) as Partial<SavedRealoc>
+          if (Array.isArray(saved.itemIds) && saved.itemIds.length === sorted.length) {
+            const ids = new Set(sorted.map(s => s.id))
+            const allMatch = saved.itemIds.every(id => ids.has(id))
+            if (allMatch) {
+              const byId = new Map(sorted.map(s => [s.id, s]))
+              restoredItems = saved.itemIds.map(id => byId.get(id)!).filter(Boolean) as Slot[]
+              restoredObs   = (saved.observacoes ?? {}) as Record<number, string>
+            } else {
+              // ids mudaram (reimport) → descarta saved obsoleto
+              localStorage.removeItem(realocStorageKey(cdID, ruaSel))
+            }
+          }
+        }
+      } catch { /* localStorage indisponível */ }
+
+      if (restoredItems) {
+        setItems(restoredItems)
+        setObservacoes(restoredObs)
+        const movs = restoredItems.filter((it, i) => it.id !== sorted[i].id).length
+        toast.success(`Trabalho anterior restaurado: ${movs} movimentaç${movs === 1 ? 'ão' : 'ões'} e ${Object.keys(restoredObs).length} observaç${Object.keys(restoredObs).length === 1 ? 'ão' : 'ões'}`)
+      } else {
+        setItems([...sorted])
+        setObservacoes({})
+      }
+
       setLoaded(true)
     } catch (e) {
       toast.error((e as Error).message)
@@ -836,6 +891,51 @@ export default function SpRealocacao() {
   function resetar() {
     setItems([...slots])
     toast.info('Ordem restaurada para o original')
+  }
+
+  // Exporta para Excel respeitando os filtros visíveis (visibleIdx)
+  async function exportarExcel() {
+    if (visibleIdx.length === 0) return
+    setIsExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const today = new Date().toLocaleDateString('sv-SE')
+      const data = visibleIdx.map(i => {
+        const it = items[i], slot = slots[i]
+        const moved = it.id !== slot.id
+        const np = it.norma_palete
+        const sug = it.sugestao_editada ?? it.sugestao_calibragem
+        return {
+          '#':              i + 1,
+          'End. Destino':   fmt(slot),
+          'Produto':        it.produto ?? '',
+          'Código':         it.codprod,
+          'FL':             it.fora_linha ? 'S' : 'N',
+          'Curva':          it.classe_venda ?? '',
+          '% Participação': it.participacao != null ? +it.participacao.toFixed(2) : '',
+          'QTACESSO':       it.qt_acesso_90 ?? '',
+          'Giro/dia':       it.giro_dia_cx != null ? +it.giro_dia_cx.toFixed(2) : '',
+          'Ação':           acaoFromDelta(it.delta, it.status).label,
+          'Cap. Atual (cx)': it.capacidade_atual ?? '',
+          'Plt. Atual':     it.capacidade_atual != null && np && np > 0 ? +(it.capacidade_atual / np).toFixed(2) : '',
+          'Sugestão (cx)':  sug,
+          'Sug. Plt':       np && np > 0 ? +(sug / np).toFixed(2) : '',
+          'Norma Plt':      np ?? '',
+          'End. Origem':    moved ? fmt(it) : '',
+          'Observação':     observacoes[it.id] ?? '',
+          'Movido':         moved ? 'Sim' : 'Não',
+        }
+      })
+      const ws = XLSX.utils.json_to_sheet(data)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Realocação')
+      XLSX.writeFile(wb, `realocacao_rua${ruaSel}_${today}.xlsx`)
+      toast.success(`${visibleIdx.length} linhas exportadas`)
+    } catch (err) {
+      toast.error('Falha ao exportar: ' + (err as Error).message)
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const totalMoves = items.filter((item, i) => item.id !== slots[i]?.id).length
@@ -902,13 +1002,33 @@ export default function SpRealocacao() {
             <Button size="sm" variant="outline" onClick={resetar} disabled={totalMoves === 0}>
               <RotateCcw className="h-3.5 w-3.5 mr-1" /> Resetar ordem
             </Button>
+            <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-700 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={pdfOnlyMoves}
+                onChange={e => setPdfOnlyMoves(e.target.checked)}
+                className="h-3.5 w-3.5"
+              />
+              <span title="Quando marcado, o PDF lista somente os slots com movimentação">Apenas movim.</span>
+            </label>
             <Button
               size="sm"
               disabled={totalMoves === 0}
-              onClick={() => gerarPDF(ruaSel, slots, items, observacoes)}
+              onClick={() => gerarPDF(ruaSel, slots, items, observacoes, pdfOnlyMoves)}
             >
               <FileDown className="h-3.5 w-3.5 mr-1" />
-              Gerar PDF do lote{totalMoves > 0 ? ` (${totalMoves} mov.)` : ''}
+              Gerar PDF{totalMoves > 0 ? ` (${pdfOnlyMoves ? totalMoves : slots.length} ${pdfOnlyMoves ? 'mov.' : 'slots'})` : ''}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={visibleIdx.length === 0 || isExporting}
+              onClick={exportarExcel}
+            >
+              {isExporting
+                ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                : <Download className="h-3.5 w-3.5 mr-1" />}
+              {isExporting ? 'Exportando…' : `Exportar Excel${hasFilters ? ` (${visibleIdx.length})` : ''}`}
             </Button>
           </>
         )}
@@ -1024,14 +1144,27 @@ export default function SpRealocacao() {
                   <th className="py-2 px-2 text-left">
                     <span className="inline-flex items-center gap-1">
                       <SortLabel label="Produto" col="produto" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                      <HeaderFilter active={!!(fProduto || fFL)} label="Produto" dark>
+                      <HeaderFilter active={!!(fProduto || fCodigo || fFL)} label="Produto" dark>
                         <div className="space-y-2 w-56">
-                          <Input
-                            placeholder="Código ou descrição…"
-                            value={fProduto}
-                            onChange={e => setFProduto(e.target.value)}
-                            className="h-7 text-xs"
-                          />
+                          <div>
+                            <div className="text-[10px] font-medium text-muted-foreground mb-1">Código ou descrição</div>
+                            <Input
+                              placeholder="busca combinada…"
+                              value={fProduto}
+                              onChange={e => setFProduto(e.target.value)}
+                              className="h-7 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-medium text-muted-foreground mb-1">Somente código</div>
+                            <Input
+                              placeholder="ex: 12345"
+                              value={fCodigo}
+                              onChange={e => setFCodigo(e.target.value)}
+                              className="h-7 text-xs"
+                              inputMode="numeric"
+                            />
+                          </div>
                           <div>
                             <div className="text-[10px] font-medium text-muted-foreground mb-1">Fora de linha (FL)</div>
                             <Select value={fFL || 'all'} onValueChange={v => setFFL(v === 'all' ? '' : v)}>
