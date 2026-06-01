@@ -168,7 +168,7 @@ const sections: NavSection[] = [
 // ---------------------------------------------------------------------------
 export function AppSidebar() {
   const location = useLocation()
-  const { user, group, company, logout, token } = useAuth()
+  const { user, group, company, logout, token, companyId } = useAuth()
   const isAdmin = user?.role === "admin"
   const isMaster = group === "MASTER"
 
@@ -182,18 +182,25 @@ export function AppSidebar() {
     return () => window.removeEventListener('empresa-logo-updated', refresh)
   }, [])
 
-  // Fetch do logo — re-executa quando token ou logoTick mudam
+  // Fetch do logo — re-executa quando token, companyId ou logoTick mudam.
+  // Cache-buster (?v=...) garante que o browser não sirva versão antiga do
+  // endpoint após um upload (o backend devolve Cache-Control: no-cache,
+  // mas algumas combinações de proxy/Service Worker ainda servem cache).
   useEffect(() => {
     if (!token) return
-    fetch("/api/config/empresa/logo", { headers: { Authorization: `Bearer ${token}` } })
+    const bust = `${companyId ?? 'x'}-${logoTick}`
+    fetch(`/api/config/empresa/logo?v=${encodeURIComponent(bust)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    })
       .then(async res => {
-        if (!res.ok) return
+        if (!res.ok) { setLogoURL(prev => { if (prev) URL.revokeObjectURL(prev); return null }); return }
         const blob = await res.blob()
         const url = URL.createObjectURL(blob)
         setLogoURL(prev => { if (prev) URL.revokeObjectURL(prev); return url })
       })
       .catch(() => {})
-  }, [token, logoTick])
+  }, [token, companyId, logoTick])
 
   // Estado de expansão de cada seção (todas abertas por padrão)
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
