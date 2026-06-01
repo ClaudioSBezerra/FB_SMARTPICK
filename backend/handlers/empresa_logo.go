@@ -49,6 +49,24 @@ func ServeEmpresaLogoHandler(db *sql.DB) http.HandlerFunc {
 			FROM companies
 			WHERE id = $1::uuid AND logo_data IS NOT NULL
 		`, companyID).Scan(&logoData, &logoMime)
+
+		// Fallback de grupo: a empresa do usuário pode não ter logo próprio
+		// (ex: membro cuja sessão resolve p/ outra empresa do mesmo grupo onde
+		// o admin subiu o logo). Um grupo normalmente compartilha uma marca,
+		// então buscamos o logo mais recente de uma empresa-irmã do mesmo grupo.
+		if err == sql.ErrNoRows {
+			err = db.QueryRow(`
+				SELECT s.logo_data, s.logo_mime
+				FROM companies c
+				JOIN companies s ON s.group_id = c.group_id
+				WHERE c.id = $1::uuid
+				  AND c.group_id IS NOT NULL
+				  AND s.logo_data IS NOT NULL
+				ORDER BY s.updated_at DESC NULLS LAST, s.created_at DESC
+				LIMIT 1
+			`, companyID).Scan(&logoData, &logoMime)
+		}
+
 		if err == sql.ErrNoRows {
 			http.NotFound(w, r)
 			return
