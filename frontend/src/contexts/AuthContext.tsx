@@ -63,7 +63,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (!headers.has('Authorization') && tokenRef.current) {
         headers.set('Authorization', `Bearer ${tokenRef.current}`);
       }
-      if (companyIdRef.current) {
+      // Só injeta X-Company-ID quando o chamador NÃO definiu um explícito.
+      // Caso contrário, fluxos admin (ex: upload de logo per-empresa em
+      // GestaoAmbiente) eram silenciosamente redirecionados p/ a empresa logada.
+      if (!headers.has('X-Company-ID') && companyIdRef.current) {
         headers.set('X-Company-ID', companyIdRef.current);
       }
       return originalFetch(input, { ...init, headers });

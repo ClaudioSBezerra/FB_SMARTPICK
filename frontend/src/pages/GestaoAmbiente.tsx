@@ -66,6 +66,40 @@ interface UserHierarchy {
   branches: Branch[];
 }
 
+// Miniatura do logo de UMA empresa específica — busca via X-Company-ID e
+// renderiza como <img> com blob URL. `bust` força refetch após upload.
+function CompanyLogoThumb({ companyId, bust, token }: { companyId: string; bust: number; token: string | null }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    let blobURL: string | null = null;
+    fetch("/api/config/empresa/logo", {
+      headers: { Authorization: `Bearer ${token}`, "X-Company-ID": companyId },
+    })
+      .then(r => (r.ok ? r.blob() : null))
+      .then(b => {
+        if (cancelled) return;
+        if (!b) { setSrc(null); return; }
+        blobURL = URL.createObjectURL(b);
+        setSrc(blobURL);
+      })
+      .catch(() => { if (!cancelled) setSrc(null); });
+    return () => {
+      cancelled = true;
+      if (blobURL) URL.revokeObjectURL(blobURL);
+    };
+  }, [companyId, bust, token]);
+  if (src) {
+    return <img src={src} alt="logo" className="h-8 w-8 rounded-md object-cover border" />;
+  }
+  return (
+    <div className="h-8 w-8 rounded-md border border-dashed flex items-center justify-center text-[9px] text-muted-foreground hover:border-primary transition-colors overflow-hidden">
+      <span className="text-[9px]">logo</span>
+    </div>
+  );
+}
+
 export default function GestaoAmbiente() {
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [selectedEnv, setSelectedEnv] = useState<Environment | null>(null);
@@ -95,6 +129,8 @@ export default function GestaoAmbiente() {
   const [logoURL, setLogoURL] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [uploadingForCompany, setUploadingForCompany] = useState<string | null>(null);
+  // Cache-buster por empresa: incrementa após upload p/ forçar refetch da miniatura.
+  const [logoBust, setLogoBust] = useState<Record<string, number>>({});
   const logoInputRef = useRef<HTMLInputElement>(null);
   const prevLogoURL = useRef<string | null>(null);
 
@@ -134,6 +170,10 @@ export default function GestaoAmbiente() {
       toast.success("Logotipo atualizado");
       window.dispatchEvent(new CustomEvent("empresa-logo-updated"));
       loadLogo();
+      // Força reload da miniatura daquela empresa específica
+      if (companyId) {
+        setLogoBust(prev => ({ ...prev, [companyId]: (prev[companyId] ?? 0) + 1 }));
+      }
     } catch {
       toast.error("Erro ao enviar logo");
     } finally {
@@ -714,13 +754,11 @@ export default function GestaoAmbiente() {
                   className="flex items-center justify-between p-3 rounded-md border bg-white border-gray-200 hover:border-primary/50 transition-all gap-2"
                 >
                   <div className="flex items-center gap-2 overflow-hidden">
-                    <label className="cursor-pointer shrink-0" title="Clique para alterar logotipo">
+                    <label className="cursor-pointer shrink-0" title="Clique para alterar o logotipo desta empresa">
                       {uploadingForCompany === company.id ? (
                         <div className="h-8 w-8 rounded-md border bg-gray-50 flex items-center justify-center text-[9px] text-muted-foreground">...</div>
                       ) : (
-                        <div className="h-8 w-8 rounded-md border border-dashed flex items-center justify-center text-[9px] text-muted-foreground hover:border-primary transition-colors overflow-hidden">
-                          <span className="text-[9px]">logo</span>
-                        </div>
+                        <CompanyLogoThumb companyId={company.id} bust={logoBust[company.id] ?? 0} token={token} />
                       )}
                       <input type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" className="hidden"
                         onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f, company.id); e.target.value = ""; }} />
