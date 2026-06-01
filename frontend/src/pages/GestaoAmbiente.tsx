@@ -26,7 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Building, Layers, Factory } from "lucide-react";
+import { Plus, Trash2, Building, Layers, Factory, ImagePlus } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -753,15 +753,21 @@ export default function GestaoAmbiente() {
                   key={company.id}
                   className="flex items-center justify-between p-3 rounded-md border bg-white border-gray-200 hover:border-primary/50 transition-all gap-2"
                 >
+                  {/* Input de arquivo por linha — acionado pela miniatura E pelo botão "Editar logo" */}
+                  <input
+                    id={`logo-input-${company.id}`}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f, company.id); e.target.value = ""; }}
+                  />
                   <div className="flex items-center gap-2 overflow-hidden">
-                    <label className="cursor-pointer shrink-0" title="Clique para alterar o logotipo desta empresa">
+                    <label htmlFor={`logo-input-${company.id}`} className="cursor-pointer shrink-0" title="Clique para alterar o logotipo desta empresa">
                       {uploadingForCompany === company.id ? (
                         <div className="h-8 w-8 rounded-md border bg-gray-50 flex items-center justify-center text-[9px] text-muted-foreground">...</div>
                       ) : (
                         <CompanyLogoThumb companyId={company.id} bust={logoBust[company.id] ?? 0} token={token} />
                       )}
-                      <input type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" className="hidden"
-                        onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f, company.id); e.target.value = ""; }} />
                     </label>
                     <div className="overflow-hidden">
                       <p className="font-medium text-sm truncate">{company.name}</p>
@@ -770,14 +776,28 @@ export default function GestaoAmbiente() {
                       {company.trade_name && <p className="text-xs text-gray-400 truncate">{company.trade_name}</p>}
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-gray-400 hover:text-red-500 shrink-0"
-                    onClick={() => handleDeleteCompany(company.id)}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Botão explícito de edição de logo — afordância clara para o admin */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs gap-1"
+                      disabled={uploadingForCompany === company.id}
+                      title="Alterar logotipo desta empresa"
+                      onClick={() => document.getElementById(`logo-input-${company.id}`)?.click()}
+                    >
+                      <ImagePlus className="w-3.5 h-3.5" />
+                      {uploadingForCompany === company.id ? "Enviando…" : "Logo"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-gray-400 hover:text-red-500"
+                      onClick={() => handleDeleteCompany(company.id)}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
                 </div>
               ))
             )}
