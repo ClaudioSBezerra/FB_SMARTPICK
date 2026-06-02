@@ -44,6 +44,7 @@ func ServeEmpresaLogoHandler(db *sql.DB) http.HandlerFunc {
 
 		var logoData []byte
 		var logoMime string
+		source := "own"
 		err = db.QueryRow(`
 			SELECT logo_data, logo_mime
 			FROM companies
@@ -55,6 +56,7 @@ func ServeEmpresaLogoHandler(db *sql.DB) http.HandlerFunc {
 		// o admin subiu o logo). Um grupo normalmente compartilha uma marca,
 		// então buscamos o logo mais recente de uma empresa-irmã do mesmo grupo.
 		if err == sql.ErrNoRows {
+			source = "group-fallback"
 			err = db.QueryRow(`
 				SELECT s.logo_data, s.logo_mime
 				FROM companies c
@@ -68,6 +70,7 @@ func ServeEmpresaLogoHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err == sql.ErrNoRows {
+			log.Printf("ServeEmpresaLogo: SEM LOGO p/ companyID=%s (nem própria nem grupo)", companyID)
 			http.NotFound(w, r)
 			return
 		}
@@ -75,6 +78,7 @@ func ServeEmpresaLogoHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Erro no banco de dados", http.StatusInternalServerError)
 			return
 		}
+		log.Printf("ServeEmpresaLogo: companyID=%s servido via %s (mime=%s size=%dB)", companyID, source, logoMime, len(logoData))
 
 		w.Header().Set("Content-Type", logoMime)
 		w.Header().Set("Cache-Control", "no-cache")
