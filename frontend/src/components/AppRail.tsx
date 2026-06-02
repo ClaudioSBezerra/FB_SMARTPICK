@@ -129,7 +129,7 @@ export function AppRail() {
             src={logoURL ?? "/logo-fb.png"}
             alt={company ?? "Fortes Bezerra"}
             title={company ?? undefined}
-            className="size-8 rounded-lg object-cover"
+            className="h-[38px] w-[38px] rounded-lg object-cover"
           />
         </div>
 
