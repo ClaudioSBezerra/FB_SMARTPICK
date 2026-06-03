@@ -9,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
-import { Upload, RefreshCw, Zap, Trash2, Loader2 } from 'lucide-react'
+import { Upload, RefreshCw, Zap, Trash2, Loader2, FileDown } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { BatchStatusMini } from '@/components/BatchStatusBar'
 
@@ -205,6 +205,33 @@ export default function SpUploadCSV() {
     onSettled: () => setDeletingJobID(null),
   })
 
+  // ── Baixar Manual (PDF de calibragem) do lote ────────────────────────────────
+  const [baixandoManual, setBaixandoManual] = useState<string | null>(null)
+  async function baixarManual(jobId: string, filename: string) {
+    setBaixandoManual(jobId)
+    try {
+      const res = await fetch(`/api/sp/pdf/calibracao?job_id=${jobId}`, { headers })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || 'Erro ao gerar o manual')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const fname = res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
+        ?? `manual_calibragem_${filename.replace(/\.[^.]+$/, '')}.pdf`
+      a.href = url
+      a.download = fname
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Manual baixado')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao baixar o manual')
+    } finally {
+      setBaixandoManual(null)
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   // Aba Upload CSV
@@ -367,6 +394,21 @@ export default function SpUploadCSV() {
                           >
                             <Zap className="h-3.5 w-3.5 mr-1" />
                             {isPending ? 'Iniciando…' : 'Ativar Calibração'}
+                          </Button>
+                        )}
+                        {j.status === 'done' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs disabled:opacity-50"
+                            disabled={baixandoManual === j.id}
+                            title="Baixar o Manual de Calibragem (PDF com as propostas aprovadas deste lote)"
+                            onClick={() => baixarManual(j.id, j.filename)}
+                          >
+                            {baixandoManual === j.id
+                              ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                              : <FileDown className="h-3.5 w-3.5 mr-1" />}
+                            Baixar Manual
                           </Button>
                         )}
                         {podeExcluir && (
