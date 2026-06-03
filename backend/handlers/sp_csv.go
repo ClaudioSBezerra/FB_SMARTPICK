@@ -236,7 +236,7 @@ func SpCSVJobsHandler(db *sql.DB) http.HandlerFunc {
 // GET /api/sp/csv/jobs/{id}
 func SpCSVJobStatusHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodDelete {
+		if r.Method != http.MethodGet && r.Method != http.MethodDelete && r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -247,7 +247,102 @@ func SpCSVJobStatusHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		jobID := strings.TrimPrefix(r.URL.Path, "/api/sp/csv/jobs/")
+		rest := strings.TrimPrefix(r.URL.Path, "/api/sp/csv/jobs/")
+
+		// ── POST .../{id}/concluir: dá baixa manual no ciclo (marca 'concluido') ──
+		// O lote sai dos painéis de Calibragem/Realocação e libera nova ativação,
+		// mantendo o histórico. Mesma semântica do "Fechar ciclo" do Histórico.
+		if r.Method == http.MethodPost && strings.HasSuffix(rest, "/concluir") {
+			if !spCtx.CanApprove() {
+				http.Error(w, "Forbidden: gestor_geral+ necessário", http.StatusForbidden)
+				return
+			}
+			jobID := strings.TrimSuffix(rest, "/concluir")
+
+			var cdID int
+			err := db.QueryRow(
+				`SELECT cd_id FROM smartpick.sp_csv_jobs WHERE id = $1 AND empresa_id = $2`,
+				jobID, spCtx.EmpresaID,
+			).Scan(&cdID)
+			if err == sql.ErrNoRows {
+				http.Error(w, "Lote não encontrado", http.StatusNotFound)
+				return
+			} else if err != nil {
+				http.Error(w, "Database error", http.StatusInternalServerError)
+				return
+			}
+
+			// Recalcula contagens e marca o ciclo em andamento como concluído.
+			res, err := db.Exec(`
+				UPDATE smartpick.sp_historico h
+				SET status = 'concluido', concluido_em = $1,
+					total_propostas = sub.total, aprovadas = sub.aprovadas,
+					rejeitadas = sub.rejeitadas, pendentes = sub.pendentes,
+					curva_a = sub.curva_a, curva_b = sub.curva_b, curva_c = sub.curva_c
+				FROM (
+					SELECT COUNT(*) AS total,
+						COUNT(*) FILTER (WHERE status = 'aprovada')  AS aprovadas,
+						COUNT(*) FILTER (WHERE status = 'rejeitada') AS rejeitadas,
+						COUNT(*) FILTER (WHERE status = 'pendente')  AS pendentes,
+						COUNT(*) FILTER (WHERE classe_venda = 'A')   AS curva_a,
+						COUNT(*) FILTER (WHERE classe_venda = 'B')   AS curva_b,
+						COUNT(*) FILTER (WHERE classe_venda NOT IN ('A','B') OR classe_venda IS NULL) AS curva_c
+					FROM smartpick.sp_propostas WHERE job_id = $2 AND tipo_rel = 'CALIBRACAO'
+				) sub
+				WHERE h.job_id = $2 AND h.empresa_id = $3 AND h.status = 'em_andamento'
+			`, time.Now().UTC(), jobID, spCtx.EmpresaID)
+			if err != nil {
+				http.Error(w, "Erro ao concluir o lote: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			n, _ := res.RowsAffected()
+
+			// Sem ciclo 'em_andamento': cria um histórico já 'concluido' (garante que
+			// o filtro dos painéis oculte as propostas), salvo se já existir um.
+			if n == 0 {
+				// Lote sem propostas nunca foi ativado — nada a concluir.
+				var temProp bool
+				db.QueryRow(`SELECT EXISTS(SELECT 1 FROM smartpick.sp_propostas WHERE job_id = $1)`, jobID).Scan(&temProp)
+				if !temProp {
+					http.Error(w, "Lote não foi ativado (sem propostas) — nada a concluir. Use Excluir para removê-lo.", http.StatusConflict)
+					return
+				}
+				var existeConcluido bool
+				db.QueryRow(`SELECT EXISTS(SELECT 1 FROM smartpick.sp_historico WHERE job_id = $1 AND status = 'concluido')`, jobID).Scan(&existeConcluido)
+				if !existeConcluido {
+					_, err = db.Exec(`
+						INSERT INTO smartpick.sp_historico
+							(job_id, cd_id, empresa_id, executado_por, executado_em, status, concluido_em,
+							 total_propostas, aprovadas, rejeitadas, pendentes, curva_a, curva_b, curva_c)
+						SELECT $1, $2, $3, $4::uuid, now(), 'concluido', now(),
+							COUNT(*),
+							COUNT(*) FILTER (WHERE status = 'aprovada'),
+							COUNT(*) FILTER (WHERE status = 'rejeitada'),
+							COUNT(*) FILTER (WHERE status = 'pendente'),
+							COUNT(*) FILTER (WHERE classe_venda = 'A'),
+							COUNT(*) FILTER (WHERE classe_venda = 'B'),
+							COUNT(*) FILTER (WHERE classe_venda NOT IN ('A','B') OR classe_venda IS NULL)
+						FROM smartpick.sp_propostas WHERE job_id = $1 AND tipo_rel = 'CALIBRACAO'
+					`, jobID, cdID, spCtx.EmpresaID, spCtx.UserID)
+					if err != nil {
+						http.Error(w, "Erro ao registrar conclusão: "+err.Error(), http.StatusInternalServerError)
+						return
+					}
+				}
+			}
+
+			log.Printf("[CSV] lote concluído manualmente: job=%s empresa=%s", jobID, spCtx.EmpresaID)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"message": "Lote concluído"})
+			return
+		}
+
+		if r.Method == http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		jobID := rest
 		if jobID == "" {
 			http.Error(w, "job_id required", http.StatusBadRequest)
 			return

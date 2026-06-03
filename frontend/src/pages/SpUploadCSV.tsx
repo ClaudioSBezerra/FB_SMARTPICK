@@ -9,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
-import { Upload, RefreshCw, Zap, Trash2, Loader2, FileDown } from 'lucide-react'
+import { Upload, RefreshCw, Zap, Trash2, Loader2, CheckCheck } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { BatchStatusMini } from '@/components/BatchStatusBar'
 
@@ -205,32 +205,24 @@ export default function SpUploadCSV() {
     onSettled: () => setDeletingJobID(null),
   })
 
-  // ── Baixar Manual (PDF de calibragem) do lote ────────────────────────────────
-  const [baixandoManual, setBaixandoManual] = useState<string | null>(null)
-  async function baixarManual(jobId: string, filename: string) {
-    setBaixandoManual(jobId)
-    try {
-      const res = await fetch(`/api/sp/pdf/calibracao?job_id=${jobId}`, { headers })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || 'Erro ao gerar o manual')
-      }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      const fname = res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
-        ?? `manual_calibragem_${filename.replace(/\.[^.]+$/, '')}.pdf`
-      a.href = url
-      a.download = fname
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success('Manual baixado')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao baixar o manual')
-    } finally {
-      setBaixandoManual(null)
-    }
-  }
+  // ── Concluir lote (dá baixa manual no ciclo → marca 'concluido') ─────────────
+  const [concluindoJobID, setConcluindoJobID] = useState<string | null>(null)
+  const concluirLote = useMutation({
+    mutationFn: async (jobId: string) => {
+      const r = await fetch(`/api/sp/csv/jobs/${jobId}/concluir`, { method: 'POST', headers })
+      if (!r.ok) throw new Error((await r.text()) || 'Erro ao concluir o lote')
+    },
+    onMutate: (jobId) => setConcluindoJobID(jobId),
+    onSuccess: () => {
+      toast.success('Lote concluído — saiu dos painéis e liberou nova calibração')
+      qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
+      qc.invalidateQueries({ queryKey: ['sp-resumo-cd'] })
+      qc.invalidateQueries({ queryKey: ['sp-propostas'] })
+      qc.invalidateQueries({ queryKey: ['sp-propostas-resumo'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+    onSettled: () => setConcluindoJobID(null),
+  })
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -396,21 +388,28 @@ export default function SpUploadCSV() {
                             {isPending ? 'Iniciando…' : 'Ativar Calibração'}
                           </Button>
                         )}
-                        {j.status === 'done' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs disabled:opacity-50"
-                            disabled={baixandoManual === j.id}
-                            title="Baixar o Manual de Calibragem (PDF com as propostas aprovadas deste lote)"
-                            onClick={() => baixarManual(j.id, j.filename)}
-                          >
-                            {baixandoManual === j.id
-                              ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                              : <FileDown className="h-3.5 w-3.5 mr-1" />}
-                            Baixar Manual
-                          </Button>
-                        )}
+                        {j.status === 'done' && cdBlocked && (() => {
+                          const isConcluindo = concluirLote.isPending && concluindoJobID === j.id
+                          return (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs text-blue-700 border-blue-200 hover:bg-blue-50 disabled:opacity-50"
+                              disabled={isConcluindo}
+                              title="Concluir manualmente: marca o lote como Concluído, tira dos painéis e libera nova calibração (mantém o histórico)"
+                              onClick={() => {
+                                if (window.confirm(`Concluir o lote "${j.filename}"?\n\nEle será marcado como Concluído, sairá dos painéis de Calibragem/Realocação e liberará uma nova calibração. As propostas pendentes restantes não serão mais exibidas. O histórico é mantido.`)) {
+                                  concluirLote.mutate(j.id)
+                                }
+                              }}
+                            >
+                              {isConcluindo
+                                ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                                : <CheckCheck className="h-3.5 w-3.5 mr-1" />}
+                              {isConcluindo ? 'Concluindo…' : 'Concluir'}
+                            </Button>
+                          )
+                        })()}
                         {podeExcluir && (
                           <Button
                             size="sm"
