@@ -120,12 +120,18 @@ func SpMotorCalibrarHandler(db *sql.DB) http.HandlerFunc {
 		// Bloqueia nova calibração se o CD já tem propostas de CALIBRACAO pendentes
 		// (calibragem em andamento). Propostas de REALOCACAO não passam por
 		// aprovação e não devem travar a ativação.
+		// Propostas de um lote já FINALIZADO (histórico 'concluido') não contam —
+		// o gestor encerrou aquele ciclo, então não bloqueiam uma nova calibração.
 		var temPendente bool
 		db.QueryRow(`
 			SELECT EXISTS(
-				SELECT 1 FROM smartpick.sp_propostas
-				WHERE cd_id = $1 AND empresa_id = $2 AND status = 'pendente'
-				  AND tipo_rel = 'CALIBRACAO'
+				SELECT 1 FROM smartpick.sp_propostas p
+				WHERE p.cd_id = $1 AND p.empresa_id = $2 AND p.status = 'pendente'
+				  AND p.tipo_rel = 'CALIBRACAO'
+				  AND NOT EXISTS (
+				      SELECT 1 FROM smartpick.sp_historico h
+				      WHERE h.job_id = p.job_id AND h.status = 'concluido'
+				  )
 			)
 		`, cdID, spCtx.EmpresaID).Scan(&temPendente)
 		if temPendente {

@@ -151,9 +151,14 @@ export default function SpHistorico() {
       if (!r.ok) throw new Error((await r.json()).error ?? 'Erro')
     },
     onSuccess: () => {
-      toast.success('Ciclo fechado com sucesso')
+      toast.success('Ciclo fechado — o lote sai dos painéis e libera nova calibração')
       qc.invalidateQueries({ queryKey: ['sp-historico'] })
       qc.invalidateQueries({ queryKey: ['sp-compliance'] })
+      // Lote finalizado deixa de aparecer no painel e de bloquear ativação:
+      // invalida as queries de propostas/resumo p/ refletir imediatamente.
+      qc.invalidateQueries({ queryKey: ['sp-propostas'] })
+      qc.invalidateQueries({ queryKey: ['sp-propostas-resumo'] })
+      qc.invalidateQueries({ queryKey: ['sp-resumo-cd'] })
     },
     onError: (e: Error) => toast.error(e.message),
   })

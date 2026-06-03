@@ -137,6 +137,11 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			FROM smartpick.sp_propostas p
 			LEFT JOIN smartpick.sp_enderecos e ON e.id = p.endereco_id
 			WHERE p.empresa_id = $1
+			  -- Oculta propostas de lotes já finalizados (histórico 'concluido')
+			  AND NOT EXISTS (
+			      SELECT 1 FROM smartpick.sp_historico h
+			      WHERE h.job_id = p.job_id AND h.status = 'concluido'
+			  )
 		`
 		args := []interface{}{spCtx.EmpresaID}
 		idx := 2
@@ -277,8 +282,12 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 				COUNT(*) FILTER (WHERE status = 'calibrado')            AS calibrado_total,
 				COUNT(*) FILTER (WHERE status = 'ignorado')             AS ignorado_total,
 				COUNT(*) FILTER (WHERE classe_venda = 'A' AND delta = 0 AND justificativa LIKE '%mantida%') AS curva_a_mantida
-			FROM smartpick.sp_propostas
-			` + filter
+			FROM smartpick.sp_propostas p
+			` + filter + `
+			  AND NOT EXISTS (
+			      SELECT 1 FROM smartpick.sp_historico h
+			      WHERE h.job_id = p.job_id AND h.status = 'concluido'
+			  )`
 
 		var resumo PropostasResumo
 		err := db.QueryRow(query, args...).Scan(
@@ -716,7 +725,12 @@ func SpPropostasRuasHandler(db *sql.DB) http.HandlerFunc {
 		if statusParam != "" {
 			filterStatus = fmt.Sprintf(" AND status = '%s'", statusParam)
 		}
-		filter := "WHERE empresa_id = $1 AND rua IS NOT NULL" + filterStatus
+		// p.* + oculta ruas cujas propostas pertencem a lote já finalizado (concluido)
+		filter := `WHERE p.empresa_id = $1 AND p.rua IS NOT NULL
+			AND NOT EXISTS (
+			    SELECT 1 FROM smartpick.sp_historico h
+			    WHERE h.job_id = p.job_id AND h.status = 'concluido'
+			)` + filterStatus
 		args   := []any{spCtx.EmpresaID}
 		idx    := 2
 
@@ -743,7 +757,7 @@ func SpPropostasRuasHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		rows, err := db.Query(
-			fmt.Sprintf("SELECT DISTINCT rua FROM smartpick.sp_propostas %s ORDER BY rua", filter),
+			fmt.Sprintf("SELECT DISTINCT p.rua FROM smartpick.sp_propostas p %s ORDER BY p.rua", filter),
 			args...,
 		)
 		if err != nil {
