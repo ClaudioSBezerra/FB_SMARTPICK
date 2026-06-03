@@ -38,6 +38,9 @@ type SpCSVJobResponse struct {
 	CreatedAt   string  `json:"created_at"`
 	CDID        int     `json:"cd_id"`
 	FilialID    int     `json:"filial_id"`
+	// Estado de calibragem do lote: '' = não ativado, 'em_andamento' = ativado
+	// (tem ciclo aberto), 'concluido' = ciclo finalizado.
+	CicloStatus string  `json:"ciclo_status"`
 }
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
@@ -192,7 +195,13 @@ func SpCSVJobsHandler(db *sql.DB) http.HandlerFunc {
 			       TO_CHAR(j.started_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 			       TO_CHAR(j.finished_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 			       TO_CHAR(j.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-			       j.cd_id, j.filial_id
+			       j.cd_id, j.filial_id,
+			       COALESCE((
+			           SELECT h.status FROM smartpick.sp_historico h
+			           WHERE h.job_id = j.id
+			           ORDER BY (h.status = 'em_andamento') DESC, h.executado_em DESC
+			           LIMIT 1
+			       ), '') AS ciclo_status
 			FROM smartpick.sp_csv_jobs j
 			WHERE j.empresa_id = $1
 		`
@@ -217,7 +226,7 @@ func SpCSVJobsHandler(db *sql.DB) http.HandlerFunc {
 				&j.ID, &j.Filename, &j.Status,
 				&j.TotalLinhas, &j.LinhasOk, &j.LinhasErro, &j.ErroMsg,
 				&j.StartedAt, &j.FinishedAt, &j.CreatedAt,
-				&j.CDID, &j.FilialID,
+				&j.CDID, &j.FilialID, &j.CicloStatus,
 			); err != nil {
 				continue
 			}

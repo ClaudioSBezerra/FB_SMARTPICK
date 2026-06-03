@@ -30,6 +30,7 @@ interface SpCSVJob {
   created_at: string
   cd_id: number
   filial_id: number
+  ciclo_status?: string  // '' = não ativado | 'em_andamento' | 'concluido'
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -370,46 +371,58 @@ export default function SpUploadCSV() {
               <TableCell>
                 {(() => {
                   const isPending = executarMotor.isPending && motorJobID === j.id
-                  const cdBlocked = cdHasPending[j.cd_id] ?? false
                   const isDeleting = excluirLote.isPending && deletingJobID === j.id
-                  const podeExcluir = j.status !== 'pending' && j.status !== 'processing'
+                  const isConcluindo = concluirLote.isPending && concluindoJobID === j.id
+                  const ciclo = j.ciclo_status ?? ''
+                  // Estado do lote: não ativado | em andamento | concluído.
+                  const naoAtivado = j.status === 'done' && ciclo === ''
+                  const emAndamento = ciclo === 'em_andamento'
+                  const concluido = ciclo === 'concluido'
+                  // Só bloqueia ativar quando OUTRO lote do CD está em andamento.
+                  const cdBlocked = cdHasPending[j.cd_id] ?? false
+                  const podeExcluir = j.status !== 'pending' && j.status !== 'processing' && !emAndamento && !concluido
                   return (
                     <div className="space-y-1">
                       <div className="flex items-center gap-1.5">
-                        {j.status === 'done' && (
+                        {/* Não ativado → Ativar Calibração (trava se outro lote do CD está aberto) */}
+                        {naoAtivado && (
                           <Button
                             size="sm"
                             className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
                             disabled={isPending || cdBlocked || isDeleting}
-                            title={cdBlocked ? 'Há propostas pendentes neste CD. Finalize a calibragem atual antes de iniciar uma nova.' : undefined}
+                            title={cdBlocked ? 'Há um lote em andamento neste CD. Conclua-o antes de iniciar uma nova calibração.' : undefined}
                             onClick={() => { setMotorJobID(j.id); executarMotor.mutate(j.id) }}
                           >
                             <Zap className="h-3.5 w-3.5 mr-1" />
                             {isPending ? 'Iniciando…' : 'Ativar Calibração'}
                           </Button>
                         )}
-                        {j.status === 'done' && cdBlocked && (() => {
-                          const isConcluindo = concluirLote.isPending && concluindoJobID === j.id
-                          return (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 text-xs text-blue-700 border-blue-200 hover:bg-blue-50 disabled:opacity-50"
-                              disabled={isConcluindo}
-                              title="Concluir manualmente: marca o lote como Concluído, tira dos painéis e libera nova calibração (mantém o histórico)"
-                              onClick={() => {
-                                if (window.confirm(`Concluir o lote "${j.filename}"?\n\nEle será marcado como Concluído, sairá dos painéis de Calibragem/Realocação e liberará uma nova calibração. As propostas pendentes restantes não serão mais exibidas. O histórico é mantido.`)) {
-                                  concluirLote.mutate(j.id)
-                                }
-                              }}
-                            >
-                              {isConcluindo
-                                ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                                : <CheckCheck className="h-3.5 w-3.5 mr-1" />}
-                              {isConcluindo ? 'Concluindo…' : 'Concluir'}
-                            </Button>
-                          )
-                        })()}
+                        {/* Em andamento → Concluir (dar baixa manual) */}
+                        {emAndamento && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs text-blue-700 border-blue-200 hover:bg-blue-50 disabled:opacity-50"
+                            disabled={isConcluindo}
+                            title="Concluir: marca o lote como Concluído, tira dos painéis e libera nova calibração (mantém o histórico)"
+                            onClick={() => {
+                              if (window.confirm(`Concluir o lote "${j.filename}"?\n\nEle será marcado como Concluído, sairá dos painéis de Calibragem/Realocação e liberará uma nova calibração. As propostas pendentes restantes não serão mais exibidas. O histórico é mantido.`)) {
+                                concluirLote.mutate(j.id)
+                              }
+                            }}
+                          >
+                            {isConcluindo
+                              ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                              : <CheckCheck className="h-3.5 w-3.5 mr-1" />}
+                            {isConcluindo ? 'Concluindo…' : 'Concluir'}
+                          </Button>
+                        )}
+                        {/* Concluído → selo read-only */}
+                        {concluido && (
+                          <span className="inline-flex items-center gap-1 h-8 px-2 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-md">
+                            <CheckCheck className="h-3.5 w-3.5" /> Concluído
+                          </span>
+                        )}
                         {podeExcluir && (
                           <Button
                             size="sm"
@@ -429,9 +442,9 @@ export default function SpUploadCSV() {
                           </Button>
                         )}
                       </div>
-                      {j.status === 'done' && cdBlocked && (
+                      {emAndamento && (
                         <p className="text-[10px] text-amber-600 leading-tight max-w-[160px]">
-                          Calibragem em andamento neste CD
+                          Calibragem em andamento
                         </p>
                       )}
                     </div>
