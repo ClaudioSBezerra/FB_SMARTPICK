@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { RefreshCw, AlertTriangle, CheckCircle2, Clock, XCircle, UploadCloud, Hourglass, Ban } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNavigate } from 'react-router-dom'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ function TaxaBarra({ aprovadas, rejeitadas, pendentes }: {
 export default function SpHistorico() {
   const { token } = useAuth()
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const headers = { Authorization: `Bearer ${token}` }
 
   const [filialID, setFilialID] = useState<string>('')
@@ -148,17 +150,26 @@ export default function SpHistorico() {
       const r = await fetch(`/api/sp/historico/${id}/fechar`, {
         method: 'POST', headers,
       })
-      if (!r.ok) throw new Error((await r.json()).error ?? 'Erro')
+      if (!r.ok) {
+        // resposta pode ser texto puro (http.Error) ou JSON
+        const raw = await r.text()
+        let msg = raw
+        try { msg = JSON.parse(raw).error ?? raw } catch { /* texto puro */ }
+        throw new Error(msg || 'Erro ao fechar o ciclo')
+      }
     },
     onSuccess: () => {
-      toast.success('Ciclo fechado — o lote sai dos painéis e libera nova calibração')
+      toast.success('Ciclo concluído — liberou nova calibração. Indo para os indicadores…')
+      // Lote finalizado deixa de aparecer no painel e de bloquear ativação.
       qc.invalidateQueries({ queryKey: ['sp-historico'] })
       qc.invalidateQueries({ queryKey: ['sp-compliance'] })
-      // Lote finalizado deixa de aparecer no painel e de bloquear ativação:
-      // invalida as queries de propostas/resumo p/ refletir imediatamente.
       qc.invalidateQueries({ queryKey: ['sp-propostas'] })
       qc.invalidateQueries({ queryKey: ['sp-propostas-resumo'] })
       qc.invalidateQueries({ queryKey: ['sp-resumo-cd'] })
+      qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
+      qc.invalidateQueries({ queryKey: ['sp-resultados'] })
+      // Vai para a parte de indicadores (Painel de Resultados)
+      navigate('/resultados')
     },
     onError: (e: Error) => toast.error(e.message),
   })
