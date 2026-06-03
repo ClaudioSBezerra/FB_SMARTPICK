@@ -9,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
-import { Upload, RefreshCw, Zap } from 'lucide-react'
+import { Upload, RefreshCw, Zap, Trash2, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { BatchStatusMini } from '@/components/BatchStatusBar'
 
@@ -188,6 +188,23 @@ export default function SpUploadCSV() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Excluir lote (somente lotes não ativados) ────────────────────────────────
+  const [deletingJobID, setDeletingJobID] = useState<string | null>(null)
+  const excluirLote = useMutation({
+    mutationFn: async (jobId: string) => {
+      const r = await fetch(`/api/sp/csv/jobs/${jobId}`, { method: 'DELETE', headers })
+      if (!r.ok) throw new Error((await r.text()) || 'Erro ao excluir lote')
+    },
+    onMutate: (jobId) => setDeletingJobID(jobId),
+    onSuccess: () => {
+      toast.success('Lote excluído')
+      qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
+      qc.invalidateQueries({ queryKey: ['sp-resumo-cd'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+    onSettled: () => setDeletingJobID(null),
+  })
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   // Aba Upload CSV
@@ -332,22 +349,46 @@ export default function SpUploadCSV() {
                 {j.status === 'done' ? <BatchStatusMini jobId={j.id} /> : null}
               </TableCell>
               <TableCell>
-                {j.status === 'done' && (() => {
+                {(() => {
                   const isPending = executarMotor.isPending && motorJobID === j.id
                   const cdBlocked = cdHasPending[j.cd_id] ?? false
+                  const isDeleting = excluirLote.isPending && deletingJobID === j.id
+                  const podeExcluir = j.status !== 'pending' && j.status !== 'processing'
                   return (
                     <div className="space-y-1">
-                      <Button
-                        size="sm"
-                        className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
-                        disabled={isPending || cdBlocked}
-                        title={cdBlocked ? 'Há propostas pendentes neste CD. Finalize a calibragem atual antes de iniciar uma nova.' : undefined}
-                        onClick={() => { setMotorJobID(j.id); executarMotor.mutate(j.id) }}
-                      >
-                        <Zap className="h-3.5 w-3.5 mr-1" />
-                        {isPending ? 'Iniciando…' : 'Ativar Calibração'}
-                      </Button>
-                      {cdBlocked && (
+                      <div className="flex items-center gap-1.5">
+                        {j.status === 'done' && (
+                          <Button
+                            size="sm"
+                            className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                            disabled={isPending || cdBlocked || isDeleting}
+                            title={cdBlocked ? 'Há propostas pendentes neste CD. Finalize a calibragem atual antes de iniciar uma nova.' : undefined}
+                            onClick={() => { setMotorJobID(j.id); executarMotor.mutate(j.id) }}
+                          >
+                            <Zap className="h-3.5 w-3.5 mr-1" />
+                            {isPending ? 'Iniciando…' : 'Ativar Calibração'}
+                          </Button>
+                        )}
+                        {podeExcluir && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50"
+                            disabled={isDeleting || isPending}
+                            title="Excluir este lote (apenas lotes ainda não ativados)"
+                            onClick={() => {
+                              if (window.confirm(`Excluir o lote "${j.filename}"?\n\nIsso remove o arquivo importado e seus dados. Lotes já ativados (com propostas) não podem ser excluídos.`)) {
+                                excluirLote.mutate(j.id)
+                              }
+                            }}
+                          >
+                            {isDeleting
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Trash2 className="h-3.5 w-3.5" />}
+                          </Button>
+                        )}
+                      </div>
+                      {j.status === 'done' && cdBlocked && (
                         <p className="text-[10px] text-amber-600 leading-tight max-w-[160px]">
                           Calibragem em andamento neste CD
                         </p>

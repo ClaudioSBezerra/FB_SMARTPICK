@@ -236,7 +236,7 @@ func SpCSVJobsHandler(db *sql.DB) http.HandlerFunc {
 // GET /api/sp/csv/jobs/{id}
 func SpCSVJobStatusHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && r.Method != http.MethodDelete {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -250,6 +250,66 @@ func SpCSVJobStatusHandler(db *sql.DB) http.HandlerFunc {
 		jobID := strings.TrimPrefix(r.URL.Path, "/api/sp/csv/jobs/")
 		if jobID == "" {
 			http.Error(w, "job_id required", http.StatusBadRequest)
+			return
+		}
+
+		// ── DELETE: exclui um lote de importação ainda NÃO ativado ──────────────
+		// Permite remover um lote com erro (ou indesejado) antes de gerar propostas.
+		// Bloqueia se o lote já foi ativado (possui propostas) para preservar dados.
+		if r.Method == http.MethodDelete {
+			// Confirma que o job pertence à empresa
+			var exists bool
+			if err := db.QueryRow(
+				`SELECT EXISTS(SELECT 1 FROM smartpick.sp_csv_jobs WHERE id = $1 AND empresa_id = $2)`,
+				jobID, spCtx.EmpresaID,
+			).Scan(&exists); err != nil {
+				http.Error(w, "Database error", http.StatusInternalServerError)
+				return
+			}
+			if !exists {
+				http.Error(w, "Job não encontrado", http.StatusNotFound)
+				return
+			}
+
+			// Bloqueia exclusão se já houver propostas geradas (lote ativado)
+			var nProp int
+			if err := db.QueryRow(
+				`SELECT COUNT(*) FROM smartpick.sp_propostas WHERE job_id = $1 AND empresa_id = $2`,
+				jobID, spCtx.EmpresaID,
+			).Scan(&nProp); err != nil {
+				http.Error(w, "Database error", http.StatusInternalServerError)
+				return
+			}
+			if nProp > 0 {
+				http.Error(w, "Lote já ativado: possui propostas geradas e não pode ser excluído. Finalize ou rejeite as propostas pendentes deste CD.", http.StatusConflict)
+				return
+			}
+
+			// Remove dados importados + o job (transação). sp_historico.job_id é
+			// ON DELETE SET NULL, então eventual histórico é preservado.
+			tx, err := db.Begin()
+			if err != nil {
+				http.Error(w, "Database error", http.StatusInternalServerError)
+				return
+			}
+			defer tx.Rollback()
+			if _, err := tx.Exec(`DELETE FROM smartpick.sp_enderecos WHERE job_id = $1`, jobID); err != nil {
+				http.Error(w, "Erro ao remover dados do lote: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			res, err := tx.Exec(`DELETE FROM smartpick.sp_csv_jobs WHERE id = $1 AND empresa_id = $2`, jobID, spCtx.EmpresaID)
+			if err != nil {
+				http.Error(w, "Erro ao remover o lote: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if err := tx.Commit(); err != nil {
+				http.Error(w, "Erro ao confirmar exclusão: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			n, _ := res.RowsAffected()
+			log.Printf("[CSV] lote excluído: job=%s empresa=%s rows=%d", jobID, spCtx.EmpresaID, n)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"message": "Lote excluído"})
 			return
 		}
 
