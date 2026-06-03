@@ -89,6 +89,22 @@ func processNextJob(db *sql.DB) {
 	}
 
 	total := linhasOk + linhasErro
+
+	// Nenhuma linha importada (todas falharam) → marca como 'failed' com mensagem
+	// clara, em vez de "Concluído 0 ok". Quase sempre é arquivo no formato errado:
+	// Excel renomeado ou CSV com delimitador diferente de ponto e vírgula.
+	if linhasOk == 0 && total > 0 {
+		msg := fmt.Sprintf("Nenhuma das %d linhas pôde ser lida. O arquivo provavelmente não é um CSV separado por ponto e vírgula (;). No Excel use Salvar como → CSV (separado por ponto e vírgula) e importe o .csv gerado.", total)
+		log.Printf("[CSVWorker] job %s FAILED: 0 linhas válidas de %d", jobID, total)
+		db.Exec(`
+			UPDATE smartpick.sp_csv_jobs
+			SET status = 'failed', erro_msg = $1, finished_at = now(),
+			    total_linhas = $2, linhas_ok = 0, linhas_erro = $3
+			WHERE id = $4
+		`, msg, total, linhasErro, jobID)
+		return
+	}
+
 	db.Exec(`
 		UPDATE smartpick.sp_csv_jobs
 		SET status = 'done', finished_at = now(),

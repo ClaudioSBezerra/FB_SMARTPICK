@@ -110,6 +110,18 @@ func SpCSVUploadHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Erro ao ler arquivo", http.StatusInternalServerError)
 			return
 		}
+		// Barra arquivos Excel renomeados para .csv (ex: "arquivo.xls.csv").
+		// Excel .xls = OLE2 (D0 CF 11 E0); .xlsx = ZIP (50 4B 03 04 = "PK").
+		// Rejeita já aqui, sem criar lote — não polui o Log de Importação.
+		if len(fileBytes) >= 4 {
+			isXLS := fileBytes[0] == 0xD0 && fileBytes[1] == 0xCF && fileBytes[2] == 0x11 && fileBytes[3] == 0xE0
+			isXLSX := fileBytes[0] == 0x50 && fileBytes[1] == 0x4B && fileBytes[2] == 0x03 && fileBytes[3] == 0x04
+			if isXLS || isXLSX {
+				http.Error(w, "Este arquivo é um Excel (.xls/.xlsx), não um CSV. No Excel use Arquivo → Salvar como → CSV (separado por ponto e vírgula) e importe o .csv gerado.", http.StatusBadRequest)
+				return
+			}
+		}
+
 		hashBytes := sha256.Sum256(fileBytes)
 		fileHash := hex.EncodeToString(hashBytes[:])
 
@@ -357,9 +369,9 @@ func SpCSVJobStatusHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// ── DELETE: exclui um lote de importação ainda NÃO ativado ──────────────
-		// Permite remover um lote com erro (ou indesejado) antes de gerar propostas.
-		// Bloqueia se o lote já foi ativado (possui propostas) para preservar dados.
+		// ── DELETE: exclui um lote de importação (e tudo que veio dele) ─────────
+		// Remoção completa: propostas, histórico, endereços e o próprio lote.
+		// Permite "começar do zero" e reimportar — inclusive lotes já ativados.
 		if r.Method == http.MethodDelete {
 			// Confirma que o job pertence à empresa
 			var exists bool
@@ -375,28 +387,21 @@ func SpCSVJobStatusHandler(db *sql.DB) http.HandlerFunc {
 				return
 			}
 
-			// Bloqueia exclusão se já houver propostas geradas (lote ativado)
-			var nProp int
-			if err := db.QueryRow(
-				`SELECT COUNT(*) FROM smartpick.sp_propostas WHERE job_id = $1 AND empresa_id = $2`,
-				jobID, spCtx.EmpresaID,
-			).Scan(&nProp); err != nil {
-				http.Error(w, "Database error", http.StatusInternalServerError)
-				return
-			}
-			if nProp > 0 {
-				http.Error(w, "Lote já ativado: possui propostas geradas e não pode ser excluído. Finalize ou rejeite as propostas pendentes deste CD.", http.StatusConflict)
-				return
-			}
-
-			// Remove dados importados + o job (transação). sp_historico.job_id é
-			// ON DELETE SET NULL, então eventual histórico é preservado.
+			// Remove tudo que veio do lote (transação), na ordem das FKs.
 			tx, err := db.Begin()
 			if err != nil {
 				http.Error(w, "Database error", http.StatusInternalServerError)
 				return
 			}
 			defer tx.Rollback()
+			if _, err := tx.Exec(`DELETE FROM smartpick.sp_propostas WHERE job_id = $1 AND empresa_id = $2`, jobID, spCtx.EmpresaID); err != nil {
+				http.Error(w, "Erro ao remover propostas do lote: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if _, err := tx.Exec(`DELETE FROM smartpick.sp_historico WHERE job_id = $1 AND empresa_id = $2`, jobID, spCtx.EmpresaID); err != nil {
+				http.Error(w, "Erro ao remover histórico do lote: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 			if _, err := tx.Exec(`DELETE FROM smartpick.sp_enderecos WHERE job_id = $1`, jobID); err != nil {
 				http.Error(w, "Erro ao remover dados do lote: "+err.Error(), http.StatusInternalServerError)
 				return

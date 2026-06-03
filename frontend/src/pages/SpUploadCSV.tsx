@@ -152,7 +152,10 @@ export default function SpUploadCSV() {
         headers: { Authorization: `Bearer ${token}` },
         body: form,
       })
-      const data = await res.json()
+      // O backend pode responder JSON (duplicado) ou texto puro (validações).
+      const raw = await res.text()
+      let data: { error?: string; message?: string } = {}
+      try { data = raw ? JSON.parse(raw) : {} } catch { data = { message: raw } }
       if (res.status === 409 && data.error === 'duplicate_file') {
         toast.warning(data.message ?? 'Arquivo duplicado', { duration: 8000 })
         return
@@ -164,7 +167,7 @@ export default function SpUploadCSV() {
       // Navega automaticamente para o log após importação
       navigate('/upload/log')
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Erro no upload')
+      toast.error(e instanceof Error ? e.message : 'Erro no upload', { duration: 10000 })
     } finally {
       setUploading(false)
     }
@@ -189,7 +192,7 @@ export default function SpUploadCSV() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  // ── Excluir lote (somente lotes não ativados) ────────────────────────────────
+  // ── Excluir lote (remoção completa: dados, propostas e histórico) ────────────
   const [deletingJobID, setDeletingJobID] = useState<string | null>(null)
   const excluirLote = useMutation({
     mutationFn: async (jobId: string) => {
@@ -201,6 +204,8 @@ export default function SpUploadCSV() {
       toast.success('Lote excluído')
       qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
       qc.invalidateQueries({ queryKey: ['sp-resumo-cd'] })
+      qc.invalidateQueries({ queryKey: ['sp-propostas'] })
+      qc.invalidateQueries({ queryKey: ['sp-propostas-resumo'] })
     },
     onError: (e: Error) => toast.error(e.message),
     onSettled: () => setDeletingJobID(null),
@@ -380,7 +385,8 @@ export default function SpUploadCSV() {
                   const concluido = ciclo === 'concluido'
                   // Só bloqueia ativar quando OUTRO lote do CD está em andamento.
                   const cdBlocked = cdHasPending[j.cd_id] ?? false
-                  const podeExcluir = j.status !== 'pending' && j.status !== 'processing' && !emAndamento && !concluido
+                  const podeExcluir = j.status !== 'pending' && j.status !== 'processing'
+                  const temCalibragem = emAndamento || concluido
                   return (
                     <div className="space-y-1">
                       <div className="flex items-center gap-1.5">
@@ -429,9 +435,12 @@ export default function SpUploadCSV() {
                             variant="outline"
                             className="h-8 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50"
                             disabled={isDeleting || isPending}
-                            title="Excluir este lote (apenas lotes ainda não ativados)"
+                            title="Excluir este lote e tudo que veio dele (dados, propostas e histórico)"
                             onClick={() => {
-                              if (window.confirm(`Excluir o lote "${j.filename}"?\n\nIsso remove o arquivo importado e seus dados. Lotes já ativados (com propostas) não podem ser excluídos.`)) {
+                              const aviso = temCalibragem
+                                ? `\n\n⚠ ATENÇÃO: este lote já foi calibrado. Excluir vai apagar TAMBÉM as propostas e o histórico dele. Esta ação não pode ser desfeita.`
+                                : `\n\nIsso remove o arquivo importado e seus dados.`
+                              if (window.confirm(`Excluir o lote "${j.filename}"?${aviso}`)) {
                                 excluirLote.mutate(j.id)
                               }
                             }}
