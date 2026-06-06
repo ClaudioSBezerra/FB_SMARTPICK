@@ -464,6 +464,7 @@ func main() {
 			}
 		}
 	}, "gestor_filial"))
+	http.HandleFunc("/api/sp/cds", withSP(handlers.SpCDsAllHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/cds/", withSP(func(db *sql.DB) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path

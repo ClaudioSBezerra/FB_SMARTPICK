@@ -312,6 +312,50 @@ func SpFilialItemHandler(db *sql.DB) http.HandlerFunc {
 // ─── CDs ──────────────────────────────────────────────────────────────────────
 
 // SpCDsHandler — GET/POST /api/sp/filiais/{id}/cds
+// SpCDsAllHandler lista TODOS os CDs da empresa (sem filtrar por filial).
+// GET /api/sp/cds?todos=1  — usado por telas que mostram um seletor global de CD
+// (Reincidência, etc.). Evita o redirect p/ /api/sp/cds/ (item handler), que dava 400.
+func SpCDsAllHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		query := `
+			SELECT id, filial_id, nome, COALESCE(descricao,''), ativo, fonte_cd_id, created_at
+			FROM smartpick.sp_centros_dist
+			WHERE empresa_id = $1`
+		if r.URL.Query().Get("ativo") == "true" {
+			query += ` AND ativo = TRUE`
+		}
+		query += ` ORDER BY nome ASC`
+		rows, err := db.Query(query, spCtx.EmpresaID)
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		var cds []SpCDResponse
+		for rows.Next() {
+			var cd SpCDResponse
+			if err := rows.Scan(&cd.ID, &cd.FilialID, &cd.Nome, &cd.Descricao, &cd.Ativo, &cd.FonteCDID, &cd.CreatedAt); err != nil {
+				continue
+			}
+			cds = append(cds, cd)
+		}
+		if cds == nil {
+			cds = []SpCDResponse{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(cds)
+	}
+}
+
 func SpCDsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		spCtx := GetSpContext(r)
