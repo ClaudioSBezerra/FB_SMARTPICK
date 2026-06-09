@@ -350,7 +350,7 @@ function RealocacaoIndicadores({ cdID, token }: { cdID: string; token: string | 
         <MiniKpi titulo="Lotes (PDFs)" valor={m.lotes} />
         <MiniKpi titulo="Ruas organizadas" valor={m.ruas} />
         <MiniKpi titulo="Produtos Movimentados" valor={m.produtos} />
-        <MiniKpi titulo="Curva A movida" valor={m.curva_a} cor="text-green-700" />
+        <MiniKpi titulo="Curva A Movimentada" valor={m.curva_a} cor="text-green-700" />
         <MiniKpi titulo="Com observação" valor={m.com_obs} />
       </div>
 
