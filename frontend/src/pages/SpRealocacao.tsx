@@ -940,6 +940,39 @@ export default function SpRealocacao() {
 
   const totalMoves = items.filter((item, i) => item.id !== slots[i]?.id).length
 
+  // Persiste o lote de realocação (movimentos) no banco — chamado ao gerar o PDF.
+  // Best-effort: não bloqueia o PDF se falhar.
+  async function salvarRealocacao() {
+    if (!cdID || totalMoves === 0) return
+    const movimentos = slots
+      .map((slot, i) => ({ slot, item: items[i] }))
+      .filter(({ slot, item }) => item && item.id !== slot.id)
+      .map(({ slot, item }) => ({
+        codprod:      item.codprod,
+        produto:      item.produto,
+        classe_venda: item.classe_venda,
+        end_origem:   fmt(item),   // de onde o produto saiu
+        end_destino:  fmt(slot),   // para onde foi
+        qt_acesso_90: item.qt_acesso_90,
+        observacao:   observacoes[item.id] ?? '',
+      }))
+    try {
+      const r = await fetch('/api/sp/realocacao', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cd_id: Number(cdID),
+          rua: ruaSel ? Number(ruaSel) : null,
+          total_slots: slots.length,
+          movimentos,
+        }),
+      })
+      if (r.ok) toast.success(`${movimentos.length} movimentaç${movimentos.length === 1 ? 'ão registrada' : 'ões registradas'} nos indicadores`)
+    } catch {
+      // best-effort — o PDF já foi gerado
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -1014,7 +1047,7 @@ export default function SpRealocacao() {
             <Button
               size="sm"
               disabled={totalMoves === 0}
-              onClick={() => gerarPDF(ruaSel, slots, items, observacoes, pdfOnlyMoves)}
+              onClick={() => { gerarPDF(ruaSel, slots, items, observacoes, pdfOnlyMoves); salvarRealocacao() }}
             >
               <FileDown className="h-3.5 w-3.5 mr-1" />
               Gerar PDF{totalMoves > 0 ? ` (${pdfOnlyMoves ? totalMoves : slots.length} ${pdfOnlyMoves ? 'mov.' : 'slots'})` : ''}

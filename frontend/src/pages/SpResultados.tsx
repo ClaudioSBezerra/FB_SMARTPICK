@@ -300,6 +300,88 @@ function EntenderBadge() {
   )
 }
 
+// ─── Indicadores de Realocação ────────────────────────────────────────────────
+interface RealocMesAtual {
+  movimentos: number; lotes: number; ruas: number; produtos: number; curva_a: number; com_obs: number
+}
+interface IndicadorMes {
+  mes: string; realoc_movimentos: number; realoc_lotes: number; calib_ciclos: number; calib_skus: number
+}
+interface RealocIndicadores { mes_atual: RealocMesAtual; mensal: IndicadorMes[] }
+
+function fmtMes(ym: string): string {
+  const [y, m] = ym.split('-')
+  const meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']
+  return `${meses[Number(m) - 1] ?? m}/${y.slice(2)}`
+}
+
+function MiniKpi({ titulo, valor, cor = 'text-slate-800' }: { titulo: string; valor: number | string; cor?: string }) {
+  return (
+    <div className="rounded-lg border bg-white p-3">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{titulo}</div>
+      <div className={`text-2xl font-bold ${cor}`}>{valor}</div>
+    </div>
+  )
+}
+
+function RealocacaoIndicadores({ cdID, token }: { cdID: string; token: string | null }) {
+  const [ind, setInd] = useState<RealocIndicadores | null>(null)
+  useEffect(() => {
+    if (!token) return
+    const url = cdID ? `/api/sp/realocacao/indicadores?cd_id=${cdID}` : '/api/sp/realocacao/indicadores'
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setInd(d))
+      .catch(() => {})
+  }, [cdID, token])
+
+  if (!ind) return null
+  const m = ind.mes_atual
+  const maxMov = Math.max(1, ...ind.mensal.map(x => x.realoc_movimentos))
+  const maxCal = Math.max(1, ...ind.mensal.map(x => x.calib_skus))
+
+  return (
+    <section>
+      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        Realocação de Mercadoria — Mês Atual
+      </h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <MiniKpi titulo="Movimentações" valor={m.movimentos} cor="text-orange-600" />
+        <MiniKpi titulo="Lotes (PDFs)" valor={m.lotes} />
+        <MiniKpi titulo="Ruas organizadas" valor={m.ruas} />
+        <MiniKpi titulo="Produtos movidos" valor={m.produtos} />
+        <MiniKpi titulo="Curva A movida" valor={m.curva_a} cor="text-green-700" />
+        <MiniKpi titulo="Com observação" valor={m.com_obs} />
+      </div>
+
+      {ind.mensal.length > 0 && (
+        <div className="mt-4 rounded-lg border bg-white p-4">
+          <div className="text-xs font-semibold mb-3">Visão mensal — Realocações × Calibrações</div>
+          <div className="space-y-2">
+            {ind.mensal.map(x => (
+              <div key={x.mes} className="grid grid-cols-[56px_1fr_1fr] items-center gap-3 text-xs">
+                <span className="font-mono text-muted-foreground">{fmtMes(x.mes)}</span>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 rounded bg-orange-400" style={{ width: `${(x.realoc_movimentos / maxMov) * 100}%`, minWidth: x.realoc_movimentos > 0 ? 6 : 0 }} />
+                  <span className="whitespace-nowrap text-orange-700">{x.realoc_movimentos} mov · {x.realoc_lotes} lote{x.realoc_lotes !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 rounded bg-sky-400" style={{ width: `${(x.calib_skus / maxCal) * 100}%`, minWidth: x.calib_skus > 0 ? 6 : 0 }} />
+                  <span className="whitespace-nowrap text-sky-700">{x.calib_skus} SKUs · {x.calib_ciclos} ciclo{x.calib_ciclos !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-4 mt-3 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-400 inline-block" /> Realocações (movim.)</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-sky-400 inline-block" /> Calibrações (SKUs aprovados)</span>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function SpResultados() {
   const { token } = useAuth()
@@ -372,6 +454,11 @@ export default function SpResultados() {
             Nenhum dado disponível. Importe e processe um CSV para ver os resultados.
           </p>
         </div>
+      )}
+
+      {/* ── Indicadores de Realocação (mês + mensal) ───────────────────── */}
+      {!loading && token && (
+        <RealocacaoIndicadores cdID={cdID} token={token} />
       )}
 
       {/* ── Gráfico comparativo entre importações (elemento principal) ─── */}
