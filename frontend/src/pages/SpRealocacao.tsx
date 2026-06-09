@@ -923,7 +923,7 @@ export default function SpRealocacao() {
           'Norma Plt':      np ?? '',
           'End. Origem':    moved ? fmt(it) : '',
           'Observação':     observacoes[it.id] ?? '',
-          'Movido':         moved ? 'Sim' : 'Não',
+          'Movimentado':    moved ? 'Sim' : 'Não',
         }
       })
       const ws = XLSX.utils.json_to_sheet(data)
