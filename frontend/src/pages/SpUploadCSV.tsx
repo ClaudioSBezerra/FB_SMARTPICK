@@ -152,14 +152,10 @@ export default function SpUploadCSV() {
         headers: { Authorization: `Bearer ${token}` },
         body: form,
       })
-      // O backend pode responder JSON (duplicado) ou texto puro (validações).
+      // O backend pode responder JSON ou texto puro (validações de formato).
       const raw = await res.text()
       let data: { error?: string; message?: string } = {}
       try { data = raw ? JSON.parse(raw) : {} } catch { data = { message: raw } }
-      if (res.status === 409 && data.error === 'duplicate_file') {
-        toast.warning(data.message ?? 'Arquivo duplicado', { duration: 8000 })
-        return
-      }
       if (!res.ok) throw new Error(data.error ?? data.message ?? 'Erro no upload')
       toast.success('Arquivo enviado! Acompanhe o processamento no log.')
       qc.invalidateQueries({ queryKey: ['sp-csv-jobs'] })
