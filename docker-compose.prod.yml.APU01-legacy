@@ -1,3 +1,13 @@
+# ============================================================================
+# ⚠️  ARQUIVO LEGADO — NÃO É USADO PELO SMARTPICK  ⚠️
+# ============================================================================
+# Resquício herdado do clone do FB_APU01 (container_name fb_apu01-*, porta
+# 8082, Host www.fbtax.cloud). O SmartPick é deployado pelo Coolify usando
+# ./docker-compose.yml (porta 8085, smartpick.fbtax.cloud, Traefik /api).
+#
+# Mantido só como referência histórica. NÃO edite este arquivo achando que
+# corrige o deploy do SmartPick — a config real está em docker-compose.yml.
+# ============================================================================
 version: '3.8'
 
 services:
