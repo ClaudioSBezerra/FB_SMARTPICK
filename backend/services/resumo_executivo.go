@@ -626,6 +626,12 @@ func buildResumoPlainText(k *KPIsResumoExecutivo, narrativa, periodoIni, periodo
 	fmt.Fprintf(&sb, "Ampliar slot: %d | Reduzir slot: %d | Calibrados: %d | Curva A revisar: %d\n", k.Ampliar, k.Reduzir, k.Calibrados, k.CurvaARevisar)
 	fmt.Fprintf(&sb, "Taxa de aprovacao: %.0f%% | Compliance: %.0f%% | Ignorados: %d\n\n", k.TaxaAprovacaoPct, k.TaxaCompliancePct, k.TotalIgnorados)
 
+	if k.RealocMovimentos > 0 {
+		sb.WriteString("=== REALOCACOES DA SEMANA ===\n")
+		fmt.Fprintf(&sb, "Movimentos: %d | Lotes: %d | Ruas: %d | Curva A: %d\n\n",
+			k.RealocMovimentos, k.RealocLotes, k.RealocRuas, k.RealocCurvaA)
+	}
+
 	if len(k.ImportsPeriodo) > 0 {
 		sb.WriteString("=== IMPORTACOES DO PERIODO ===\n")
 		for _, imp := range k.ImportsPeriodo {
@@ -654,8 +660,8 @@ func GerarResumoExecutivo(db *sql.DB, cdID int, criadoPor string) (int, *KPIsRes
 		log.Printf("[resumo] CD=%d coletar KPIs FALHOU: %v", cdID, err)
 		return 0, nil, "", fmt.Errorf("coletar KPIs: %w", err)
 	}
-	log.Printf("[resumo] CD=%d KPIs coletados: total=%d aprovadas=%d rejeitadas=%d imports=%d sem_atividade=%v",
-		cdID, kpis.TotalPropostas, kpis.TotalAprovadas, kpis.TotalRejeitadas, len(kpis.ImportsPeriodo), kpis.SemAtividade)
+	log.Printf("[resumo] CD=%d KPIs coletados: total=%d aprovadas=%d rejeitadas=%d imports=%d realoc_mov=%d realoc_lotes=%d sem_atividade=%v",
+		cdID, kpis.TotalPropostas, kpis.TotalAprovadas, kpis.TotalRejeitadas, len(kpis.ImportsPeriodo), kpis.RealocMovimentos, kpis.RealocLotes, kpis.SemAtividade)
 
 	narrativa, err := GerarNarrativaIA(kpis)
 	if err != nil {
