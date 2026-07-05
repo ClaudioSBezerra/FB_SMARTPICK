@@ -5,7 +5,7 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
-import { Sparkles, Loader2, Mail, FileText, ChevronRight, Send } from 'lucide-react'
+import { Sparkles, Loader2, Mail, FileText, ChevronRight, Send, FileDown } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface SpFilial { id: number; cod_filial: number; nome: string }
@@ -172,6 +172,29 @@ export default function SpResumoExecutivo() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Baixar PDF do resumo (com logo da empresa) ────────────────────────────
+  const [baixandoPDF, setBaixandoPDF] = useState(false)
+  async function baixarPDF(id: number) {
+    setBaixandoPDF(true)
+    try {
+      const res = await fetch(`/api/sp/relatorios/${id}/pdf`, { headers })
+      if (!res.ok) throw new Error((await res.text()) || 'Erro ao gerar PDF')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
+        ?? `resumo_executivo_${id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('PDF gerado')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao baixar PDF')
+    } finally {
+      setBaixandoPDF(false)
+    }
+  }
+
   // Auto-seleciona o resumo mais recente quando carrega a lista
   useEffect(() => {
     if (resumos.length && !resumoSel) setResumoSel(resumos[0].id)
@@ -297,18 +320,31 @@ export default function SpResumoExecutivo() {
                       </p>
                     )}
                   </div>
-                  {isMaster && (
+                  <div className="flex items-center gap-2 shrink-0">
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={enviarMutation.isPending}
-                      onClick={() => enviarMutation.mutate(detalhe.id)}
+                      disabled={baixandoPDF}
+                      onClick={() => baixarPDF(detalhe.id)}
+                      title="Baixar este resumo em PDF (com o logotipo da empresa)"
                     >
-                      {enviarMutation.isPending
-                        ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Enviando…</>
-                        : <><Send className="h-3.5 w-3.5 mr-1" />{detalhe.enviado_em ? 'Reenviar' : 'Enviar por email'}</>}
+                      {baixandoPDF
+                        ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Gerando…</>
+                        : <><FileDown className="h-3.5 w-3.5 mr-1" />Gerar PDF</>}
                     </Button>
-                  )}
+                    {isMaster && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={enviarMutation.isPending}
+                        onClick={() => enviarMutation.mutate(detalhe.id)}
+                      >
+                        {enviarMutation.isPending
+                          ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Enviando…</>
+                          : <><Send className="h-3.5 w-3.5 mr-1" />{detalhe.enviado_em ? 'Reenviar' : 'Enviar por email'}</>}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* KPI strip */}

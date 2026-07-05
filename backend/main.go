@@ -563,6 +563,8 @@ func main() {
 				handlers.SpResumoGerarHandler(db)(w, r)
 			case strings.HasSuffix(r.URL.Path, "/enviar"):
 				handlers.SpResumoEnviarHandler(db)(w, r)
+			case strings.HasSuffix(r.URL.Path, "/pdf"):
+				handlers.SpResumoPDFHandler(db)(w, r)
 			default:
 				handlers.SpResumoItemHandler(db)(w, r)
 			}
