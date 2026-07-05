@@ -52,7 +52,25 @@ ALERTAS ⚠ (3 pontos por produto):
 
 FILTROS: Departamento, Seção, Endereço, GiroCap, GPRepos, CMEN2DDV. Botão "Exportar Excel" baixa lista filtrada.
 
-OUTROS MENUS: Histórico (calibragens + compliance) | Reincidência (produtos que voltam a desviar) | Painel de Resultados (métricas 4 ciclos) | Administração (Filiais, CDs, Regras do motor)`
+PAINEL DE REALOCAÇÃO (reorganização física de uma rua):
+- Objetivo: trocar produtos de endereço dentro da rua p/ colocar os de maior giro (Curva A, QTACESSO alto) nos melhores endereços
+- Fluxo: selecionar Filial → CD → Rua → "Carregar rua"
+- Trocar endereços: tap no quadrado ▢ de um produto (fica VERDE) → tap em outro ▢ → os dois trocam de endereço; no desktop também dá para arrastar a linha; setas ↑↓ trocam com vizinho
+- Linhas LARANJA = produtos com movimentação pendente; End. Origem mostra de onde saiu
+- Colunas: Curva (A/B/C + % participação), QTACESSO (heat map de acessos 90d), Giro/dia, Ação (Aumentar/Reduzir/OK/Calibrado), Cap. Atual, Plt. Atual, Sugestão, Sug. Plt, Norma Plt, End. Origem, Obs.
+- Observações: coluna "Obs." — clique para anotar até 70 caracteres por produto; a observação sai no PDF
+- Ordenar por coluna = só visualização (não move nada); filtros em funil em cada cabeçalho
+- "Gerar PDF do lote": gera o documento p/ o operador executar E registra as movimentações nos indicadores; checkbox "Apenas movim." imprime só o que mudou
+- "Exportar Excel" exporta a rua com filtros aplicados; "Resetar ordem" desfaz as trocas não geradas
+- O trabalho fica salvo no navegador por rua (volta ao reabrir); some apenas após reimportação
+- Badge FL vermelho = produto Fora de Linha (descontinuado) — bom candidato a sair do picking
+
+INDICADORES DE REALOCAÇÃO (Painel de Resultados):
+- Mês atual: Movimentações, Lotes (PDFs), Ruas organizadas, Produtos Movimentados, Curva A Movimentada, Com observação
+- Visão mensal: barras comparando Realocações × Calibrações (SKUs aprovados) nos últimos 6 meses
+- Análise recomendada: priorizar mover Curva A com QTACESSO alto p/ os endereços mais acessíveis; muitas movimentações repetidas na mesma rua podem indicar dimensionamento errado dos slots (usar calibragem)
+
+OUTROS MENUS: Histórico (calibragens + compliance) | Reincidência (produtos que voltam a desviar) | Painel de Resultados (métricas 4 ciclos + indicadores de realocação) | Administração (Filiais, CDs, Regras do motor)`
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
 

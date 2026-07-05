@@ -44,6 +44,12 @@ type KPIsResumoExecutivo struct {
 
 	ImportsPeriodo []ImportInfo `json:"imports_periodo"`
 	SemAtividade   bool         `json:"sem_atividade"` // true quando não houve aprovações/rejeições no período
+
+	// Realocação física no período (movimentos persistidos ao gerar o PDF do lote)
+	RealocMovimentos int `json:"realoc_movimentos"` // produtos que trocaram de endereço
+	RealocLotes      int `json:"realoc_lotes"`      // lotes (PDFs) gerados
+	RealocRuas       int `json:"realoc_ruas"`       // ruas organizadas
+	RealocCurvaA     int `json:"realoc_curva_a"`    // movimentos de produtos Curva A
 }
 
 type KVPair struct {
@@ -240,8 +246,25 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		}
 	}
 
+	// Realocação física no período (persistida ao gerar o PDF do lote)
+	_ = db.QueryRow(`
+		SELECT COALESCE(SUM(i.cnt), 0),
+		       COUNT(DISTINCT l.id),
+		       COUNT(DISTINCT l.rua),
+		       COALESCE(SUM(i.curva_a), 0)
+		  FROM smartpick.sp_realocacao_lote l
+		  JOIN LATERAL (
+			SELECT COUNT(*) AS cnt,
+			       COUNT(*) FILTER (WHERE classe_venda = 'A') AS curva_a
+			  FROM smartpick.sp_realocacao_item it WHERE it.lote_id = l.id
+		  ) i ON TRUE
+		 WHERE l.cd_id = $1
+		   AND l.criado_em >= $2 AND l.criado_em < $3
+	`, cdID, inicio, fimExclusivo).Scan(&k.RealocMovimentos, &k.RealocLotes, &k.RealocRuas, &k.RealocCurvaA)
+
 	// Marca como "sem atividade" quando não houve aprovações nem rejeições
-	k.SemAtividade = (k.TotalAprovadas + k.TotalRejeitadas) == 0
+	// NEM realocações físicas no período
+	k.SemAtividade = (k.TotalAprovadas+k.TotalRejeitadas) == 0 && k.RealocMovimentos == 0
 
 	// Alertas atuais usando o último csv_job do CD
 	_ = db.QueryRow(`
@@ -276,8 +299,19 @@ Receberá um JSON com KPIs do CD na semana. Sua tarefa:
 4. Máximo de ~250 palavras totais
 5. Não repita o JSON — só análise narrativa
 
+REALOCAÇÃO FÍSICA (campos realoc_*):
+   realoc_movimentos = produtos que trocaram de endereço na rua no período;
+   realoc_lotes = lotes de realocação gerados; realoc_ruas = ruas organizadas;
+   realoc_curva_a = movimentos de produtos Curva A (alto giro — os mais importantes).
+   - Se realoc_movimentos > 0: inclua uma seção "## Realocações da semana" com
+     1-2 frases (quantos movimentos, em quantas ruas, destaque para Curva A).
+   - Se realoc_curva_a for alta proporção dos movimentos, elogie a priorização
+     (Curva A nos melhores endereços = menos deslocamento no picking).
+   - Se realoc_movimentos = 0 mas houve calibragem aprovada, sugira na ação
+     organizar as ruas com o Painel de Realocação.
+
 CASO ESPECIAL — sem_atividade=true:
-   Se o campo "sem_atividade" estiver true, significa que NÃO houve aprovações nem rejeições no período. Nesse caso:
+   Se o campo "sem_atividade" estiver true, significa que NÃO houve aprovações, rejeições nem realocações no período. Nesse caso:
    - Abra reconhecendo a baixa atividade ("A semana não registrou movimentações de calibragem...")
    - Se houver imports_periodo: liste cada arquivo importado (filename, uploaded_by, uploaded_em, total_linhas, status) em "## Importações do período"
    - Em "## Sugestão de ação": cobre o gestor para revisar as propostas pendentes ou importar dados se nada chegou

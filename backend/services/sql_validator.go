@@ -14,12 +14,14 @@ var allowedObjects = []string{
 	"smartpick.vw_destinatarios_chat",
 	"smartpick.vw_ignorados_chat",
 	"smartpick.vw_resumo_executivo_chat",
+	"smartpick.vw_realocacoes_chat",
 	// permitir por nome curto também (sem schema) para a IA não depender disso:
 	"vw_propostas_chat",
 	"vw_imports_chat",
 	"vw_destinatarios_chat",
 	"vw_ignorados_chat",
 	"vw_resumo_executivo_chat",
+	"vw_realocacoes_chat",
 }
 
 // Palavras-chave proibidas (case-insensitive). Evita DDL/DML/comandos de sistema.

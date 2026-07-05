@@ -52,6 +52,15 @@ vw_resumo_executivo_chat — resumos semanais gerados
   colunas: id, cd_id, cd_nome, filial_nome, periodo_inicio, periodo_fim,
            criado_em, enviado_em, qtd_enviados
 
+vw_realocacoes_chat — movimentos de realocação física (troca de endereço na rua)
+  colunas: id, cd_id, cd_nome, filial_nome, rua, codprod, produto,
+           classe_venda (A/B/C), end_origem, end_destino, qt_acesso_90,
+           observacao, lote_id, total_slots, total_movimentos,
+           criado_por_email, criado_em
+  observação: cada linha = 1 produto movido de end_origem para end_destino.
+  lote_id agrupa os movimentos de uma mesma geração de PDF (1 lote = 1 rua).
+  qt_acesso_90 = acessos ao picking em 90 dias (quanto maior, mais importante o produto).
+
 EXEMPLOS:
 
 Usuário: "Quantas propostas pendentes temos no CD FL 11?"
@@ -72,6 +81,16 @@ SELECT filename, cd_nome, uploaded_by_email, total_linhas, status, created_at FR
 Usuário: "Listar destinatários ativos do CD FL 11"
 ` + "```sql" + `
 SELECT nome_completo, email, cargo FROM vw_destinatarios_chat WHERE cd_nome ILIKE '%FL 11%' AND ativo = TRUE LIMIT 50
+` + "```" + `
+
+Usuário: "Quantas realocações fizemos este mês?"
+` + "```sql" + `
+SELECT COUNT(*) AS movimentos, COUNT(DISTINCT lote_id) AS lotes, COUNT(DISTINCT rua) AS ruas FROM vw_realocacoes_chat WHERE date_trunc('month', criado_em) = date_trunc('month', NOW())
+` + "```" + `
+
+Usuário: "Quais produtos curva A foram movimentados na rua 12?"
+` + "```sql" + `
+SELECT codprod, produto, end_origem, end_destino, qt_acesso_90, criado_em FROM vw_realocacoes_chat WHERE classe_venda = 'A' AND rua = 12 ORDER BY criado_em DESC LIMIT 50
 ` + "```" + ``
 
 const narrarSystemPrompt = `Você é um analista do sistema SmartPick. Receberá:
@@ -114,6 +133,7 @@ var chatViews = []string{
 	"vw_destinatarios_chat",
 	"vw_ignorados_chat",
 	"vw_resumo_executivo_chat",
+	"vw_realocacoes_chat",
 }
 
 // qualificarSchema substitui referências a "vw_xxx_chat" por "smartpick.vw_xxx_chat"
