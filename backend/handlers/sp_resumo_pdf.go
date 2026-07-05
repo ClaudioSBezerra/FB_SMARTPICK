@@ -220,6 +220,65 @@ func SpResumoPDFHandler(db *sql.DB) http.HandlerFunc {
 			)
 		}
 
+		// ── Itens realocados: antes → depois, por data e rua ──────────────
+		if len(k.RealocItens) > 0 {
+			hdr := func(t string, size int, al align.Type) core.Col {
+				return col.New(size).Add(text.New(t, props.Text{
+					Size: 7, Style: fontstyle.Bold, Color: azul, Align: al,
+				}))
+			}
+			cell := func(t string, size int, al align.Type, bold bool) core.Col {
+				st := fontstyle.Normal
+				if bold {
+					st = fontstyle.Bold
+				}
+				return col.New(size).Add(text.New(t, props.Text{Size: 7.5, Style: st, Align: al}))
+			}
+			mrt.AddRows(
+				row.New(7).Add(col.New(12).Add(
+					text.New(fmt.Sprintf("ITENS REALOCADOS — ANTES → DEPOIS (%d)", len(k.RealocItens)),
+						props.Text{Size: 9, Style: fontstyle.Bold, Top: 2, Color: azul}),
+				)),
+				row.New(5).Add(
+					hdr("Data", 2, align.Left),
+					hdr("Rua", 1, align.Center),
+					hdr("Cód.", 1, align.Left),
+					hdr("Produto", 3, align.Left),
+					hdr("Cv", 1, align.Center),
+					hdr("Antes", 2, align.Center),
+					hdr("Depois", 2, align.Center),
+				),
+			)
+			for _, it := range k.RealocItens {
+				prod := it.Produto
+				if len(prod) > 34 {
+					prod = prod[:34] + "…"
+				}
+				mrt.AddRows(row.New(4.5).Add(
+					cell(it.Data, 2, align.Left, false),
+					cell(strconv.Itoa(it.Rua), 1, align.Center, false),
+					cell(strconv.Itoa(it.Codprod), 1, align.Left, false),
+					cell(prod, 3, align.Left, false),
+					cell(it.Curva, 1, align.Center, true),
+					cell(it.Antes, 2, align.Center, false),
+					cell(it.Depois, 2, align.Center, true),
+				))
+				if it.Observacao != "" {
+					mrt.AddRows(row.New(4).Add(
+						col.New(2),
+						col.New(10).Add(text.New("Obs: "+it.Observacao, props.Text{
+							Size: 7, Color: cinza,
+						})),
+					))
+				}
+			}
+			if len(k.RealocItens) == 200 {
+				mrt.AddRows(row.New(5).Add(col.New(12).Add(
+					text.New("Lista limitada aos primeiros 200 movimentos do período.", props.Text{Size: 7, Color: cinza}),
+				)))
+			}
+		}
+
 		// ── Narrativa da IA ───────────────────────────────────────────────
 		mrt.AddRows(row.New(8).Add(col.New(12).Add(
 			text.New("ANÁLISE", props.Text{Size: 9, Style: fontstyle.Bold, Top: 3, Color: azul}),

@@ -54,6 +54,20 @@ interface KPIs {
     linhas_erro: number
   }>
   sem_atividade: boolean
+  realoc_movimentos?: number
+  realoc_lotes?: number
+  realoc_ruas?: number
+  realoc_curva_a?: number
+  realoc_itens?: Array<{
+    data: string
+    rua: number
+    codprod: number
+    produto: string
+    curva: string
+    antes: string
+    depois: string
+    observacao: string
+  }>
 }
 
 interface ResumoDetalhe {
@@ -375,6 +389,50 @@ export default function SpResumoExecutivo() {
                     {renderMarkdown(detalhe.narrativa_md ?? '')}
                   </div>
                 </div>
+
+                {/* Itens realocados — antes → depois, por data e rua */}
+                {(detalhe.dados.realoc_itens?.length ?? 0) > 0 && (
+                  <div className="p-4 border-b">
+                    <h3 className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+                      Itens realocados — antes → depois ({detalhe.dados.realoc_itens!.length})
+                      {detalhe.dados.realoc_movimentos ? (
+                        <span className="ml-2 font-normal normal-case">
+                          {detalhe.dados.realoc_lotes} lote(s) · {detalhe.dados.realoc_ruas} rua(s) · Curva A: {detalhe.dados.realoc_curva_a}
+                        </span>
+                      ) : null}
+                    </h3>
+                    <div className="overflow-x-auto border rounded-md">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-gray-50 text-left text-[10px] uppercase text-muted-foreground">
+                            <th className="px-2 py-1.5">Data</th>
+                            <th className="px-2 py-1.5 text-center">Rua</th>
+                            <th className="px-2 py-1.5">Cód.</th>
+                            <th className="px-2 py-1.5">Produto</th>
+                            <th className="px-2 py-1.5 text-center">Curva</th>
+                            <th className="px-2 py-1.5 text-center">Antes</th>
+                            <th className="px-2 py-1.5 text-center">Depois</th>
+                            <th className="px-2 py-1.5">Obs.</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detalhe.dados.realoc_itens!.map((it, i) => (
+                            <tr key={i} className="border-t">
+                              <td className="px-2 py-1 whitespace-nowrap text-muted-foreground">{it.data}</td>
+                              <td className="px-2 py-1 text-center font-mono">{it.rua}</td>
+                              <td className="px-2 py-1 font-mono">{it.codprod}</td>
+                              <td className="px-2 py-1 max-w-[220px] truncate" title={it.produto}>{it.produto}</td>
+                              <td className="px-2 py-1 text-center font-bold">{it.curva}</td>
+                              <td className="px-2 py-1 text-center font-mono">{it.antes}</td>
+                              <td className="px-2 py-1 text-center font-mono font-semibold text-green-700">{it.depois}</td>
+                              <td className="px-2 py-1 max-w-[160px] truncate text-amber-800" title={it.observacao}>{it.observacao}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 {/* Tabelas detalhadas */}
                 <div className="grid grid-cols-2 gap-4 p-4">

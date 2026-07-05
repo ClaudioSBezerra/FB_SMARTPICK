@@ -50,6 +50,22 @@ type KPIsResumoExecutivo struct {
 	RealocLotes      int `json:"realoc_lotes"`      // lotes (PDFs) gerados
 	RealocRuas       int `json:"realoc_ruas"`       // ruas organizadas
 	RealocCurvaA     int `json:"realoc_curva_a"`    // movimentos de produtos Curva A
+
+	// Itens realocados no período (antes → depois), ordenados por data e rua.
+	// Limitado a 200 p/ não inflar o dados_json. NÃO é enviado à IA (só agregados).
+	RealocItens []RealocItemResumo `json:"realoc_itens,omitempty"`
+}
+
+// RealocItemResumo é um movimento individual listado no resumo/PDF.
+type RealocItemResumo struct {
+	Data       string `json:"data"` // DD/MM HH:MM
+	Rua        int    `json:"rua"`
+	Codprod    int    `json:"codprod"`
+	Produto    string `json:"produto"`
+	Curva      string `json:"curva"`
+	Antes      string `json:"antes"`  // end_origem
+	Depois     string `json:"depois"` // end_destino
+	Observacao string `json:"observacao"`
 }
 
 type KVPair struct {
@@ -262,6 +278,34 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		   AND l.criado_em >= $2 AND l.criado_em < $3
 	`, cdID, inicio, fimExclusivo).Scan(&k.RealocMovimentos, &k.RealocLotes, &k.RealocRuas, &k.RealocCurvaA)
 
+	// Itens realocados (antes → depois), ordenados por data e rua — máx. 200
+	rowsR, err := db.Query(`
+		SELECT to_char(l.criado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM HH24:MI'),
+		       COALESCE(l.rua, 0),
+		       i.codprod,
+		       COALESCE(i.produto, ''),
+		       COALESCE(i.classe_venda, ''),
+		       COALESCE(i.end_origem, ''),
+		       COALESCE(i.end_destino, ''),
+		       COALESCE(i.observacao, '')
+		  FROM smartpick.sp_realocacao_item i
+		  JOIN smartpick.sp_realocacao_lote l ON l.id = i.lote_id
+		 WHERE l.cd_id = $1
+		   AND l.criado_em >= $2 AND l.criado_em < $3
+		 ORDER BY l.criado_em, l.rua, i.end_destino
+		 LIMIT 200
+	`, cdID, inicio, fimExclusivo)
+	if err == nil {
+		defer rowsR.Close()
+		for rowsR.Next() {
+			var it RealocItemResumo
+			if rowsR.Scan(&it.Data, &it.Rua, &it.Codprod, &it.Produto, &it.Curva,
+				&it.Antes, &it.Depois, &it.Observacao) == nil {
+				k.RealocItens = append(k.RealocItens, it)
+			}
+		}
+	}
+
 	// Marca como "sem atividade" quando não houve aprovações nem rejeições
 	// NEM realocações físicas no período
 	k.SemAtividade = (k.TotalAprovadas+k.TotalRejeitadas) == 0 && k.RealocMovimentos == 0
@@ -321,8 +365,12 @@ Não inclua saudações, despedidas ou nome do destinatário — apenas o conte�
 
 // GerarNarrativaIA chama a Z.AI (cliente compartilhado em zai.go: thinking
 // desligado, retry e fallback) com os KPIs em JSON e retorna o markdown.
+// A lista realoc_itens é omitida do prompt: a IA só precisa dos agregados,
+// e 200 itens inflariam tokens/custo sem melhorar a narrativa.
 func GerarNarrativaIA(kpis *KPIsResumoExecutivo) (string, error) {
-	dadosJSON, _ := json.MarshalIndent(kpis, "", "  ")
+	semItens := *kpis
+	semItens.RealocItens = nil
+	dadosJSON, _ := json.MarshalIndent(&semItens, "", "  ")
 	return ZAIChat([]ZAIMessage{
 		{Role: "system", Content: promptResumoExecutivo},
 		{Role: "user", Content: "KPIs do CD nesta semana:\n\n" + string(dadosJSON)},
@@ -628,8 +676,23 @@ func buildResumoPlainText(k *KPIsResumoExecutivo, narrativa, periodoIni, periodo
 
 	if k.RealocMovimentos > 0 {
 		sb.WriteString("=== REALOCACOES DA SEMANA ===\n")
-		fmt.Fprintf(&sb, "Movimentos: %d | Lotes: %d | Ruas: %d | Curva A: %d\n\n",
+		fmt.Fprintf(&sb, "Movimentos: %d | Lotes: %d | Ruas: %d | Curva A: %d\n",
 			k.RealocMovimentos, k.RealocLotes, k.RealocRuas, k.RealocCurvaA)
+		max := len(k.RealocItens)
+		if max > 30 {
+			max = 30
+		}
+		for _, it := range k.RealocItens[:max] {
+			fmt.Fprintf(&sb, "%s | Rua %d | %d %s (%s) | %s -> %s", it.Data, it.Rua, it.Codprod, it.Produto, it.Curva, it.Antes, it.Depois)
+			if it.Observacao != "" {
+				fmt.Fprintf(&sb, " | Obs: %s", it.Observacao)
+			}
+			sb.WriteString("\n")
+		}
+		if len(k.RealocItens) > max {
+			fmt.Fprintf(&sb, "(+%d movimentos — lista completa no PDF)\n", len(k.RealocItens)-max)
+		}
+		sb.WriteString("\n")
 	}
 
 	if len(k.ImportsPeriodo) > 0 {
