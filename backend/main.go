@@ -1,7 +1,7 @@
 package main
 
 // FB_SMARTPICK — Sistema de Recalibração de Picking
-// Version: 1.11.0
+// Version: 1.12.0
 import (
 	"context"
 	"database/sql"
@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	BackendVersion = "1.11.0"
+	BackendVersion = "1.12.0"
 	FeatureSet     = "SmartPick WMS — Recalibração de Picking"
 )
 
