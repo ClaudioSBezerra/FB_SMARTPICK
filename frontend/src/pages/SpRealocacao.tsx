@@ -967,9 +967,18 @@ export default function SpRealocacao() {
           movimentos,
         }),
       })
-      if (r.ok) toast.success(`${movimentos.length} movimentaç${movimentos.length === 1 ? 'ão registrada' : 'ões registradas'} nos indicadores`)
-    } catch {
-      // best-effort — o PDF já foi gerado
+      if (r.ok) {
+        toast.success(`${movimentos.length} movimentaç${movimentos.length === 1 ? 'ão registrada' : 'ões registradas'} nos indicadores`)
+      } else {
+        // Falha NÃO pode ser silenciosa: sem registro, os indicadores e o
+        // resumo executivo ficam zerados sem ninguém perceber.
+        const msg = await r.text()
+        console.error('[realocacao] falha ao registrar movimentos:', r.status, msg)
+        toast.error(`PDF gerado, mas as movimentações NÃO foram registradas nos indicadores (${r.status}). ${msg || ''}`, { duration: 12000 })
+      }
+    } catch (e) {
+      console.error('[realocacao] erro de rede ao registrar movimentos:', e)
+      toast.error('PDF gerado, mas as movimentações NÃO foram registradas nos indicadores (falha de rede). Gere o PDF novamente para reenviar.', { duration: 12000 })
     }
   }
 

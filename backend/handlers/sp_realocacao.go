@@ -8,6 +8,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 )
@@ -46,15 +47,24 @@ func SpRealocacaoSalvarHandler(db *sql.DB) http.HandlerFunc {
 
 		var req realocacaoLoteReq
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.CdID == 0 {
+			log.Printf("[realoc] POST rejeitado (payload inválido): err=%v cd_id=%d user=%s", err, req.CdID, spCtx.UserID)
 			http.Error(w, "cd_id e movimentos obrigatórios", http.StatusBadRequest)
 			return
 		}
+		ruaLog := -1
+		if req.Rua != nil {
+			ruaLog = *req.Rua
+		}
+		log.Printf("[realoc] POST recebido: cd=%d rua=%d slots=%d movimentos=%d user=%s",
+			req.CdID, ruaLog, req.TotalSlots, len(req.Movimentos), spCtx.UserID)
+
 		// Verifica que o CD pertence à empresa
 		var ok bool
 		if err := db.QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM smartpick.sp_centros_dist WHERE id = $1 AND empresa_id = $2)`,
 			req.CdID, spCtx.EmpresaID,
 		).Scan(&ok); err != nil || !ok {
+			log.Printf("[realoc] POST rejeitado (CD %d não pertence à empresa %s): err=%v", req.CdID, spCtx.EmpresaID, err)
 			http.Error(w, "CD não encontrado", http.StatusNotFound)
 			return
 		}
@@ -73,6 +83,7 @@ func SpRealocacaoSalvarHandler(db *sql.DB) http.HandlerFunc {
 			VALUES ($1, $2, $3, $4::uuid, $5, $6)
 			RETURNING id
 		`, spCtx.EmpresaID, req.CdID, req.Rua, spCtx.UserID, req.TotalSlots, len(req.Movimentos)).Scan(&loteID); err != nil {
+			log.Printf("[realoc] ERRO ao inserir lote (cd=%d): %v", req.CdID, err)
 			http.Error(w, "Erro ao salvar lote: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -93,16 +104,20 @@ func SpRealocacaoSalvarHandler(db *sql.DB) http.HandlerFunc {
 				cv = *m.ClasseVenda
 			}
 			if _, err := stmt.Exec(loteID, m.Codprod, m.Produto, cv, m.EndOrigem, m.EndDestino, m.QtAcesso90, nilIfEmptyStr(m.Observacao)); err != nil {
+				log.Printf("[realoc] ERRO ao inserir movimento (lote=%d codprod=%d): %v", loteID, m.Codprod, err)
 				http.Error(w, "Erro ao salvar movimento: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
 
 		if err := tx.Commit(); err != nil {
+			log.Printf("[realoc] ERRO no commit (lote=%d): %v", loteID, err)
 			http.Error(w, "Erro ao confirmar: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
+		log.Printf("[realoc] lote %d SALVO: cd=%d rua=%d movimentos=%d user=%s",
+			loteID, req.CdID, ruaLog, len(req.Movimentos), spCtx.UserID)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"id": loteID, "movimentos": len(req.Movimentos)})
 	}
