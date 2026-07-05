@@ -1,15 +1,11 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -100,60 +96,15 @@ type DataQueryResult struct {
 	ErroDetalhe string                   `json:"erro,omitempty"`
 }
 
-// ── Cliente Z.AI (reaproveita o padrão dos outros serviços) ──────────────────
+// ── Cliente Z.AI ──────────────────────────────────────────────────────────────
 
-type zaiMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
+// chamarZAI delega ao cliente compartilhado (zai.go): thinking desligado,
+// retry em timeout e fallback de modelo. Temperature 0.1 p/ SQL determinístico.
 func chamarZAI(systemPrompt, userMsg string, maxTokens int) (string, error) {
-	apiKey := os.Getenv("ZAI_API_KEY")
-	if apiKey == "" {
-		return "", fmt.Errorf("ZAI_API_KEY não configurada")
-	}
-	body, _ := json.Marshal(map[string]interface{}{
-		"model":       "glm-4.5-air",
-		"max_tokens":  maxTokens,
-		"temperature": 0.1,
-		"messages": []zaiMsg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userMsg},
-		},
-	})
-	client := &http.Client{Timeout: 25 * time.Second}
-	req, _ := http.NewRequest("POST", "https://api.z.ai/api/coding/paas/v4/chat/completions", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Z.AI status %d: %s", resp.StatusCode, string(raw))
-	}
-	var r struct {
-		Choices []struct {
-			Message struct {
-				Content          string `json:"content"`
-				ReasoningContent string `json:"reasoning_content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &r); err != nil {
-		return "", err
-	}
-	if len(r.Choices) == 0 {
-		return "", fmt.Errorf("sem resposta")
-	}
-	out := r.Choices[0].Message.Content
-	if out == "" {
-		out = r.Choices[0].Message.ReasoningContent
-	}
-	return strings.TrimSpace(out), nil
+	return ZAIChat([]ZAIMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userMsg},
+	}, maxTokens, 0.1)
 }
 
 // Lista de views que precisam ser prefixadas com "smartpick." se vierem sem schema.

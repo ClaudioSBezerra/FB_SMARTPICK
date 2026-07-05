@@ -1,13 +1,10 @@
 package services
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -288,64 +285,14 @@ CASO ESPECIAL — sem_atividade=true:
 
 Não inclua saudações, despedidas ou nome do destinatário — apenas o conteúdo do resumo.`
 
-// GerarNarrativaIA chama a Z.AI com os KPIs serializados em JSON e retorna o markdown
+// GerarNarrativaIA chama a Z.AI (cliente compartilhado em zai.go: thinking
+// desligado, retry e fallback) com os KPIs em JSON e retorna o markdown.
 func GerarNarrativaIA(kpis *KPIsResumoExecutivo) (string, error) {
-	apiKey := os.Getenv("ZAI_API_KEY")
-	if apiKey == "" {
-		return "", fmt.Errorf("ZAI_API_KEY não configurada")
-	}
-
 	dadosJSON, _ := json.MarshalIndent(kpis, "", "  ")
-
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	body, _ := json.Marshal(map[string]interface{}{
-		"model":       "glm-4.5-air",
-		"max_tokens":  1024,
-		"temperature": 0.4,
-		"messages": []msg{
-			{Role: "system", Content: promptResumoExecutivo},
-			{Role: "user", Content: "KPIs do CD nesta semana:\n\n" + string(dadosJSON)},
-		},
-	})
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, _ := http.NewRequest("POST", "https://api.z.ai/api/coding/paas/v4/chat/completions", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("falha ao chamar Z.AI: %w", err)
-	}
-	defer resp.Body.Close()
-
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Z.AI retornou status %d: %s", resp.StatusCode, string(raw))
-	}
-
-	var r struct {
-		Choices []struct {
-			Message struct {
-				Content          string `json:"content"`
-				ReasoningContent string `json:"reasoning_content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &r); err != nil {
-		return "", fmt.Errorf("parse falhou: %w", err)
-	}
-	if len(r.Choices) == 0 {
-		return "", fmt.Errorf("Z.AI sem choices")
-	}
-	out := r.Choices[0].Message.Content
-	if out == "" {
-		out = r.Choices[0].Message.ReasoningContent
-	}
-	return strings.TrimSpace(out), nil
+	return ZAIChat([]ZAIMessage{
+		{Role: "system", Content: promptResumoExecutivo},
+		{Role: "user", Content: "KPIs do CD nesta semana:\n\n" + string(dadosJSON)},
+	}, 1024, 0.4)
 }
 
 // ── Persistência ──────────────────────────────────────────────────────────────

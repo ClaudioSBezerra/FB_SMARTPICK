@@ -1,19 +1,16 @@
 package handlers
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
-	"time"
-)
 
-var ajudaHTTPClient = &http.Client{Timeout: 25 * time.Second}
+	"fb_smartpick/services"
+)
 
 // rxCodProd extrai códigos de produto (4–7 dígitos isolados) das mensagens.
 var rxCodProd = regexp.MustCompile(`\b(\d{4,7})\b`)
@@ -69,29 +66,6 @@ type ajudaChatRequest struct {
 	Context  string         `json:"context,omitempty"`
 }
 
-// Formato OpenAI-compatível usado pela Mistral AI
-type mistralRequest struct {
-	Model       string         `json:"model"`
-	Messages    []ajudaMessage `json:"messages"`
-	MaxTokens   int            `json:"max_tokens"`
-	Temperature float64        `json:"temperature"`
-}
-
-type mistralResponse struct {
-	Choices []struct {
-		Message struct {
-			Content          string `json:"content"`
-			ReasoningContent string `json:"reasoning_content"`
-		} `json:"message"`
-	} `json:"choices"`
-	// Mistral retorna erros no formato plano, não aninhado
-	Message string `json:"message,omitempty"`
-	// Fallback para formato OpenAI-style
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-}
-
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 func SpAjudaChatHandler(db *sql.DB) http.HandlerFunc {
@@ -101,8 +75,7 @@ func SpAjudaChatHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		apiKey := os.Getenv("ZAI_API_KEY")
-		if apiKey == "" {
+		if os.Getenv("ZAI_API_KEY") == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			w.Write([]byte(`{"error":"Assistente não configurado. Contate o administrador."}`))
@@ -129,161 +102,35 @@ func SpAjudaChatHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Monta o array de mensagens com a mensagem de sistema no início
-		messages := []ajudaMessage{
+		messages := []services.ZAIMessage{
 			{Role: "system", Content: systemContent},
 		}
-		messages = append(messages, req.Messages...)
-
-		// Modelo pago glm-4.5-air ($0.20/$1.10 por 1M tokens) — mais estável que tier free
-		buildPayload := func(model string) []byte {
-			b, _ := json.Marshal(mistralRequest{
-				Model:       model,
-				Messages:    messages,
-				MaxTokens:   1024,
-				Temperature: 0.3,
-			})
-			return b
+		for _, m := range req.Messages {
+			messages = append(messages, services.ZAIMessage{Role: m.Role, Content: m.Content})
 		}
-		payload := buildPayload("glm-4.5-air")
 
-		httpReq, err := http.NewRequest("POST", "https://api.z.ai/api/coding/paas/v4/chat/completions", bytes.NewReader(payload))
+		// Cliente compartilhado (services/zai.go): thinking desligado, retry em
+		// timeout e fallback glm-4.6 em sobrecarga — corrige os "context deadline
+		// exceeded" que apareciam em produção.
+		reply, err := services.ZAIChat(messages, 1024, 0.3)
 		if err != nil {
-			http.Error(w, `{"error":"Erro interno"}`, http.StatusInternalServerError)
-			return
-		}
-		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-		httpReq.Header.Set("Content-Type", "application/json")
-
-		// Função auxiliar para fazer a requisição (permite retry com modelo alternativo)
-		doRequest := func(body []byte) (*http.Response, []byte, error) {
-			req, err := http.NewRequest("POST", "https://api.z.ai/api/coding/paas/v4/chat/completions", bytes.NewReader(body))
-			if err != nil {
-				return nil, nil, err
-			}
-			req.Header.Set("Authorization", "Bearer "+apiKey)
-			req.Header.Set("Content-Type", "application/json")
-			r, err := ajudaHTTPClient.Do(req)
-			if err != nil {
-				return nil, nil, err
-			}
-			defer r.Body.Close()
-			respBody, _ := io.ReadAll(r.Body)
-			return r, respBody, nil
-		}
-
-		// Suprime o httpReq inicial (não usado mais — substituído por doRequest)
-		_ = httpReq
-
-		resp, raw, err := doRequest(payload)
-		if err != nil {
-			log.Printf("[ajuda] erro de transporte Z.AI: %v", err)
-			http.Error(w, `{"error":"Falha ao contactar o assistente. Tente novamente."}`, http.StatusBadGateway)
-			return
-		}
-
-		// Detecta erros específicos da Z.AI no body do 429
-		isOverload := false
-		isRateLimit := false
-		if resp.StatusCode == http.StatusTooManyRequests {
-			var errCheck struct {
-				Error struct {
-					Code string `json:"code"`
-				} `json:"error"`
-			}
-			_ = json.Unmarshal(raw, &errCheck)
-			switch errCheck.Error.Code {
-			case "1305": // Service temporarily overloaded
-				isOverload = true
-			case "1113": // Insufficient balance
-				// já tratado abaixo
-			default:
-				isRateLimit = true
-			}
-		}
-
-		// Em sobrecarga (1305) ou rate limit, tenta o glm-4.7-flash (free fallback)
-		if isOverload || isRateLimit {
-			log.Printf("[ajuda] 429 em glm-4.5-air (body=%s), retry com glm-4.7-flash", string(raw))
-			resp, raw, err = doRequest(buildPayload("glm-4.7-flash"))
-			if err != nil {
-				log.Printf("[ajuda] erro de transporte no retry: %v", err)
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusServiceUnavailable)
-				w.Write([]byte(`{"error":"Serviço de IA momentaneamente indisponível. Tente novamente em alguns segundos."}`))
-				return
-			}
-			log.Printf("[ajuda] retry glm-4.7-flash status=%d body=%s", resp.StatusCode, string(raw))
-		}
-
-		writeErr := func(msg string) {
+			log.Printf("[ajuda] Z.AI falhou: %v", err)
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadGateway)
-			fmt.Fprintf(w, `{"error":%q}`, msg)
-		}
 
-		// Se o status HTTP não for 200, extrai a mensagem de erro da API
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("[ajuda] Z.AI API FALHOU final status=%d body=%s", resp.StatusCode, string(raw))
-
-			// Tenta extrair código + mensagem da resposta de erro
-			var errBody struct {
-				Error struct {
-					Code    string `json:"code"`
-					Message string `json:"message"`
-				} `json:"error"`
-				Message string `json:"message"`
-			}
-			_ = json.Unmarshal(raw, &errBody)
-
-			// Trata códigos específicos da Z.AI com mensagem amigável
-			if errBody.Error.Code == "1113" {
-				writeErr("Saldo insuficiente na conta da plataforma de IA. Contate o administrador para recarregar.")
+			if ze, ok := err.(*services.ZAIError); ok {
+				if ze.Code == "1113" {
+					w.WriteHeader(http.StatusBadGateway)
+					w.Write([]byte(`{"error":"Saldo insuficiente na conta da plataforma de IA. Contate o administrador para recarregar."}`))
+					return
+				}
+				w.WriteHeader(http.StatusBadGateway)
+				fmt.Fprintf(w, `{"error":%q}`, fmt.Sprintf("Erro da API (%d): %s", ze.Status, ze.Message))
 				return
 			}
-
-			msg := errBody.Error.Message
-			if msg == "" {
-				msg = errBody.Message
-			}
-			if msg != "" {
-				writeErr(fmt.Sprintf("Erro da API (%d): %s", resp.StatusCode, msg))
-				return
-			}
-			writeErr(fmt.Sprintf("Erro da API (status %d)", resp.StatusCode))
+			// Erro de transporte (timeout/rede) mesmo após retry+fallback
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"error":"Serviço de IA momentaneamente indisponível. Tente novamente em alguns segundos."}`))
 			return
-		}
-
-		var mistralResp mistralResponse
-		if err := json.Unmarshal(raw, &mistralResp); err != nil {
-			log.Printf("[ajuda] parse error: %v — body: %s", err, string(raw))
-			writeErr("Resposta inesperada do assistente")
-			return
-		}
-
-		// Erros no formato plano Mistral ({"message": "..."})
-		if mistralResp.Message != "" && len(mistralResp.Choices) == 0 {
-			log.Printf("[ajuda] Mistral error message: %s", mistralResp.Message)
-			writeErr("Erro da API: " + mistralResp.Message)
-			return
-		}
-
-		// Erros no formato OpenAI-style ({"error": {"message": "..."}})
-		if mistralResp.Error != nil {
-			log.Printf("[ajuda] Mistral error: %s", mistralResp.Error.Message)
-			writeErr("Erro da API: " + mistralResp.Error.Message)
-			return
-		}
-
-		if len(mistralResp.Choices) == 0 {
-			log.Printf("[ajuda] empty choices — body: %s", string(raw))
-			writeErr("Assistente não retornou resposta")
-			return
-		}
-
-		// GLM às vezes retorna o texto em reasoning_content em vez de content
-		reply := mistralResp.Choices[0].Message.Content
-		if reply == "" {
-			reply = mistralResp.Choices[0].Message.ReasoningContent
 		}
 
 		w.Header().Set("Content-Type", "application/json")
