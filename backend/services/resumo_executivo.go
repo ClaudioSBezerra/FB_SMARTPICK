@@ -54,6 +54,27 @@ type KPIsResumoExecutivo struct {
 	// Itens realocados no período (antes → depois), ordenados por data e rua.
 	// Limitado a 200 p/ não inflar o dados_json. NÃO é enviado à IA (só agregados).
 	RealocItens []RealocItemResumo `json:"realoc_itens,omitempty"`
+
+	// Evolução de acessos ao picking (Curva A) entre a última importação e a anterior.
+	// É o indicador central de eficiência: mede se a calibragem/realocação está
+	// reduzindo o esforço de picking (menos acessos p/ atender a mesma demanda).
+	AcessoPicking *EvolucaoAcessoPicking `json:"acesso_picking,omitempty"`
+}
+
+// EvolucaoAcessoPicking compara qt_acesso_90 (acessos ao picking em 90 dias) dos
+// produtos Curva A entre as duas importações de CSV mais recentes do CD.
+type EvolucaoAcessoPicking struct {
+	Disponivel       bool    `json:"disponivel"`               // false se houver menos de 2 importações concluídas
+	JobAtualEm       string  `json:"job_atual_em,omitempty"`    // data/hora da importação mais recente
+	JobAnteriorEm    string  `json:"job_anterior_em,omitempty"` // data/hora da importação anterior
+	AcessosAtual     int     `json:"acessos_atual"`             // soma qt_acesso_90 Curva A na importação atual
+	AcessosAnterior  int     `json:"acessos_anterior"`          // soma qt_acesso_90 Curva A na importação anterior
+	ProdutosAtual    int     `json:"produtos_atual"`            // qtd produtos Curva A considerados (atual)
+	ProdutosAnterior int     `json:"produtos_anterior"`         // qtd produtos Curva A considerados (anterior)
+	MediaAtual       float64 `json:"media_atual"`               // acessos médios por produto Curva A (atual)
+	MediaAnterior    float64 `json:"media_anterior"`            // acessos médios por produto Curva A (anterior)
+	DeltaPct         float64 `json:"delta_pct"`                 // variação % da média (negativo = menos acessos = melhoria)
+	Melhorou         bool    `json:"melhorou"`                  // true quando a média de acessos caiu em relação à importação anterior
 }
 
 // RealocItemResumo é um movimento individual listado no resumo/PDF.
@@ -310,6 +331,9 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 	// NEM realocações físicas no período
 	k.SemAtividade = (k.TotalAprovadas+k.TotalRejeitadas) == 0 && k.RealocMovimentos == 0
 
+	// Evolução de acessos ao picking (Curva A): última importação vs. anterior
+	k.AcessoPicking = calcularEvolucaoAcesso(db, cdID)
+
 	// Alertas atuais usando o último csv_job do CD
 	_ = db.QueryRow(`
 		WITH job AS (
@@ -326,6 +350,69 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 	`, cdID).Scan(&k.AlertasUrgencia, &k.AlertasAjustar, &k.AlertasCapMenor)
 
 	return k, nil
+}
+
+// calcularEvolucaoAcesso compara qt_acesso_90 (Curva A) entre as duas
+// importações de CSV concluídas mais recentes do CD, independente do período
+// do resumo — é uma leitura estrutural do efeito acumulado da calibragem.
+func calcularEvolucaoAcesso(db *sql.DB, cdID int) *EvolucaoAcessoPicking {
+	rows, err := db.Query(`
+		SELECT id::text, to_char(created_at AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI')
+		  FROM smartpick.sp_csv_jobs
+		 WHERE cd_id = $1 AND status = 'done'
+		 ORDER BY created_at DESC
+		 LIMIT 2
+	`, cdID)
+	if err != nil {
+		log.Printf("[resumo] erro listando imports p/ evolução de acesso: %v", err)
+		return &EvolucaoAcessoPicking{Disponivel: false}
+	}
+	defer rows.Close()
+
+	type jobRef struct{ ID, Em string }
+	var jobs []jobRef
+	for rows.Next() {
+		var j jobRef
+		if rows.Scan(&j.ID, &j.Em) == nil {
+			jobs = append(jobs, j)
+		}
+	}
+	if len(jobs) < 2 {
+		return &EvolucaoAcessoPicking{Disponivel: false}
+	}
+
+	acessosPorJob := func(jobID string) (soma int, qtd int) {
+		_ = db.QueryRow(`
+			SELECT COALESCE(SUM(qt_acesso_90), 0), COUNT(*)
+			  FROM smartpick.sp_enderecos
+			 WHERE job_id = $1::uuid AND classe_venda = 'A' AND qt_acesso_90 IS NOT NULL
+		`, jobID).Scan(&soma, &qtd)
+		return
+	}
+
+	acessoAtual, prodAtual := acessosPorJob(jobs[0].ID)
+	acessoAnterior, prodAnterior := acessosPorJob(jobs[1].ID)
+
+	ev := &EvolucaoAcessoPicking{
+		Disponivel:       true,
+		JobAtualEm:       jobs[0].Em,
+		JobAnteriorEm:    jobs[1].Em,
+		AcessosAtual:     acessoAtual,
+		AcessosAnterior:  acessoAnterior,
+		ProdutosAtual:    prodAtual,
+		ProdutosAnterior: prodAnterior,
+	}
+	if prodAtual > 0 {
+		ev.MediaAtual = float64(acessoAtual) / float64(prodAtual)
+	}
+	if prodAnterior > 0 {
+		ev.MediaAnterior = float64(acessoAnterior) / float64(prodAnterior)
+	}
+	if ev.MediaAnterior > 0 {
+		ev.DeltaPct = (ev.MediaAtual - ev.MediaAnterior) / ev.MediaAnterior * 100
+		ev.Melhorou = ev.DeltaPct < 0
+	}
+	return ev
 }
 
 // ── Geração de narrativa via Z.AI (mesmo endpoint do assistente) ─────────────
@@ -353,6 +440,19 @@ REALOCAÇÃO FÍSICA (campos realoc_*):
      (Curva A nos melhores endereços = menos deslocamento no picking).
    - Se realoc_movimentos = 0 mas houve calibragem aprovada, sugira na ação
      organizar as ruas com o Painel de Realocação.
+
+EVOLUÇÃO DE ACESSOS AO PICKING (campo acesso_picking):
+   Compara a média de acessos ao picking (qt_acesso_90) dos produtos Curva A
+   entre a importação de CSV mais recente e a anterior. Menos acessos em média
+   = slotting mais eficiente (menos viagens para atender a mesma demanda) =
+   efeito direto da calibragem/realocação, a principal atividade do sistema.
+   - Se acesso_picking.disponivel = true: SEMPRE inclua uma frase sobre isso,
+     de preferência no parágrafo de abertura ou em "## Tendências detectadas".
+     Use media_atual, media_anterior e delta_pct exatos.
+   - Se melhorou=true: destaque como resultado positivo da calibragem.
+   - Se melhorou=false e delta_pct > 5: alerte como ponto de atenção — pode
+     indicar slots subdimensionados ou realocações que não tiveram efeito ainda.
+   - Se disponivel = false (menos de 2 importações concluídas), não mencione.
 
 CASO ESPECIAL — sem_atividade=true:
    Se o campo "sem_atividade" estiver true, significa que NÃO houve aprovações, rejeições nem realocações no período. Nesse caso:
@@ -553,6 +653,13 @@ func EnviarResumoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
 
 // ── Renderização do email ─────────────────────────────────────────────────────
 
+func absFloat(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
 func buildResumoHTML(k *KPIsResumoExecutivo, narrativa, periodoIni, periodoFim string) string {
 	narrativaHTML := convertMarkdownToHTML(narrativa)
 
@@ -603,6 +710,26 @@ table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
 	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Alertas Críticos</div><div class="kpi-val" style="color:#dc2626">%d</div></td>`,
 		k.AlertasUrgencia+k.AlertasAjustar+k.AlertasCapMenor)
 	sb.WriteString(`</tr></table></div>`)
+
+	// Evolução de acessos ao picking (Curva A) — indicador central de eficiência
+	if k.AcessoPicking != nil && k.AcessoPicking.Disponivel {
+		ap := k.AcessoPicking
+		cor, seta, rotulo := "#718096", "→", "Estável"
+		if ap.Melhorou {
+			cor, seta, rotulo = "#16a34a", "▼", "Melhorou"
+		} else if ap.DeltaPct > 0 {
+			cor, seta, rotulo = "#dc2626", "▲", "Piorou"
+		}
+		sb.WriteString(`<div class="sec"><div class="sec-title">Evolu&ccedil;&atilde;o de Acessos ao Picking (Curva A)</div>`)
+		fmt.Fprintf(&sb, `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+			<div><div style="font-size:11px;color:#718096">M&eacute;dia de acessos/produto</div>
+			<div style="font-size:13px"><strong>%.1f</strong> (anterior) &rarr; <strong>%.1f</strong> (atual)</div>
+			<div style="font-size:10px;color:#a0aec0">importa&ccedil;&otilde;es de %s e %s</div></div>
+			<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:%s">%s %.1f%%</div>
+			<div style="font-size:11px;font-weight:600;color:%s">%s</div></div>
+		</div></div>`,
+			ap.MediaAnterior, ap.MediaAtual, ap.JobAnteriorEm, ap.JobAtualEm, cor, seta, absFloat(ap.DeltaPct), cor, rotulo)
+	}
 
 	// Narrativa IA
 	sb.WriteString(`<div class="ai-box"><div class="ai-label">&#129302; An&aacute;lise da Intelig&ecirc;ncia Artificial</div>`)
@@ -674,6 +801,19 @@ func buildResumoPlainText(k *KPIsResumoExecutivo, narrativa, periodoIni, periodo
 	fmt.Fprintf(&sb, "Ampliar slot: %d | Reduzir slot: %d | Calibrados: %d | Curva A revisar: %d\n", k.Ampliar, k.Reduzir, k.Calibrados, k.CurvaARevisar)
 	fmt.Fprintf(&sb, "Taxa de aprovacao: %.0f%% | Compliance: %.0f%% | Ignorados: %d\n\n", k.TaxaAprovacaoPct, k.TaxaCompliancePct, k.TotalIgnorados)
 
+	if k.AcessoPicking != nil && k.AcessoPicking.Disponivel {
+		ap := k.AcessoPicking
+		rotulo := "Estavel"
+		if ap.Melhorou {
+			rotulo = "Melhorou"
+		} else if ap.DeltaPct > 0 {
+			rotulo = "Piorou"
+		}
+		sb.WriteString("=== EVOLUCAO DE ACESSOS AO PICKING (CURVA A) ===\n")
+		fmt.Fprintf(&sb, "Media de acessos/produto: %.1f (anterior, %s) -> %.1f (atual, %s) | Variacao: %.1f%% | %s\n\n",
+			ap.MediaAnterior, ap.JobAnteriorEm, ap.MediaAtual, ap.JobAtualEm, ap.DeltaPct, rotulo)
+	}
+
 	if k.RealocMovimentos > 0 {
 		sb.WriteString("=== REALOCACOES DA SEMANA ===\n")
 		fmt.Fprintf(&sb, "Movimentos: %d | Lotes: %d | Ruas: %d | Curva A: %d\n",
@@ -712,10 +852,43 @@ func buildResumoPlainText(k *KPIsResumoExecutivo, narrativa, periodoIni, periodo
 
 // ── Orquestração: gerar + (opcionalmente) enviar ─────────────────────────────
 
-// GerarResumoExecutivo coleta os KPIs da última semana, gera a narrativa via IA, salva e retorna o id
+// calcularInicioPeriodo determina o início do período do resumo:
+//   - se já existe um resumo anterior para o CD, começa no dia seguinte ao fim
+//     do último (sem lacunas nem sobreposição entre resumos consecutivos);
+//   - se é o PRIMEIRO resumo do CD, cobre TODO o histórico já carregado (desde
+//     a primeira importação de CSV) — assim o primeiro resumo não ignora dados
+//     que foram carregados antes de o gestor gerar o relatório;
+//   - sem nenhum resumo nem import, cai no padrão de 7 dias.
+func calcularInicioPeriodo(db *sql.DB, cdID int, fim time.Time) time.Time {
+	var ultimoFim sql.NullTime
+	_ = db.QueryRow(`
+		SELECT MAX(periodo_fim) FROM smartpick.sp_relatorios_semanais WHERE cd_id = $1
+	`, cdID).Scan(&ultimoFim)
+	if ultimoFim.Valid {
+		inicio := ultimoFim.Time.AddDate(0, 0, 1)
+		if inicio.Before(fim) {
+			return inicio
+		}
+		return fim
+	}
+
+	var primeiroImport sql.NullTime
+	_ = db.QueryRow(`
+		SELECT MIN(created_at) FROM smartpick.sp_csv_jobs WHERE cd_id = $1
+	`, cdID).Scan(&primeiroImport)
+	if primeiroImport.Valid {
+		return primeiroImport.Time
+	}
+
+	return fim.AddDate(0, 0, -7)
+}
+
+// GerarResumoExecutivo coleta os KPIs do período (todo o histórico carregado
+// no primeiro resumo do CD; a partir daí, desde o fim do resumo anterior),
+// gera a narrativa via IA, salva e retorna o id
 func GerarResumoExecutivo(db *sql.DB, cdID int, criadoPor string) (int, *KPIsResumoExecutivo, string, error) {
 	fim := time.Now()
-	inicio := fim.AddDate(0, 0, -7)
+	inicio := calcularInicioPeriodo(db, cdID, fim)
 	log.Printf("[resumo] CD=%d gerando resumo período %s → %s", cdID, inicio.Format("2006-01-02"), fim.Format("2006-01-02"))
 
 	kpis, err := ColetarKPIs(db, cdID, inicio, fim)

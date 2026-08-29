@@ -204,6 +204,35 @@ func SpResumoPDFHandler(db *sql.DB) http.HandlerFunc {
 			),
 		)
 
+		// ── Evolução de acessos ao picking (Curva A) — indicador de eficiência ──
+		if k.AcessoPicking != nil && k.AcessoPicking.Disponivel {
+			ap := k.AcessoPicking
+			cor, rotulo := cinza, "Estável"
+			if ap.Melhorou {
+				cor, rotulo = &props.Color{Red: 22, Green: 163, Blue: 74}, "Melhorou"
+			} else if ap.DeltaPct > 0 {
+				cor, rotulo = &props.Color{Red: 220, Green: 38, Blue: 38}, "Piorou"
+			}
+			mrt.AddRows(
+				row.New(6).Add(col.New(12).Add(
+					text.New("EVOLUÇÃO DE ACESSOS AO PICKING (CURVA A)", props.Text{Size: 9, Style: fontstyle.Bold, Color: azul}),
+				)),
+				row.New(10).Add(
+					col.New(6).Add(text.New(
+						fmt.Sprintf("Média de acessos/produto: %.1f (%s) → %.1f (%s)",
+							ap.MediaAnterior, ap.JobAnteriorEm, ap.MediaAtual, ap.JobAtualEm),
+						props.Text{Size: 9},
+					)),
+					col.New(3).Add(text.New(fmt.Sprintf("%.1f%%", ap.DeltaPct), props.Text{
+						Size: 12, Style: fontstyle.Bold, Color: cor, Align: align.Center,
+					})),
+					col.New(3).Add(text.New(rotulo, props.Text{
+						Size: 10, Style: fontstyle.Bold, Color: cor, Align: align.Center,
+					})),
+				),
+			)
+		}
+
 		// ── Realocações (quando houver) ───────────────────────────────────
 		if k.RealocMovimentos > 0 {
 			mrt.AddRows(

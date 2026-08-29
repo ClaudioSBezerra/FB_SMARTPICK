@@ -5,7 +5,7 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
-import { Sparkles, Loader2, Mail, FileText, ChevronRight, Send, FileDown } from 'lucide-react'
+import { Sparkles, Loader2, Mail, FileText, ChevronRight, Send, FileDown, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface SpFilial { id: number; cod_filial: number; nome: string }
@@ -54,6 +54,19 @@ interface KPIs {
     linhas_erro: number
   }>
   sem_atividade: boolean
+  acesso_picking?: {
+    disponivel: boolean
+    job_atual_em?: string
+    job_anterior_em?: string
+    acessos_atual: number
+    acessos_anterior: number
+    produtos_atual: number
+    produtos_anterior: number
+    media_atual: number
+    media_anterior: number
+    delta_pct: number
+    melhorou: boolean
+  }
   realoc_movimentos?: number
   realoc_lotes?: number
   realoc_ruas?: number
@@ -361,6 +374,11 @@ export default function SpResumoExecutivo() {
                   </div>
                 </div>
 
+                {/* Evolução de acessos ao picking — indicador central da atividade do sistema */}
+                {detalhe.dados.acesso_picking?.disponivel && (
+                  <AcessoPickingCard ap={detalhe.dados.acesso_picking} />
+                )}
+
                 {/* KPI strip */}
                 <div className="grid grid-cols-4 gap-2 p-3 border-b bg-gray-50">
                   <KPI label="Propostas no período" value={detalhe.dados.total_propostas} />
@@ -517,6 +535,37 @@ export default function SpResumoExecutivo() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function AcessoPickingCard({ ap }: {
+  ap: NonNullable<KPIs['acesso_picking']>
+}) {
+  const cor = ap.melhorou ? 'text-green-700' : ap.delta_pct > 0 ? 'text-red-600' : 'text-muted-foreground'
+  const bg = ap.melhorou ? 'bg-green-50 border-green-200' : ap.delta_pct > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-border'
+  const Icon = ap.melhorou ? TrendingDown : ap.delta_pct > 0 ? TrendingUp : Minus
+  const rotulo = ap.melhorou ? 'Melhorou' : ap.delta_pct > 0 ? 'Piorou' : 'Estável'
+  return (
+    <div className={`p-4 border-b flex items-center justify-between gap-4 flex-wrap ${bg}`}>
+      <div>
+        <h3 className="text-xs font-semibold uppercase text-muted-foreground mb-1">
+          Evolução de acessos ao picking (Curva A)
+        </h3>
+        <p className="text-sm">
+          Média de acessos por produto: <strong>{ap.media_anterior.toFixed(1)}</strong> → <strong>{ap.media_atual.toFixed(1)}</strong>
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">
+          Comparando as importações de {ap.job_anterior_em} e {ap.job_atual_em} · {ap.produtos_atual} produtos Curva A
+        </p>
+      </div>
+      <div className={`flex items-center gap-2 ${cor}`}>
+        <Icon className="h-6 w-6" />
+        <div className="text-right">
+          <div className="text-lg font-bold leading-none">{ap.delta_pct > 0 ? '+' : ''}{ap.delta_pct.toFixed(1)}%</div>
+          <div className="text-[10px] font-semibold uppercase">{rotulo}</div>
+        </div>
+      </div>
     </div>
   )
 }
