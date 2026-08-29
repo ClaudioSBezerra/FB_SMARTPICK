@@ -63,6 +63,13 @@ func (e *ZAIError) Error() string {
 	return fmt.Sprintf("Z.AI status %d code=%s: %s", e.Status, e.Code, e.Message)
 }
 
+// IsUsageLimit indica code=1308 ("Usage limit reached for 5 hour"): limite de
+// uso da CONTA/chave de API, não do modelo. Trocar de modelo não ajuda — o
+// fallback usa a mesma chave e recebe o mesmo 1308.
+func (e *ZAIError) IsUsageLimit() bool {
+	return e.Code == "1308"
+}
+
 // ZAIChat faz uma chamada de chat à Z.AI com thinking desligado, retry em
 // falha de transporte e fallback de modelo em sobrecarga/rate-limit.
 //
@@ -155,7 +162,15 @@ func ZAIChat(messages []ZAIMessage, maxTokens int, temperature float64) (string,
 		}
 	}
 
-	// 429 / 1305 / nova falha de transporte: tenta o fallback pago.
+	// 1308 = limite de uso da CONTA (não do modelo): glm-4.6 usa a mesma
+	// chave de API e falharia com o mesmo erro — pula o fallback e some com
+	// uma chamada e um log inúteis. A mensagem da Z.AI já traz o horário de reset.
+	if ze, ok := err.(*ZAIError); ok && ze.IsUsageLimit() {
+		log.Printf("[zai] %s: limite de uso da conta atingido — sem fallback (mesma chave de API): %v", zaiModeloPrimario, err)
+		return "", err
+	}
+
+	// 429 (sobrecarga do modelo) / 1305 / nova falha de transporte: tenta o fallback pago.
 	deveFallback := false
 	if ze, ok := err.(*ZAIError); ok {
 		if ze.Status == http.StatusTooManyRequests || ze.Code == "1305" {

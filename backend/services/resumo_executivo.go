@@ -883,6 +883,15 @@ func calcularInicioPeriodo(db *sql.DB, cdID int, fim time.Time) time.Time {
 	return fim.AddDate(0, 0, -7)
 }
 
+// narrativaIndisponivel gera o texto exibido no lugar da análise da IA quando
+// a Z.AI falha (limite de uso, sobrecarga, etc) — os KPIs reais do período
+// são salvos normalmente; só a análise textual some, com aviso claro do motivo.
+func narrativaIndisponivel(err error) string {
+	return fmt.Sprintf("## Análise da IA indisponível\n\nNão foi possível gerar a análise deste período (%s). "+
+		"Os indicadores abaixo refletem os dados reais do CD — a análise textual pode ser gerada novamente mais tarde.",
+		err.Error())
+}
+
 // GerarResumoExecutivo coleta os KPIs do período (todo o histórico carregado
 // no primeiro resumo do CD; a partir daí, desde o fim do resumo anterior),
 // gera a narrativa via IA, salva e retorna o id
@@ -901,10 +910,14 @@ func GerarResumoExecutivo(db *sql.DB, cdID int, criadoPor string) (int, *KPIsRes
 
 	narrativa, err := GerarNarrativaIA(kpis)
 	if err != nil {
-		log.Printf("[resumo] CD=%d gerar narrativa FALHOU: %v", cdID, err)
-		return 0, nil, "", fmt.Errorf("gerar narrativa: %w", err)
+		// A IA fora do ar (limite de uso, sobrecarga, etc) não pode descartar os
+		// KPIs já coletados — o gestor precisa ver os números reais do período
+		// mesmo sem a análise textual. Salva com um aviso no lugar da narrativa.
+		log.Printf("[resumo] CD=%d gerar narrativa FALHOU (salvando com aviso no lugar da análise): %v", cdID, err)
+		narrativa = narrativaIndisponivel(err)
+	} else {
+		log.Printf("[resumo] CD=%d narrativa gerada (%d chars)", cdID, len(narrativa))
 	}
-	log.Printf("[resumo] CD=%d narrativa gerada (%d chars)", cdID, len(narrativa))
 
 	id, err := SalvarRelatorio(db, kpis, narrativa, criadoPor)
 	if err != nil {
