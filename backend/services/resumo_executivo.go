@@ -17,8 +17,8 @@ type KPIsResumoExecutivo struct {
 	CdID         int    `json:"cd_id"`
 	CdNome       string `json:"cd_nome"`
 	FilialNome   string `json:"filial_nome"`
-	PeriodoInicio string `json:"periodo_inicio"` // YYYY-MM-DD
-	PeriodoFim    string `json:"periodo_fim"`
+	PeriodoInicio string `json:"periodo_inicio"` // RFC3339 — timestamp exato do início do período
+	PeriodoFim    string `json:"periodo_fim"`    // RFC3339 — timestamp exato do fim do período
 
 	TotalPropostas    int `json:"total_propostas"`
 	TotalAprovadas    int `json:"total_aprovadas"`
@@ -121,16 +121,20 @@ type ImportInfo struct {
 func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecutivo, error) {
 	k := &KPIsResumoExecutivo{
 		CdID:                cdID,
-		PeriodoInicio:       inicio.Format("2006-01-02"),
-		PeriodoFim:          fim.Format("2006-01-02"),
+		PeriodoInicio:       inicio.Format(time.RFC3339),
+		PeriodoFim:          fim.Format(time.RFC3339),
 		TopMotivosRejeicao:  []KVPair{},
 		TopDeptosPendentes:  []KVPair{},
 		TopProdutosCriticos: []ProdutoCritico{},
 		ImportsPeriodo:      []ImportInfo{},
 	}
-	// Limite superior do range (exclusivo) — fim do dia. Usado nas queries
-	// como `created_at < $3` para incluir o dia inteiro do fim.
-	fimExclusivo := fim.AddDate(0, 0, 1)
+	// Limite superior do range (exclusivo) — o instante exato de "fim", não o
+	// dia inteiro. `fim` é o timestamp preciso de geração do resumo, e o
+	// próximo resumo retoma exatamente daqui (calcularInicioPeriodo) — usar
+	// "fim + 1 dia" aqui abriria uma janela sobreposta com o próximo período,
+	// e persistir só a data (sem hora) abria um buraco de várias horas entre
+	// dois resumos consecutivos.
+	fimExclusivo := fim
 
 	// Nome do CD e filial
 	if err := db.QueryRow(`
@@ -346,7 +350,7 @@ func ColetarKPIs(db *sql.DB, cdID int, inicio, fim time.Time) (*KPIsResumoExecut
 		  COUNT(*) FILTER (WHERE COALESCE(e.ponto_reposicao,0) > 0 AND COALESCE(e.med_venda_cx,0) >= e.ponto_reposicao),
 		  COUNT(*) FILTER (WHERE COALESCE(e.capacidade,0) > 0 AND COALESCE(e.med_venda_cx,0) > 0 AND e.capacidade::numeric/e.med_venda_cx < 2)
 		  FROM smartpick.sp_enderecos e
-		 WHERE e.job_id = (SELECT id FROM job)
+		 WHERE e.job_id = (SELECT id FROM job) AND e.tipo_rel = 'CALIBRACAO'
 	`, cdID).Scan(&k.AlertasUrgencia, &k.AlertasAjustar, &k.AlertasCapMenor)
 
 	return k, nil
@@ -385,7 +389,8 @@ func calcularEvolucaoAcesso(db *sql.DB, cdID int) *EvolucaoAcessoPicking {
 		_ = db.QueryRow(`
 			SELECT COALESCE(SUM(qt_acesso_90), 0), COUNT(*)
 			  FROM smartpick.sp_enderecos
-			 WHERE job_id = $1::uuid AND classe_venda = 'A' AND qt_acesso_90 IS NOT NULL
+			 WHERE job_id = $1::uuid AND tipo_rel = 'CALIBRACAO'
+			   AND classe_venda = 'A' AND qt_acesso_90 IS NOT NULL
 		`, jobID).Scan(&soma, &qtd)
 		return
 	}
@@ -417,14 +422,20 @@ func calcularEvolucaoAcesso(db *sql.DB, cdID int) *EvolucaoAcessoPicking {
 
 // ── Geração de narrativa via Z.AI (mesmo endpoint do assistente) ─────────────
 
-const promptResumoExecutivo = `Você é um analista sênior de logística e calibragem de picking, escrevendo um resumo executivo SEMANAL para o gestor de um centro de distribuição (CD) brasileiro.
+const promptResumoExecutivo = `Você é um analista sênior de logística e calibragem de picking, escrevendo um resumo executivo para o gestor de um centro de distribuição (CD) brasileiro.
 
-Receberá um JSON com KPIs do CD na semana. Sua tarefa:
+O período coberto é VARIÁVEL — pode ser de poucos dias a várias semanas — e vem
+exatamente nos campos "periodo_inicio" e "periodo_fim" do JSON. NUNCA assuma
+ou escreva "a semana"/"semanal": sempre se refira ao período real usando essas
+datas (ex.: "entre 05/08 e 25/08" ou "no período analisado"), do contrário a
+narrativa passa uma informação histórica incorreta ao gestor.
+
+Receberá um JSON com os KPIs do CD no período. Sua tarefa:
 1. Escrever um resumo executivo em português (markdown) com estrutura:
    - Parágrafo de abertura com a situação geral (2-3 frases, números-chave)
    - Lista "## Pontos de atenção" (3 itens críticos no máximo, baseados nos dados)
    - Lista "## Tendências detectadas" (1-3 itens — só se houver sinal claro nos dados)
-   - Bloco "## Sugestão de ação" (1 ação concreta para a próxima semana)
+   - Bloco "## Sugestão de ação" (1 ação concreta para o próximo período)
 2. Tom: direto, executivo, sem jargão técnico
 3. Use os números EXATOS do JSON. Se algum dado não estiver disponível, omita o ponto sem inventar
 4. Máximo de ~250 palavras totais
@@ -434,7 +445,7 @@ REALOCAÇÃO FÍSICA (campos realoc_*):
    realoc_movimentos = produtos que trocaram de endereço na rua no período;
    realoc_lotes = lotes de realocação gerados; realoc_ruas = ruas organizadas;
    realoc_curva_a = movimentos de produtos Curva A (alto giro — os mais importantes).
-   - Se realoc_movimentos > 0: inclua uma seção "## Realocações da semana" com
+   - Se realoc_movimentos > 0: inclua uma seção "## Realocações do período" com
      1-2 frases (quantos movimentos, em quantas ruas, destaque para Curva A).
    - Se realoc_curva_a for alta proporção dos movimentos, elogie a priorização
      (Curva A nos melhores endereços = menos deslocamento no picking).
@@ -456,7 +467,7 @@ EVOLUÇÃO DE ACESSOS AO PICKING (campo acesso_picking):
 
 CASO ESPECIAL — sem_atividade=true:
    Se o campo "sem_atividade" estiver true, significa que NÃO houve aprovações, rejeições nem realocações no período. Nesse caso:
-   - Abra reconhecendo a baixa atividade ("A semana não registrou movimentações de calibragem...")
+   - Abra reconhecendo a baixa atividade ("O período não registrou movimentações de calibragem...")
    - Se houver imports_periodo: liste cada arquivo importado (filename, uploaded_by, uploaded_em, total_linhas, status) em "## Importações do período"
    - Em "## Sugestão de ação": cobre o gestor para revisar as propostas pendentes ou importar dados se nada chegou
    - Não invente alertas que não estão nos dados
@@ -473,7 +484,10 @@ func GerarNarrativaIA(kpis *KPIsResumoExecutivo) (string, error) {
 	dadosJSON, _ := json.MarshalIndent(&semItens, "", "  ")
 	return ZAIChat([]ZAIMessage{
 		{Role: "system", Content: promptResumoExecutivo},
-		{Role: "user", Content: "KPIs do CD nesta semana:\n\n" + string(dadosJSON)},
+		{Role: "user", Content: fmt.Sprintf(
+			"KPIs do CD no período de %s a %s:\n\n%s",
+			kpis.PeriodoInicio, kpis.PeriodoFim, string(dadosJSON),
+		)},
 	}, 1024, 0.4)
 }
 
@@ -853,8 +867,9 @@ func buildResumoPlainText(k *KPIsResumoExecutivo, narrativa, periodoIni, periodo
 // ── Orquestração: gerar + (opcionalmente) enviar ─────────────────────────────
 
 // calcularInicioPeriodo determina o início do período do resumo:
-//   - se já existe um resumo anterior para o CD, começa no dia seguinte ao fim
-//     do último (sem lacunas nem sobreposição entre resumos consecutivos);
+//   - se já existe um resumo anterior para o CD, começa exatamente no instante
+//     em que o último terminou (sem lacunas nem sobreposição entre resumos
+//     consecutivos — periodo_fim guarda o timestamp exato, não só a data);
 //   - se é o PRIMEIRO resumo do CD, cobre TODO o histórico já carregado (desde
 //     a primeira importação de CSV) — assim o primeiro resumo não ignora dados
 //     que foram carregados antes de o gestor gerar o relatório;
@@ -865,9 +880,8 @@ func calcularInicioPeriodo(db *sql.DB, cdID int, fim time.Time) time.Time {
 		SELECT MAX(periodo_fim) FROM smartpick.sp_relatorios_semanais WHERE cd_id = $1
 	`, cdID).Scan(&ultimoFim)
 	if ultimoFim.Valid {
-		inicio := ultimoFim.Time.AddDate(0, 0, 1)
-		if inicio.Before(fim) {
-			return inicio
+		if ultimoFim.Time.Before(fim) {
+			return ultimoFim.Time
 		}
 		return fim
 	}
