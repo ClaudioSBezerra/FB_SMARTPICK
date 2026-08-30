@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -7,8 +7,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { WifiOff, PackageSearch, CheckCircle2, RefreshCw, Radar, TrendingUp, TrendingDown } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { WifiOff, PackageSearch, CheckCircle2, RefreshCw, Radar, TrendingUp, TrendingDown, FileDown, Send, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { toast } from 'sonner'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -168,6 +170,55 @@ export default function SpFaturamentoSemCalibragem() {
   const farolIndisponivel = isError && error instanceof ApiError && error.status === 502
   const pendencias = data?.pendencias ?? []
 
+  // ── Gerar snapshot (POST .../gerar?cd_id=X) — reaproveitado por "Gerar PDF"
+  //    e "Enviar por e-mail", cada botão gera seu próprio snapshot antes de
+  //    agir sobre ele (o painel não mantém um histórico selecionável). ──────
+  async function gerarSnapshot(): Promise<number> {
+    const r = await fetch(`/api/sp/relatorios-faturamento/gerar?cd_id=${cdID}`, { method: 'POST', headers })
+    const body = await r.json()
+    if (!r.ok) throw new Error(body.error ?? 'Erro ao gerar relatório')
+    return (body as { id: number }).id
+  }
+
+  // ── Baixar PDF (com a logo da empresa) ────────────────────────────────────
+  const [baixandoPDF, setBaixandoPDF] = useState(false)
+  async function baixarPDF() {
+    setBaixandoPDF(true)
+    try {
+      const id = await gerarSnapshot()
+      const res = await fetch(`/api/sp/relatorios-faturamento/${id}/pdf`, { headers })
+      if (!res.ok) throw new Error((await res.text()) || 'Erro ao gerar PDF')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
+        ?? `faturamento_sem_calibragem_${id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('PDF gerado')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao baixar PDF')
+    } finally {
+      setBaixandoPDF(false)
+    }
+  }
+
+  // ── Enviar por e-mail (gera o snapshot e envia aos destinatários ativos) ──
+  const enviarMutation = useMutation({
+    mutationFn: async () => {
+      const id = await gerarSnapshot()
+      const r = await fetch(`/api/sp/relatorios-faturamento/${id}/enviar`, { method: 'POST', headers })
+      const body = await r.json()
+      if (!r.ok) throw new Error(body.error ?? 'Erro ao enviar')
+      return body as { enviados: string[]; total: number }
+    },
+    onSuccess: body => {
+      toast.success(`Enviado para ${body.total} destinatário(s)`)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   return (
     <div className="space-y-4">
       {/* Cabeçalho */}
@@ -213,6 +264,34 @@ export default function SpFaturamentoSemCalibragem() {
           >
             <RefreshCw className={`h-3 w-3 ${isFetching ? 'animate-spin' : ''}`} /> Atualizar
           </button>
+        )}
+
+        {cdID && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={baixandoPDF}
+            onClick={() => baixarPDF()}
+            title="Gerar um snapshot do painel e baixar em PDF (com o logotipo da empresa)"
+          >
+            {baixandoPDF
+              ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Gerando…</>
+              : <><FileDown className="h-3.5 w-3.5 mr-1" />Gerar PDF</>}
+          </Button>
+        )}
+
+        {cdID && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={enviarMutation.isPending}
+            onClick={() => enviarMutation.mutate()}
+            title="Gerar um snapshot do painel e enviar por e-mail aos destinatários ativos do CD"
+          >
+            {enviarMutation.isPending
+              ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Enviando…</>
+              : <><Send className="h-3.5 w-3.5 mr-1" />Enviar por e-mail</>}
+          </Button>
         )}
 
         {data && pendencias.length > 0 && (

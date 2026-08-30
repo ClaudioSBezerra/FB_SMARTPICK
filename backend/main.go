@@ -272,6 +272,7 @@ func main() {
 	initDBAsync()
 	go services.StartCSVWorker(getDB)
 	services.StartResumoWorker(getDB)
+	services.StartFaturamentoWorker(getDB)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -507,6 +508,22 @@ func main() {
 
 	// ── SmartPick — Monitor de Faturamento sem Calibragem (Farol) ────────────
 	http.HandleFunc("/api/sp/faturamento-sem-calibragem", withSP(handlers.SpFaturamentoSemCalibragemHandler, "gestor_filial"))
+
+	// ── SmartPick — Relatórios de Faturamento sem Calibragem (PDF + email) ───
+	http.HandleFunc("/api/sp/relatorios-faturamento/", withSP(func(db *sql.DB) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/gerar"):
+				handlers.SpRelatoriosFaturamentoGerarHandler(db)(w, r)
+			case strings.HasSuffix(r.URL.Path, "/enviar"):
+				handlers.SpRelatoriosFaturamentoEnviarHandler(db)(w, r)
+			case strings.HasSuffix(r.URL.Path, "/pdf"):
+				handlers.SpRelatoriosFaturamentoPDFHandler(db)(w, r)
+			default:
+				handlers.SpRelatoriosFaturamentoItemHandler(db)(w, r)
+			}
+		}
+	}, "gestor_filial"))
 
 	// ── SmartPick — Geração de PDF (Epic 6) ──────────────────────────────────
 	http.HandleFunc("/api/sp/pdf/calibracao", withSP(handlers.SpPDFCalibracaoHandler, "gestor_filial"))

@@ -25,3 +25,7 @@
 - source_spec: `skills/implementation-artifacts/spec-farol-faturamento-sem-calibragem.md`
   summary: Handler confia cegamente no filtro de `empresa`/período que o Farol aplica na resposta, sem revalidar client-side.
   evidence: Edge-case-hunter apontou como hardening defensivo razoável; não é uma falha coberta pelo contrato assumido documentado no spec.
+
+- source_spec: `skills/implementation-artifacts/spec-faturamento-pdf-email.md`
+  summary: SEGURANÇA — `SpResumoItemHandler` e `SpResumoEnviarHandler` (`backend/handlers/sp_resumos.go`, Resumo Executivo) não filtram por `empresa_id`: qualquer usuário autenticado (`gestor_filial`+) pode ler o JSON completo (GET `/api/sp/relatorios/{id}`) ou disparar reenvio de e-mail (POST `/api/sp/relatorios/{id}/enviar`) de um relatório de OUTRA empresa só adivinhando/iterando o `id` numérico sequencial (SERIAL). Cross-tenant data exposure real, pré-existente, não introduzido por nenhuma spec desta sessão.
+  evidence: Encontrado ao comparar com os handlers novos equivalentes de Faturamento sem Calibragem (`sp_relatorios_faturamento.go`), que corretamente fazem `JOIN smartpick.sp_centros_dist cd ON cd.id = r.cd_id WHERE r.id = $1 AND cd.empresa_id = $2`. `SpResumoItemHandler`/`SpResumoEnviarHandler` fazem apenas `WHERE id = $1`, sem esse join — confirmado lendo `sp_resumos.go:241-334`. Correção sugerida: aplicar o mesmo padrão de join+filtro por `empresa_id` (e idealmente também `SpResumoPDFHandler`, que já tem o filtro correto, conferir se os dois handlers sem filtro são os únicos afetados).
