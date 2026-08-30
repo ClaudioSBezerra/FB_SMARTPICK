@@ -15,16 +15,16 @@ import (
 // ── Destinatários do resumo ──────────────────────────────────────────────────
 
 type destinatarioResp struct {
-	ID            int    `json:"id"`
-	CdID          int    `json:"cd_id"`
-	CdNome        string `json:"cd_nome,omitempty"`
-	FilialNome    string `json:"filial_nome,omitempty"`
-	NomeCompleto  string `json:"nome_completo"`
-	Cargo         string `json:"cargo"`
-	Email         string `json:"email"`
-	Ativo         bool   `json:"ativo"`
-	CriadoEm      string `json:"criado_em"`
-	AtualizadoEm  string `json:"atualizado_em"`
+	ID           int    `json:"id"`
+	CdID         int    `json:"cd_id"`
+	CdNome       string `json:"cd_nome,omitempty"`
+	FilialNome   string `json:"filial_nome,omitempty"`
+	NomeCompleto string `json:"nome_completo"`
+	Cargo        string `json:"cargo"`
+	Email        string `json:"email"`
+	Ativo        bool   `json:"ativo"`
+	CriadoEm     string `json:"criado_em"`
+	AtualizadoEm string `json:"atualizado_em"`
 }
 
 // SpDestinatariosHandler — CRUD de destinatários do resumo executivo (admin_fbtax)
@@ -184,13 +184,13 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 // ── Listagem e geração de resumos ─────────────────────────────────────────────
 
 type resumoListItem struct {
-	ID             int    `json:"id"`
-	CdID           int    `json:"cd_id"`
-	PeriodoInicio  string `json:"periodo_inicio"`
-	PeriodoFim     string `json:"periodo_fim"`
-	CriadoEm       string `json:"criado_em"`
-	EnviadoEm      string `json:"enviado_em,omitempty"`
-	EnviadoPara    int    `json:"enviado_para_count"`
+	ID            int    `json:"id"`
+	CdID          int    `json:"cd_id"`
+	PeriodoInicio string `json:"periodo_inicio"`
+	PeriodoFim    string `json:"periodo_fim"`
+	CriadoEm      string `json:"criado_em"`
+	EnviadoEm     string `json:"enviado_em,omitempty"`
+	EnviadoPara   int    `json:"enviado_para_count"`
 }
 
 // SpResumosHandler — GET /api/sp/relatorios?cd_id=X → lista resumos
@@ -202,6 +202,12 @@ func SpResumosHandler(db *sql.DB) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
 		cdIDStr := r.URL.Query().Get("cd_id")
 		if cdIDStr == "" {
 			http.Error(w, `{"error":"cd_id obrigatório"}`, http.StatusBadRequest)
@@ -209,18 +215,22 @@ func SpResumosHandler(db *sql.DB) http.HandlerFunc {
 		}
 		cdID, _ := strconv.Atoi(cdIDStr)
 
+		// Escopado à empresa da sessão — sem isso, qualquer usuário autenticado
+		// conseguia listar os resumos (ids, datas, status de envio) de um CD de
+		// outra empresa só passando o cd_id na URL.
 		rows, err := db.Query(`
-			SELECT id, cd_id,
-			       to_char(periodo_inicio, 'YYYY-MM-DD'),
-			       to_char(periodo_fim, 'YYYY-MM-DD'),
-			       to_char(criado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-			       COALESCE(to_char(enviado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), ''),
-			       COALESCE(array_length(enviado_para, 1), 0)
-			  FROM smartpick.sp_relatorios_semanais
-			 WHERE cd_id = $1
-			 ORDER BY periodo_fim DESC, id DESC
+			SELECT r.id, r.cd_id,
+			       to_char(r.periodo_inicio, 'YYYY-MM-DD'),
+			       to_char(r.periodo_fim, 'YYYY-MM-DD'),
+			       to_char(r.criado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			       COALESCE(to_char(r.enviado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), ''),
+			       COALESCE(array_length(r.enviado_para, 1), 0)
+			  FROM smartpick.sp_relatorios_semanais r
+			  JOIN smartpick.sp_centros_dist cd ON cd.id = r.cd_id
+			 WHERE r.cd_id = $1 AND cd.empresa_id = $2
+			 ORDER BY r.periodo_fim DESC, r.id DESC
 			 LIMIT 50
-		`, cdID)
+		`, cdID, spCtx.EmpresaID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
@@ -242,6 +252,12 @@ func SpResumoItemHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
 		path := strings.TrimPrefix(r.URL.Path, "/api/sp/relatorios/")
 		id, _ := strconv.Atoi(strings.Trim(path, "/"))
 		if id == 0 {
@@ -250,25 +266,31 @@ func SpResumoItemHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		var (
-			cdID                       int
-			periodoIni, periodoFim     string
-			dadosJSON, narrativa       string
-			criadoEm                   string
-			enviadoEm, erroEnvio       sql.NullString
+			cdID                   int
+			periodoIni, periodoFim string
+			dadosJSON, narrativa   string
+			criadoEm               string
+			enviadoEm, erroEnvio   sql.NullString
 		)
+		// Escopado à empresa da sessão — sem isso, qualquer usuário autenticado
+		// conseguia ler o resumo de outra empresa só adivinhando o id (SERIAL).
 		err := db.QueryRow(`
-			SELECT cd_id,
-			       to_char(periodo_inicio, 'YYYY-MM-DD'),
-			       to_char(periodo_fim, 'YYYY-MM-DD'),
-			       dados_json::text, narrativa_md,
-			       to_char(criado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-			       to_char(enviado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-			       COALESCE(erro_envio, '')
-			  FROM smartpick.sp_relatorios_semanais
-			 WHERE id = $1
-		`, id).Scan(&cdID, &periodoIni, &periodoFim, &dadosJSON, &narrativa, &criadoEm, &enviadoEm, &erroEnvio)
-		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusNotFound)
+			SELECT r.cd_id,
+			       to_char(r.periodo_inicio, 'YYYY-MM-DD'),
+			       to_char(r.periodo_fim, 'YYYY-MM-DD'),
+			       r.dados_json::text, r.narrativa_md,
+			       to_char(r.criado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			       to_char(r.enviado_em, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			       COALESCE(r.erro_envio, '')
+			  FROM smartpick.sp_relatorios_semanais r
+			  JOIN smartpick.sp_centros_dist cd ON cd.id = r.cd_id
+			 WHERE r.id = $1 AND cd.empresa_id = $2
+		`, id, spCtx.EmpresaID).Scan(&cdID, &periodoIni, &periodoFim, &dadosJSON, &narrativa, &criadoEm, &enviadoEm, &erroEnvio)
+		if err == sql.ErrNoRows {
+			http.Error(w, `{"error":"Relatório não encontrado"}`, http.StatusNotFound)
+			return
+		} else if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
 		}
 
@@ -289,7 +311,8 @@ func SpResumoItemHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // SpResumoGerarHandler — POST /api/sp/relatorios/gerar?cd_id=X (master)
-//   gera o resumo executivo da última semana e retorna o id criado
+//
+//	gera o resumo executivo da última semana e retorna o id criado
 func SpResumoGerarHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[resumo-handler] %s %s", r.Method, r.URL.String())
@@ -309,15 +332,29 @@ func SpResumoGerarHandler(db *sql.DB) http.HandlerFunc {
 		cdID, _ := strconv.Atoi(cdIDStr)
 
 		spCtx := GetSpContext(r)
-		criadoPor := ""
-		if spCtx != nil {
-			criadoPor = spCtx.UserID
-			log.Printf("[resumo-handler] CD=%d user=%s role=%s", cdID, criadoPor, spCtx.SpRole)
-		} else {
-			log.Printf("[resumo-handler] CD=%d sem spContext", cdID)
+		if spCtx == nil {
+			http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		log.Printf("[resumo-handler] CD=%d user=%s role=%s", cdID, spCtx.UserID, spCtx.SpRole)
+
+		// Escopado à empresa da sessão — sem isso, qualquer usuário autenticado
+		// conseguia gerar (e persistir) o resumo semanal de um CD de outra
+		// empresa só passando o cd_id na URL.
+		var filialID int
+		if err := db.QueryRow(`
+			SELECT filial_id FROM smartpick.sp_centros_dist WHERE id = $1 AND empresa_id = $2
+		`, cdID, spCtx.EmpresaID).Scan(&filialID); err != nil {
+			log.Printf("[resumo-handler] CD=%d fora do escopo da empresa %s: %v", cdID, spCtx.EmpresaID, err)
+			http.Error(w, `{"error":"CD não encontrado"}`, http.StatusNotFound)
+			return
+		}
+		if !spCtx.HasFilialAccess(filialID) {
+			http.Error(w, `{"error":"Forbidden: CD fora do escopo de filiais do usuário"}`, http.StatusForbidden)
+			return
 		}
 
-		id, _, _, err := services.GerarResumoExecutivo(db, cdID, criadoPor)
+		id, _, _, err := services.GerarResumoExecutivo(db, cdID, spCtx.UserID)
 		if err != nil {
 			log.Printf("[resumo-handler] CD=%d erro: %v", cdID, err)
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
@@ -330,7 +367,8 @@ func SpResumoGerarHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // SpResumoEnviarHandler — POST /api/sp/relatorios/{id}/enviar (master)
-//   envia o resumo por email aos destinatários ativos do CD
+//
+//	envia o resumo por email aos destinatários ativos do CD
 func SpResumoEnviarHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -339,12 +377,34 @@ func SpResumoEnviarHandler(db *sql.DB) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 
+		spCtx := GetSpContext(r)
+		if spCtx == nil {
+			http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
 		// Path: /api/sp/relatorios/{id}/enviar
 		path := strings.TrimPrefix(r.URL.Path, "/api/sp/relatorios/")
 		path = strings.TrimSuffix(path, "/enviar")
 		id, _ := strconv.Atoi(strings.Trim(path, "/"))
 		if id == 0 {
 			http.Error(w, `{"error":"id obrigatório"}`, http.StatusBadRequest)
+			return
+		}
+
+		// Garante que o relatório pertence à empresa da sessão antes de enviar —
+		// sem isso, qualquer usuário autenticado conseguia disparar o reenvio
+		// do resumo de outra empresa só adivinhando o id.
+		var existe bool
+		_ = db.QueryRow(`
+			SELECT EXISTS(
+				SELECT 1 FROM smartpick.sp_relatorios_semanais r
+				JOIN smartpick.sp_centros_dist cd ON cd.id = r.cd_id
+				WHERE r.id = $1 AND cd.empresa_id = $2
+			)
+		`, id, spCtx.EmpresaID).Scan(&existe)
+		if !existe {
+			http.Error(w, `{"error":"Relatório não encontrado"}`, http.StatusNotFound)
 			return
 		}
 
