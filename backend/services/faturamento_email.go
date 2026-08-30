@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -189,6 +190,7 @@ body{font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:680px;mar
 .hdr-sub{font-size:13px;color:#cbd5e0;margin-top:4px}
 .body{background:#fff;padding:22px;border-radius:0 0 8px 8px}
 .info-box{background:#fff7ed;border-left:4px solid #d97706;padding:10px 14px;margin:0 0 18px;border-radius:0 6px 6px 0;font-size:12px;color:#92400e}
+.alert-box{background:#fef2f2;border-left:4px solid #dc2626;padding:12px 16px;margin:0 0 18px;border-radius:0 6px 6px 0;font-size:13px;color:#7f1d1d;line-height:1.55}
 .sec{margin:18px 0}
 .sec-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#718096;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:12px}
 .kpi-table{width:100%;border-collapse:separate;border-spacing:6px}
@@ -207,10 +209,33 @@ table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
 	fmt.Fprintf(&sb, `<div class="info-box"><strong>CD:</strong> %s &nbsp;|&nbsp; <strong>Filial:</strong> %s &nbsp;|&nbsp; <strong>Per&iacute;odo:</strong> %s a %s</div>`,
 		r.CdNome, r.FilialNome, periodoIni, periodoFim)
 
+	// Chamada de atenção: dimensiona o esforço de calibragem/realocação
+	// pendente pro gestor bater o olho antes de entrar nos números frios.
+	if len(r.Pendencias) > 0 {
+		curvaA, totalAcessos := 0, 0
+		for _, p := range r.Pendencias {
+			if p.ClasseVenda == "A" {
+				curvaA++
+			}
+			if p.AcessosPicking != nil {
+				totalAcessos += *p.AcessosPicking
+			}
+		}
+		fmt.Fprintf(&sb, `<div class="alert-box">&#9888;&#65039; <strong>%s produtos</strong> faturados nos &uacute;ltimos 30 dias seguem sem calibragem aprovada`,
+			formatarMilharEmail(len(r.Pendencias)))
+		if curvaA > 0 {
+			fmt.Fprintf(&sb, ` &mdash; <strong>%s de Curva A</strong> (alto giro)`, formatarMilharEmail(curvaA))
+		}
+		sb.WriteString(`. Isso significa capacidade de picking desatualizada`)
+		if totalAcessos > 0 {
+			fmt.Fprintf(&sb, ` e j&aacute; gerou <strong>%s acessos</strong> ao endere&ccedil;o de separa&ccedil;&atilde;o nesse per&iacute;odo`, formatarMilharEmail(totalAcessos))
+		}
+		sb.WriteString(`. Priorizar a calibragem e a realoca&ccedil;&atilde;o desses itens reduz deslocamento e agiliza a separa&ccedil;&atilde;o.</div>`)
+	}
+
 	// KPI: número de pendências
 	sb.WriteString(`<div class="sec"><div class="sec-title">Resumo</div><table class="kpi-table"><tr>`)
-	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Produtos pendentes</div><div class="kpi-val" style="color:#d97706">%d</div></td>`, len(r.Pendencias))
-	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Sem correspondência Curva A/B</div><div class="kpi-val">%d</div></td>`, r.TotalNaoCorrespondencias)
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Produtos pendentes</div><div class="kpi-val" style="color:#d97706">%s</div></td>`, formatarMilharEmail(len(r.Pendencias)))
 	sb.WriteString(`</tr></table></div>`)
 
 	// Top 3-5 produtos por gap (maior primeiro)
@@ -244,8 +269,29 @@ table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
 func buildFaturamentoPlainText(r *FaturamentoSemCalibragemResponse, periodoIni, periodoFim string) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "SmartPick - Faturamento sem Calibragem\n\nCD: %s\nFilial: %s\nPeriodo: %s a %s\n\n", r.CdNome, r.FilialNome, periodoIni, periodoFim)
-	fmt.Fprintf(&sb, "Produtos pendentes: %d\n", len(r.Pendencias))
-	fmt.Fprintf(&sb, "Sem correspondencia Curva A/B: %d\n\n", r.TotalNaoCorrespondencias)
+	fmt.Fprintf(&sb, "Produtos pendentes: %s\n\n", formatarMilharEmail(len(r.Pendencias)))
+
+	if len(r.Pendencias) > 0 {
+		curvaA, totalAcessos := 0, 0
+		for _, p := range r.Pendencias {
+			if p.ClasseVenda == "A" {
+				curvaA++
+			}
+			if p.AcessosPicking != nil {
+				totalAcessos += *p.AcessosPicking
+			}
+		}
+		sb.WriteString("ATENCAO: ")
+		fmt.Fprintf(&sb, "%s produtos faturados nos ultimos 30 dias seguem sem calibragem aprovada", formatarMilharEmail(len(r.Pendencias)))
+		if curvaA > 0 {
+			fmt.Fprintf(&sb, " (%s de Curva A, alto giro)", formatarMilharEmail(curvaA))
+		}
+		sb.WriteString(". Isso significa capacidade de picking desatualizada")
+		if totalAcessos > 0 {
+			fmt.Fprintf(&sb, " e ja gerou %s acessos ao endereco de separacao nesse periodo", formatarMilharEmail(totalAcessos))
+		}
+		sb.WriteString(". Priorizar a calibragem e a realocacao desses itens reduz deslocamento e agiliza a separacao.\n\n")
+	}
 
 	if len(r.Pendencias) > 0 {
 		max := 5
@@ -280,4 +326,28 @@ func formatQtdFaturada(qtd float64) string {
 		return fmt.Sprintf("%d", int64(qtd))
 	}
 	return fmt.Sprintf("%.2f", qtd)
+}
+
+// formatarMilharEmail formata um inteiro com separador de milhar (.) no
+// padrão BR, só pra deixar os números da chamada de atenção legíveis
+// (5234 → "5.234").
+func formatarMilharEmail(v int) string {
+	s := strconv.Itoa(v)
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
+	}
+	var out []byte
+	n := len(s)
+	for i := 0; i < n; i++ {
+		if i > 0 && (n-i)%3 == 0 {
+			out = append(out, '.')
+		}
+		out = append(out, s[i])
+	}
+	res := string(out)
+	if neg {
+		res = "-" + res
+	}
+	return res
 }
