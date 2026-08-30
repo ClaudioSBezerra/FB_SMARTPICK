@@ -121,8 +121,7 @@ func SpRelatoriosFaturamentoPDFHandler(db *sql.DB) http.HandlerFunc {
 			)),
 			row.New(12).Add(
 				kpiCell("Produtos pendentes", strconv.Itoa(len(resp.Pendencias))),
-				kpiCell("Sem correspondência Curva A/B", strconv.Itoa(resp.TotalNaoCorrespondencias)),
-				col.New(6),
+				col.New(9),
 			),
 		)
 
@@ -168,8 +167,12 @@ func SpRelatoriosFaturamentoPDFHandler(db *sql.DB) http.HandlerFunc {
 			)
 			for _, p := range listados {
 				prod := p.Produto
-				if len(prod) > 42 {
-					prod = prod[:42] + "…"
+				// Truncado em 34 chars — mesmo limite comprovado em sp_resumo_pdf.go
+				// para uma coluna de mesma largura (3/12); acima disso o texto
+				// quebra em 2 linhas dentro da altura fixa da linha e sobrepõe a
+				// linha seguinte (achado do usuário — PDF com nomes de produto longos).
+				if len(prod) > 34 {
+					prod = prod[:34] + "…"
 				}
 				gap := "—"
 				if p.Gap != nil {
