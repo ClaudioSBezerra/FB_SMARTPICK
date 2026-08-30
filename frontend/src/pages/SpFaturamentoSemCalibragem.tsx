@@ -7,7 +7,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { WifiOff, PackageSearch, CheckCircle2, RefreshCw, Radar } from 'lucide-react'
+import { WifiOff, PackageSearch, CheckCircle2, RefreshCw, Radar, TrendingUp, TrendingDown } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -23,6 +23,8 @@ interface PendenciaItem {
   ultimo_status: 'nunca' | 'pendente' | 'rejeitada' | 'aprovada' | 'indisponivel'
   gap?: number
   ultima_atualizacao?: string
+  acessos_picking?: number
+  acessos_inicial?: number
 }
 
 interface FaturamentoSemCalibragemResp {
@@ -92,6 +94,31 @@ function fmtGap(gap?: number) {
   if (gap === undefined || gap === null) return '—'
   const sign = gap > 0 ? '+' : ''
   return `${sign}${gap.toLocaleString('pt-BR')}`
+}
+
+// Custo operacional: nº de idas do separador ao endereço nos últimos 90 dias,
+// com a evolução desde a 1ª importação do CD — mais acessos sem correção
+// (▲, vermelho) evidencia o custo de não ter calibrado ainda; menos (▼,
+// verde) mostra melhora mesmo sem calibragem formal registrada.
+function AcessosCell({ atual, inicial }: { atual?: number; inicial?: number }) {
+  if (atual === undefined || atual === null) {
+    return <span className="text-xs text-muted-foreground">—</span>
+  }
+  if (inicial === undefined || inicial === null || inicial === atual) {
+    return <span className="text-xs font-mono">{atual.toLocaleString('pt-BR')}</span>
+  }
+  const diff = atual - inicial
+  const up = diff > 0
+  const Icon = up ? TrendingUp : TrendingDown
+  return (
+    <div className="flex items-center gap-1.5 text-xs">
+      <span className="font-mono font-semibold">{atual.toLocaleString('pt-BR')}</span>
+      <span className={`inline-flex items-center gap-0.5 ${up ? 'text-red-600' : 'text-green-600'}`} title={`Desde a 1ª importação: ${inicial.toLocaleString('pt-BR')} → ${atual.toLocaleString('pt-BR')}`}>
+        <Icon className="h-3 w-3" />
+        {up ? '+' : ''}{diff.toLocaleString('pt-BR')}
+      </span>
+    </div>
+  )
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -261,6 +288,7 @@ export default function SpFaturamentoSemCalibragem() {
                 <TableHead className="w-36">Último status</TableHead>
                 <TableHead className="w-20 text-right">Gap</TableHead>
                 <TableHead className="w-24">Atualizado</TableHead>
+                <TableHead className="w-40">Acessos ao picking (90d)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -273,6 +301,7 @@ export default function SpFaturamentoSemCalibragem() {
                   <TableCell><StatusBadge status={p.ultimo_status} /></TableCell>
                   <TableCell className="text-xs text-right font-mono">{fmtGap(p.gap)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.ultima_atualizacao ? fmtDate(p.ultima_atualizacao) : '—'}</TableCell>
+                  <TableCell><AcessosCell atual={p.acessos_picking} inicial={p.acessos_inicial} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
