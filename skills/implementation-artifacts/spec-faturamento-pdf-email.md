@@ -22,7 +22,7 @@ baseline_commit: '6efa938db6d3fffb504a65ffe85bb30d2b64b2ff'
 - Extrair a lógica de comparação hoje inline em `SpFaturamentoSemCalibragemHandler` para uma função de serviço reaproveitável (ex.: `services.ColetarFaturamentoSemCalibragem`), preservando EXATAMENTE o comportamento fail-loud já existente (falha nas queries internas nunca vira resultado vazio/parcial silencioso — mesmo princípio já estabelecido nesta feature). O handler GET ao vivo passa a só chamar essa função.
 - Nova tabela `smartpick.sp_relatorios_faturamento` (migration `131_...sql`), mesma forma de `sp_relatorios_semanais` (id, cd_id, periodo_inicio/fim TIMESTAMPTZ, dados_json, enviado_em, enviado_para, erro_envio, criado_em, criado_por).
 - PDF: novo handler seguindo o padrão de `sp_resumo_pdf.go` (maroto, logo via `buscarLogoEmpresa(db, empresaID)`, fallback sem logo se não houver), gerado a partir do snapshot salvo (não ao vivo).
-- E-mail: HTML + texto plano seguindo o padrão de `buildResumoHTML`/`buildResumoPlainText`/`EnviarResumoPorEmail` — resumo dos números principais + botão "Baixar PDF completo" linkando para `${APP_URL}/faturamento-sem-calibragem` (branding SmartPick, não anexa o PDF).
+- E-mail: HTML + texto plano seguindo o padrão de `buildResumoHTML`/`buildResumoPlainText`/`EnviarResumoPorEmail` — resumo dos números principais + o PDF completo anexado (binário, `multipart/mixed`) + botão linkando para `${APP_URL}/faturamento-sem-calibragem` (branding SmartPick). Ver Spec Change Log 2026-08-30 (anexo).
 - Destinatários: reaproveitar `smartpick.sp_destinatarios_resumo` como está (mesma lista do Resumo Executivo, sem coluna de tipo de relatório).
 - Worker diário novo (`StartFaturamentoWorker`, espelhando `resumo_worker.go`): roda 1x/dia às 7h BRT, para CDs ativos com destinatários ativos que não tiveram relatório de faturamento gerado nas últimas 20h (evita duplicar no mesmo dia).
 - Frontend: botões "Gerar PDF" e "Enviar por e-mail" na página do painel, seguindo exatamente os padrões `baixarPDF`/`enviarMutation` de `SpResumoExecutivo.tsx`.
@@ -32,7 +32,7 @@ baseline_commit: '6efa938db6d3fffb504a65ffe85bb30d2b64b2ff'
 - Nenhuma pendente — horário (7h BRT), formato do e-mail (HTML+link) e lista de destinatários (reaproveitar a existente) já foram confirmados pelo usuário.
 
 **Never:**
-- Não anexar o PDF como binário no e-mail (decisão confirmada: link, não anexo).
+- ~~Não anexar o PDF como binário no e-mail~~ — renegociado pelo usuário em 2026-08-30 (ver Spec Change Log). O e-mail agora anexa o PDF de fato.
 - Não criar coluna/tela de destinatários específica para este relatório — reusa a lista existente do CD.
 - Não modificar `services/email.go` (herdado) nem a lógica de `resumo_worker.go`/`resumo_executivo.go` além de ler seus padrões como referência.
 - Não alterar o comportamento do GET ao vivo do painel (`/api/sp/faturamento-sem-calibragem`) além da extração de função — a resposta e o comportamento continuam idênticos.
@@ -91,12 +91,15 @@ baseline_commit: '6efa938db6d3fffb504a65ffe85bb30d2b64b2ff'
   3. **Mensagens de erro 500 do GET ao vivo**: ao consolidar a coleta em `services.ColetarFaturamentoSemCalibragem`, as mensagens de erro específicas por etapa ("Erro interno ao carregar classificação de produtos" vs. "...calibragens aprovadas") viraram uma mensagem genérica única ("Erro interno ao carregar o painel"). Os status HTTP (404/500/502) e o comportamento fail-loud (nunca resultado vazio/parcial) permanecem idênticos; só o texto exato da mensagem de erro para essas 2 sub-falhas específicas mudou.
 - 2026-08-30 (review — patch): o PDF (`sp_relatorios_faturamento_pdf.go`) renderizava TODAS as pendências sem limite — um CD real em produção (FILIAL 11 JC) já tem 5.234 pendências, o que geraria um PDF de centenas de páginas, lento e impraticável. Corrigido: tabela limitada aos 300 maiores gaps (a lista já vem ordenada por gap desc), com nota no rodapé indicando quantos produtos adicionais existem e que a lista completa está no painel. `dados_json` continua salvando o snapshot completo (sem corte) — só a renderização do PDF foi limitada.
 - 2026-08-30 (pós-deploy, usuário): dois ajustes no PDF gerado. (1) A coluna "Produto" truncava em 42 caracteres para uma coluna de largura 3/12 — acima do limite de 34 chars comprovado em `sp_resumo_pdf.go` para a mesma largura de coluna, causando quebra em 2 linhas dentro da altura fixa da linha (4.5mm) e sobreposição com a linha seguinte. Corrigido para 34 chars, igualando ao padrão de referência. (2) Removida a KPI "Sem correspondência Curva A/B" do resumo do PDF (usuário pediu para tirar; era um número de diagnóstico interno sem contexto útil pro gestor).
+- 2026-08-30 (pós-deploy, usuário — repaginação executiva): PDF orientação paisagem, altura de linha automática (elimina sobreposição pra qualquer tamanho de nome), cabeçalho da tabela repetindo em toda página via `RegisterHeader`, rodapé com paginação, ribbon de 4 KPIs (pendências/curva A-B/nunca calibrados/acessos ao picking) substituindo a KPI solta, zebra striping, números com separador de milhar e Gap colorido. A mesma KPI de diagnóstico ("Sem correspondência Curva A/B") também existia no corpo do e-mail (`buildFaturamentoHTML`/`buildFaturamentoPlainText`) e foi removida de lá — substituída por uma frase de destaque no topo do e-mail dimensionando o volume de calibragem/realocação pendente (produtos sem calibragem, quantos são Curva A, acessos ao picking no período).
+- 2026-08-30 (pós-deploy, usuário — anexo): renegociada a decisão "Never: não anexar o PDF" (linha 35 original). O e-mail agora anexa o PDF de fato (binário, `multipart/mixed` envolvendo o `multipart/alternative` plain+html + a parte `application/pdf` em base64), gerado uma única vez por envio a partir do mesmo `services.GerarPDFFaturamentoSemCalibragem` usado no download manual (lógica de montagem do PDF movida de `handlers/sp_relatorios_faturamento_pdf.go` para `services/faturamento_pdf.go`, exportada, pra ser reaproveitável pelos dois lugares; `buscarLogoEmpresa` também movida pra lá como `services.BuscarLogoEmpresa`, compartilhada com `sp_resumo_pdf.go`). Falha na geração do PDF loga um aviso e o e-mail sai sem anexo (não trava o envio do resumo). O botão/link do corpo do e-mail deixou de dizer "Baixar PDF completo" (agora "Abrir painel completo", com uma nota indicando que o PDF já está anexado) pra não sugerir duas formas conflitantes de obter o mesmo arquivo.
 
 ## Design Notes
 
 Contrato do e-mail (mesmo estilo visual do Resumo Executivo, adaptado):
 - Assunto: `"SmartPick - Faturamento sem Calibragem {CdNome} ({data})"`.
-- Corpo: nº de pendências, top 3-5 produtos por gap, botão "Baixar PDF completo" → `${APP_URL}/faturamento-sem-calibragem`.
+- Corpo: frase de destaque (volume de calibragem/realocação pendente), nº de pendências, top 3-5 produtos por gap, botão "Abrir painel completo" → `${APP_URL}/faturamento-sem-calibragem`.
+- Anexo: o PDF completo do snapshot (ver Spec Change Log 2026-08-30 — anexo).
 
 Worker diário — janela de dedup em 20h (não 24h) para tolerar variação no horário exato do ticker sem pular um dia; segue o mesmo `time.FixedZone("BRT", -3*3600)` de `resumo_worker.go`.
 
@@ -147,8 +150,8 @@ A extração de `sp_faturamento_sem_calibragem.go` para services é o passo de m
 
 **E-mail e worker diário**
 
-- E-mail nunca anexa o PDF — resumo + botão linkando para o painel (decisão confirmada).
-  [`faturamento_email.go:182`](../../backend/services/faturamento_email.go#L182)
+- E-mail anexa o PDF completo (`multipart/mixed`) — resumo + PDF anexado + botão linkando para o painel (decisão renegociada em 2026-08-30, ver Spec Change Log).
+  [`faturamento_email.go`](../../backend/services/faturamento_email.go)
 
 - Worker: janela 7h BRT + dedup 20h; falha em 1 CD não impede os demais.
   [`faturamento_worker.go:48`](../../backend/services/faturamento_worker.go#L48)

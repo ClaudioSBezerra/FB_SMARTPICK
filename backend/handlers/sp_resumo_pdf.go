@@ -24,43 +24,10 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
-	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/props"
 )
-
-// buscarLogoEmpresa retorna os bytes e a extensão do logo da empresa (própria
-// ou de irmã do mesmo grupo). Só PNG/JPEG são embutíveis no PDF (gofpdf).
-func buscarLogoEmpresa(db *sql.DB, empresaID string) ([]byte, extension.Type, bool) {
-	var data []byte
-	var mime string
-	err := db.QueryRow(`
-		SELECT logo_data, logo_mime FROM companies
-		WHERE id = $1::uuid AND logo_data IS NOT NULL
-	`, empresaID).Scan(&data, &mime)
-	if err == sql.ErrNoRows {
-		err = db.QueryRow(`
-			SELECT s.logo_data, s.logo_mime
-			FROM companies c
-			JOIN companies s ON s.group_id = c.group_id
-			WHERE c.id = $1::uuid AND c.group_id IS NOT NULL AND s.logo_data IS NOT NULL
-			ORDER BY s.updated_at DESC NULLS LAST, s.created_at DESC
-			LIMIT 1
-		`, empresaID).Scan(&data, &mime)
-	}
-	if err != nil || len(data) == 0 {
-		return nil, "", false
-	}
-	switch {
-	case strings.Contains(mime, "png"):
-		return data, extension.Png, true
-	case strings.Contains(mime, "jpg"), strings.Contains(mime, "jpeg"):
-		return data, extension.Jpg, true
-	default:
-		return nil, "", false // webp/svg: não suportados pelo gerador
-	}
-}
 
 // quebrarLinhas quebra um texto em linhas de até max caracteres em limites de palavra.
 func quebrarLinhas(s string, max int) []string {
@@ -164,7 +131,7 @@ func SpResumoPDFHandler(db *sql.DB) http.HandlerFunc {
 		azul := &props.Color{Red: 30, Green: 58, Blue: 95}
 
 		// Cabeçalho: logo (se houver) + título + CD/período
-		logoBytes, logoExt, temLogo := buscarLogoEmpresa(db, spCtx.EmpresaID)
+		logoBytes, logoExt, temLogo := services.BuscarLogoEmpresa(db, spCtx.EmpresaID)
 		headerCols := []core.Col{}
 		if temLogo {
 			headerCols = append(headerCols,

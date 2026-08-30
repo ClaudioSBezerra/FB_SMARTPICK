@@ -1,19 +1,20 @@
 package services
 
 // faturamento_email.go — Envio por email do snapshot de Faturamento sem
-// Calibragem (manual ou pelo worker diário). Segue o padrão EXATO de
+// Calibragem (manual ou pelo worker diário). Segue o padrão de
 // EnviarResumoPorEmail/buildResumoHTML/buildResumoPlainText em
 // resumo_executivo.go (spec-faturamento-pdf-email.md) — resumo dos números
-// principais + botão "Baixar PDF completo" linkando para o painel (nunca
-// anexa o PDF como binário, decisão confirmada na spec).
+// principais + o PDF completo (services.GerarPDFFaturamentoSemCalibragem)
+// anexado como binário (multipart/mixed) — decisão renegociada em
+// 2026-08-30 (a versão anterior só linkava pro painel).
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -38,20 +39,24 @@ func MarcarEnviadoFaturamento(db *sql.DB, relatorioID int, enviadoPara []string,
 func EnviarFaturamentoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
 	log.Printf("[faturamento] enviando snapshot %d por email", relatorioID)
 
-	// Carrega o snapshot
+	// Carrega o snapshot (+ empresa_id do CD, pro logo, e criado_em, pro
+	// cabeçalho do PDF anexado — mesmos dados que o download manual usa).
 	var (
-		cdID                   int
-		periodoIni, periodoFim string
-		dadosJSON              string
+		cdID                             int
+		empresaID                        string
+		periodoIni, periodoFim, criadoEm string
+		dadosJSON                        string
 	)
 	err := db.QueryRow(`
-		SELECT cd_id,
-		       to_char(periodo_inicio, 'DD/MM/YYYY'),
-		       to_char(periodo_fim, 'DD/MM/YYYY'),
-		       dados_json::text
-		  FROM smartpick.sp_relatorios_faturamento
-		 WHERE id = $1
-	`, relatorioID).Scan(&cdID, &periodoIni, &periodoFim, &dadosJSON)
+		SELECT r.cd_id, cd.empresa_id,
+		       to_char(r.periodo_inicio, 'DD/MM/YYYY'),
+		       to_char(r.periodo_fim, 'DD/MM/YYYY'),
+		       to_char(r.criado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI'),
+		       r.dados_json::text
+		  FROM smartpick.sp_relatorios_faturamento r
+		  JOIN smartpick.sp_centros_dist cd ON cd.id = r.cd_id
+		 WHERE r.id = $1
+	`, relatorioID).Scan(&cdID, &empresaID, &periodoIni, &periodoFim, &criadoEm, &dadosJSON)
 	if err != nil {
 		return nil, fmt.Errorf("relatório não encontrado: %w", err)
 	}
@@ -137,20 +142,52 @@ func EnviarFaturamentoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
 	html := buildFaturamentoHTML(&resp, periodoIni, periodoFim)
 	plain := buildFaturamentoPlainText(&resp, periodoIni, periodoFim)
 
+	// PDF anexado — mesmo gerador do download manual (services.GerarPDFFaturamentoSemCalibragem),
+	// gerado uma única vez pra todos os destinatários. Falha ao gerar o PDF
+	// não deve impedir o e-mail com o resumo de sair — só some o anexo.
+	logoBytes, logoExt, temLogo := BuscarLogoEmpresa(db, empresaID)
+	pdfBytes, pdfErr := GerarPDFFaturamentoSemCalibragem(&resp, periodoIni, periodoFim, criadoEm, logoBytes, logoExt, temLogo)
+	if pdfErr != nil {
+		log.Printf("[faturamento] aviso: falha ao gerar PDF pro anexo do snapshot %d (email segue sem anexo): %v", relatorioID, pdfErr)
+		pdfBytes = nil
+	}
+	pdfFilename := NomeArquivoPDFFaturamento(resp.CdNome, periodoFim)
+
 	enviados := []string{}
 	for _, d := range destinos {
-		boundary := fmt.Sprintf("ft_%d", time.Now().UnixNano())
+		mixBoundary := fmt.Sprintf("ft_mix_%d", time.Now().UnixNano())
+		altBoundary := fmt.Sprintf("ft_alt_%d", time.Now().UnixNano())
 		var msg strings.Builder
 		fmt.Fprintf(&msg, "From: %s\r\n", cfg.From)
 		fmt.Fprintf(&msg, "To: %s <%s>\r\n", d.Nome, d.Email)
 		fmt.Fprintf(&msg, "Subject: %s\r\n", subject)
 		msg.WriteString("MIME-Version: 1.0\r\n")
-		fmt.Fprintf(&msg, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", boundary)
-		// plain
-		fmt.Fprintf(&msg, "--%s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", boundary, plain)
-		// html
-		fmt.Fprintf(&msg, "--%s\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n", boundary, html)
-		fmt.Fprintf(&msg, "--%s--\r\n", boundary)
+		fmt.Fprintf(&msg, "Content-Type: multipart/mixed; boundary=%q\r\n\r\n", mixBoundary)
+
+		// parte 1: corpo do email (plain + html)
+		fmt.Fprintf(&msg, "--%s\r\n", mixBoundary)
+		fmt.Fprintf(&msg, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", altBoundary)
+		fmt.Fprintf(&msg, "--%s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", altBoundary, plain)
+		fmt.Fprintf(&msg, "--%s\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n", altBoundary, html)
+		fmt.Fprintf(&msg, "--%s--\r\n", altBoundary)
+
+		// parte 2: PDF anexado (se a geração deu certo)
+		if len(pdfBytes) > 0 {
+			fmt.Fprintf(&msg, "--%s\r\n", mixBoundary)
+			fmt.Fprintf(&msg, "Content-Type: application/pdf; name=%q\r\n", pdfFilename)
+			msg.WriteString("Content-Transfer-Encoding: base64\r\n")
+			fmt.Fprintf(&msg, "Content-Disposition: attachment; filename=%q\r\n\r\n", pdfFilename)
+			b64 := base64.StdEncoding.EncodeToString(pdfBytes)
+			for i := 0; i < len(b64); i += 76 {
+				end := i + 76
+				if end > len(b64) {
+					end = len(b64)
+				}
+				msg.WriteString(b64[i:end])
+				msg.WriteString("\r\n")
+			}
+		}
+		fmt.Fprintf(&msg, "--%s--\r\n", mixBoundary)
 
 		var sendErr error
 		if cfg.Port == 465 {
@@ -178,8 +215,8 @@ func EnviarFaturamentoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
 
 // buildFaturamentoHTML monta o corpo HTML: número de pendências, top 3-5
 // produtos por gap (maior primeiro — resp.Pendencias já vem ordenado dessa
-// forma por ColetarFaturamentoSemCalibragem) e o botão "Baixar PDF completo"
-// linkando para o painel (nunca anexa o PDF — decisão confirmada na spec).
+// forma por ColetarFaturamentoSemCalibragem) e um botão linkando para o
+// painel (o PDF completo em si vai anexado no e-mail, não por este link).
 func buildFaturamentoHTML(r *FaturamentoSemCalibragemResponse, periodoIni, periodoFim string) string {
 	var sb strings.Builder
 	sb.WriteString(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -222,20 +259,20 @@ table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
 			}
 		}
 		fmt.Fprintf(&sb, `<div class="alert-box">&#9888;&#65039; <strong>%s produtos</strong> faturados nos &uacute;ltimos 30 dias seguem sem calibragem aprovada`,
-			formatarMilharEmail(len(r.Pendencias)))
+			formatarMilharInt(len(r.Pendencias)))
 		if curvaA > 0 {
-			fmt.Fprintf(&sb, ` &mdash; <strong>%s de Curva A</strong> (alto giro)`, formatarMilharEmail(curvaA))
+			fmt.Fprintf(&sb, ` &mdash; <strong>%s de Curva A</strong> (alto giro)`, formatarMilharInt(curvaA))
 		}
 		sb.WriteString(`. Isso significa capacidade de picking desatualizada`)
 		if totalAcessos > 0 {
-			fmt.Fprintf(&sb, ` e j&aacute; gerou <strong>%s acessos</strong> ao endere&ccedil;o de separa&ccedil;&atilde;o nesse per&iacute;odo`, formatarMilharEmail(totalAcessos))
+			fmt.Fprintf(&sb, ` e j&aacute; gerou <strong>%s acessos</strong> ao endere&ccedil;o de separa&ccedil;&atilde;o nesse per&iacute;odo`, formatarMilharInt(totalAcessos))
 		}
 		sb.WriteString(`. Priorizar a calibragem e a realoca&ccedil;&atilde;o desses itens reduz deslocamento e agiliza a separa&ccedil;&atilde;o.</div>`)
 	}
 
 	// KPI: número de pendências
 	sb.WriteString(`<div class="sec"><div class="sec-title">Resumo</div><table class="kpi-table"><tr>`)
-	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Produtos pendentes</div><div class="kpi-val" style="color:#d97706">%s</div></td>`, formatarMilharEmail(len(r.Pendencias)))
+	fmt.Fprintf(&sb, `<td class="kpi-cell"><div class="kpi-label">Produtos pendentes</div><div class="kpi-val" style="color:#d97706">%s</div></td>`, formatarMilharInt(len(r.Pendencias)))
 	sb.WriteString(`</tr></table></div>`)
 
 	// Top 3-5 produtos por gap (maior primeiro)
@@ -260,7 +297,7 @@ table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
 	if appURL == "" {
 		appURL = "https://smartpick.fbtax.cloud"
 	}
-	fmt.Fprintf(&sb, `<div style="text-align:center;margin:22px 0"><a href="%s/faturamento-sem-calibragem" style="display:inline-block;padding:10px 24px;background:#2d3748;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;font-size:13px">Baixar PDF completo</a></div>`, appURL)
+	fmt.Fprintf(&sb, `<div style="text-align:center;margin:22px 0"><a href="%s/faturamento-sem-calibragem" style="display:inline-block;padding:10px 24px;background:#2d3748;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;font-size:13px">Abrir painel completo</a></div><p style="text-align:center;font-size:11px;color:#a0aec0;margin:-14px 0 0">O PDF completo com todos os produtos pendentes est&aacute; anexado a este e-mail.</p>`, appURL)
 
 	sb.WriteString(`</div><div class="footer">&copy; SmartPick &mdash; Calibragem Inteligente de Picking</div></div></body></html>`)
 	return sb.String()
@@ -269,7 +306,7 @@ table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
 func buildFaturamentoPlainText(r *FaturamentoSemCalibragemResponse, periodoIni, periodoFim string) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "SmartPick - Faturamento sem Calibragem\n\nCD: %s\nFilial: %s\nPeriodo: %s a %s\n\n", r.CdNome, r.FilialNome, periodoIni, periodoFim)
-	fmt.Fprintf(&sb, "Produtos pendentes: %s\n\n", formatarMilharEmail(len(r.Pendencias)))
+	fmt.Fprintf(&sb, "Produtos pendentes: %s\n\n", formatarMilharInt(len(r.Pendencias)))
 
 	if len(r.Pendencias) > 0 {
 		curvaA, totalAcessos := 0, 0
@@ -282,13 +319,13 @@ func buildFaturamentoPlainText(r *FaturamentoSemCalibragemResponse, periodoIni, 
 			}
 		}
 		sb.WriteString("ATENCAO: ")
-		fmt.Fprintf(&sb, "%s produtos faturados nos ultimos 30 dias seguem sem calibragem aprovada", formatarMilharEmail(len(r.Pendencias)))
+		fmt.Fprintf(&sb, "%s produtos faturados nos ultimos 30 dias seguem sem calibragem aprovada", formatarMilharInt(len(r.Pendencias)))
 		if curvaA > 0 {
-			fmt.Fprintf(&sb, " (%s de Curva A, alto giro)", formatarMilharEmail(curvaA))
+			fmt.Fprintf(&sb, " (%s de Curva A, alto giro)", formatarMilharInt(curvaA))
 		}
 		sb.WriteString(". Isso significa capacidade de picking desatualizada")
 		if totalAcessos > 0 {
-			fmt.Fprintf(&sb, " e ja gerou %s acessos ao endereco de separacao nesse periodo", formatarMilharEmail(totalAcessos))
+			fmt.Fprintf(&sb, " e ja gerou %s acessos ao endereco de separacao nesse periodo", formatarMilharInt(totalAcessos))
 		}
 		sb.WriteString(". Priorizar a calibragem e a realocacao desses itens reduz deslocamento e agiliza a separacao.\n\n")
 	}
@@ -314,7 +351,7 @@ func buildFaturamentoPlainText(r *FaturamentoSemCalibragemResponse, periodoIni, 
 	if appURL == "" {
 		appURL = "https://smartpick.fbtax.cloud"
 	}
-	fmt.Fprintf(&sb, "Baixe o PDF completo em: %s/faturamento-sem-calibragem\n\n---\n(c) SmartPick\n", appURL)
+	fmt.Fprintf(&sb, "O PDF completo esta anexado a este e-mail.\nPainel: %s/faturamento-sem-calibragem\n\n---\n(c) SmartPick\n", appURL)
 	return sb.String()
 }
 
@@ -326,28 +363,4 @@ func formatQtdFaturada(qtd float64) string {
 		return fmt.Sprintf("%d", int64(qtd))
 	}
 	return fmt.Sprintf("%.2f", qtd)
-}
-
-// formatarMilharEmail formata um inteiro com separador de milhar (.) no
-// padrão BR, só pra deixar os números da chamada de atenção legíveis
-// (5234 → "5.234").
-func formatarMilharEmail(v int) string {
-	s := strconv.Itoa(v)
-	neg := strings.HasPrefix(s, "-")
-	if neg {
-		s = s[1:]
-	}
-	var out []byte
-	n := len(s)
-	for i := 0; i < n; i++ {
-		if i > 0 && (n-i)%3 == 0 {
-			out = append(out, '.')
-		}
-		out = append(out, s[i])
-	}
-	res := string(out)
-	if neg {
-		res = "-" + res
-	}
-	return res
 }
