@@ -169,12 +169,12 @@ func SpRelatoriosFaturamentoPDFHandler(db *sql.DB) http.HandlerFunc {
 			)
 			for _, p := range listados {
 				prod := p.Produto
-				// Truncado em 34 chars — mesmo limite comprovado em sp_resumo_pdf.go
-				// para uma coluna de mesma largura (3/12); acima disso o texto
-				// quebra em 2 linhas dentro da altura fixa da linha e sobrepõe a
-				// linha seguinte (achado do usuário — PDF com nomes de produto longos).
-				if len(prod) > 34 {
-					prod = prod[:34] + "…"
+				// Corte de segurança apenas para nomes absurdamente longos — a
+				// altura da linha é automática (abaixo), então um nome que
+				// quebra em 2+ linhas não sobrepõe mais a linha seguinte (achado
+				// do usuário: com altura fixa, nomes de ~30 chars já colidiam).
+				if len(prod) > 90 {
+					prod = prod[:90] + "…"
 				}
 				gap := "—"
 				if p.Gap != nil {
@@ -188,7 +188,7 @@ func SpRelatoriosFaturamentoPDFHandler(db *sql.DB) http.HandlerFunc {
 				if p.AcessosPicking != nil {
 					acessos = strconv.Itoa(*p.AcessosPicking)
 				}
-				mrt.AddRows(row.New(4.5).Add(
+				mrt.AddRows(row.New().Add(
 					cell(p.ClasseVenda, 1, align.Center, true),
 					cell(strconv.Itoa(p.CodProd), 1, align.Left, false),
 					cell(prod, 3, align.Left, false),
