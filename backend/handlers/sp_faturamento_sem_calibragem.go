@@ -39,6 +39,13 @@ type FaturamentoPendenciaItem struct {
 	Produto     string  `json:"produto,omitempty"`
 	ClasseVenda string  `json:"classe_venda"`
 	QtdFaturada float64 `json:"qtd_faturada"`
+
+	// Última proposta de calibragem já gerada para este produto no CD
+	// (qualquer status, não só aprovada) — puramente informativo, não afeta
+	// se o produto entra ou não na lista de pendências.
+	UltimoStatus      string `json:"ultimo_status"`                // "nunca" | "pendente" | "rejeitada" | "aprovada"
+	Gap               *int   `json:"gap,omitempty"`                // delta (sugestao_calibragem - capacidade_atual) da última proposta
+	UltimaAtualizacao string `json:"ultima_atualizacao,omitempty"` // YYYY-MM-DD da última proposta
 }
 
 // FaturamentoSemCalibragemResponse é a resposta completa do painel.
@@ -135,6 +142,19 @@ func SpFaturamentoSemCalibragemHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// ── Última proposta (qualquer status) por codprod — puramente
+		//    informativo, não afeta quais produtos entram na lista. Se a query
+		//    falhar, o painel continua (a lista de pendências em si já está
+		//    correta), mas NUNCA afirma "nunca teve proposta" por engano —
+		//    marca como indisponível para não informar algo falso. ───────────
+		ultimasPropostas, err := carregarUltimasPropostas(db, cdID)
+		ultimaPropostaIndisponivel := false
+		if err != nil {
+			log.Printf("[faturamento-sem-calibragem] erro carregando última proposta por produto do CD %d: %v", cdID, err)
+			ultimasPropostas = map[int]ultimaProposta{}
+			ultimaPropostaIndisponivel = true
+		}
+
 		// ── Comparação ────────────────────────────────────────────────────────
 		type agregado struct {
 			classe  string
@@ -173,14 +193,32 @@ func SpFaturamentoSemCalibragemHandler(db *sql.DB) http.HandlerFunc {
 
 		pendencias := make([]FaturamentoPendenciaItem, 0, len(porCodprod))
 		for codprod, ag := range porCodprod {
-			pendencias = append(pendencias, FaturamentoPendenciaItem{
-				CodProd:     codprod,
-				Produto:     ag.produto,
-				ClasseVenda: ag.classe,
-				QtdFaturada: ag.qtd,
-			})
+			item := FaturamentoPendenciaItem{
+				CodProd:      codprod,
+				Produto:      ag.produto,
+				ClasseVenda:  ag.classe,
+				QtdFaturada:  ag.qtd,
+				UltimoStatus: "nunca",
+			}
+			if ultimaPropostaIndisponivel {
+				item.UltimoStatus = "indisponivel"
+			} else if up, ok := ultimasPropostas[codprod]; ok {
+				item.UltimoStatus = up.status
+				gap := up.delta
+				item.Gap = &gap
+				item.UltimaAtualizacao = up.data.Format("2006-01-02")
+			}
+			pendencias = append(pendencias, item)
 		}
-		sort.Slice(pendencias, func(i, j int) bool { return pendencias[i].CodProd < pendencias[j].CodProd })
+		// Maiores gaps primeiro (produto mais crítico no topo); empate/sem gap
+		// (nunca teve proposta) desempata por codprod para ordem estável.
+		sort.Slice(pendencias, func(i, j int) bool {
+			gi, gj := gapAbs(pendencias[i].Gap), gapAbs(pendencias[j].Gap)
+			if gi != gj {
+				return gi > gj
+			}
+			return pendencias[i].CodProd < pendencias[j].CodProd
+		})
 
 		resp := FaturamentoSemCalibragemResponse{
 			CdID:                     cdID,
@@ -267,4 +305,52 @@ func carregarCodprodsAprovados(db *sql.DB, cdID int, desde time.Time) (map[int]b
 		return nil, fmt.Errorf("iteração propostas aprovadas: %w", err)
 	}
 	return out, nil
+}
+
+type ultimaProposta struct {
+	status string
+	delta  int
+	data   time.Time
+}
+
+// carregarUltimasPropostas retorna, por codprod, a proposta mais recente
+// (qualquer status) já gerada para o CD — usado só para exibir "último
+// status"/"gap" no painel; nunca decide inclusão/exclusão de pendências.
+func carregarUltimasPropostas(db *sql.DB, cdID int) (map[int]ultimaProposta, error) {
+	rows, err := db.Query(`
+		SELECT DISTINCT ON (codprod) codprod, status, delta, created_at
+		  FROM smartpick.sp_propostas
+		 WHERE cd_id = $1 AND tipo_rel = 'CALIBRACAO'
+		 ORDER BY codprod, created_at DESC
+	`, cdID)
+	if err != nil {
+		return nil, fmt.Errorf("query última proposta por produto: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[int]ultimaProposta{}
+	for rows.Next() {
+		var codprod int
+		var up ultimaProposta
+		if err := rows.Scan(&codprod, &up.status, &up.delta, &up.data); err != nil {
+			return nil, fmt.Errorf("scan última proposta por produto: %w", err)
+		}
+		out[codprod] = up
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iteração última proposta por produto: %w", err)
+	}
+	return out, nil
+}
+
+// gapAbs retorna o valor absoluto do gap, ou 0 quando não há proposta
+// (produtos sem histórico ficam no fim da ordenação por gap).
+func gapAbs(gap *int) int {
+	if gap == nil {
+		return 0
+	}
+	if *gap < 0 {
+		return -*gap
+	}
+	return *gap
 }

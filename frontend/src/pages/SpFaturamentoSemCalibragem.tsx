@@ -20,6 +20,9 @@ interface PendenciaItem {
   produto?: string
   classe_venda: string
   qtd_faturada: number
+  ultimo_status: 'nunca' | 'pendente' | 'rejeitada' | 'aprovada' | 'indisponivel'
+  gap?: number
+  ultima_atualizacao?: string
 }
 
 interface FaturamentoSemCalibragemResp {
@@ -59,6 +62,36 @@ function fmtDate(iso: string) {
   // iso vem como YYYY-MM-DD
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
+}
+
+const STATUS_LABEL: Record<PendenciaItem['ultimo_status'], string> = {
+  nunca: 'Nunca calibrado',
+  pendente: 'Pendente',
+  rejeitada: 'Rejeitada',
+  aprovada: 'Aprovada (>30d)',
+  indisponivel: 'Indisponível',
+}
+
+const STATUS_COLORS: Record<PendenciaItem['ultimo_status'], string> = {
+  nunca: 'bg-gray-100 text-gray-700',
+  pendente: 'bg-amber-100 text-amber-800',
+  rejeitada: 'bg-red-100 text-red-800',
+  aprovada: 'bg-green-100 text-green-800',
+  indisponivel: 'bg-gray-100 text-gray-400 italic',
+}
+
+function StatusBadge({ status }: { status: PendenciaItem['ultimo_status'] }) {
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap ${STATUS_COLORS[status]}`}>
+      {STATUS_LABEL[status]}
+    </span>
+  )
+}
+
+function fmtGap(gap?: number) {
+  if (gap === undefined || gap === null) return '—'
+  const sign = gap > 0 ? '+' : ''
+  return `${sign}${gap.toLocaleString('pt-BR')}`
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -157,7 +190,7 @@ export default function SpFaturamentoSemCalibragem() {
 
         {data && pendencias.length > 0 && (
           <span className="text-xs text-muted-foreground ml-auto">
-            {pendencias.length} produto(s) pendente(s) · período {fmtDate(data.periodo_inicio)} a {fmtDate(data.periodo_fim)}
+            {pendencias.length} produto(s) pendente(s) · período {fmtDate(data.periodo_inicio)} a {fmtDate(data.periodo_fim)} · ordenado por maior gap de calibragem
           </span>
         )}
       </div>
@@ -225,6 +258,9 @@ export default function SpFaturamentoSemCalibragem() {
                 <TableHead className="w-24">Cód.</TableHead>
                 <TableHead>Produto</TableHead>
                 <TableHead className="w-32 text-right">Qtd. faturada</TableHead>
+                <TableHead className="w-36">Último status</TableHead>
+                <TableHead className="w-20 text-right">Gap</TableHead>
+                <TableHead className="w-24">Atualizado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -234,6 +270,9 @@ export default function SpFaturamentoSemCalibragem() {
                   <TableCell className="text-xs font-mono">{p.codprod}</TableCell>
                   <TableCell className="text-xs max-w-[320px] truncate" title={p.produto}>{p.produto || '—'}</TableCell>
                   <TableCell className="text-xs text-right">{p.qtd_faturada.toLocaleString('pt-BR')}</TableCell>
+                  <TableCell><StatusBadge status={p.ultimo_status} /></TableCell>
+                  <TableCell className="text-xs text-right font-mono">{fmtGap(p.gap)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{p.ultima_atualizacao ? fmtDate(p.ultima_atualizacao) : '—'}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
