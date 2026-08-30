@@ -7,7 +7,7 @@ package handlers
 //
 // GET /api/sp/relatorios-faturamento/{id}/pdf
 //
-// Gera um PDF A4 retrato com: logo da empresa (se houver), cabeçalho com
+// Gera um PDF A4 paisagem com: logo da empresa (se houver), cabeçalho com
 // CD/filial/período, resumo (nº de pendências) e a tabela completa de
 // produtos pendentes (Curva/Cód./Produto/Qtd faturada/Status/Gap/Acessos),
 // a partir do snapshot salvo (não ao vivo).
@@ -30,6 +30,7 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
+	"github.com/johnfercher/maroto/v2/pkg/consts/orientation"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/props"
 )
@@ -81,6 +82,7 @@ func SpRelatoriosFaturamentoPDFHandler(db *sql.DB) http.HandlerFunc {
 
 		// ── Monta o PDF ───────────────────────────────────────────────────
 		cfg := config.NewBuilder().
+			WithOrientation(orientation.Horizontal).
 			WithLeftMargin(14).WithRightMargin(14).WithTopMargin(12).
 			Build()
 		mrt := maroto.New(cfg)
