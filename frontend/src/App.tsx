@@ -14,6 +14,7 @@ import SpReincidencia from './pages/SpReincidencia'
 import SpResultados from './pages/SpResultados'
 import SpRealocacao from './pages/SpRealocacao'
 import SpResumoExecutivo from './pages/SpResumoExecutivo'
+import SpFaturamentoSemCalibragem from './pages/SpFaturamentoSemCalibragem'
 import SpDestinatarios from './pages/SpDestinatarios'
 import SpAuditLog from './pages/SpAuditLog'
 import SpEmpresasBloqueio from './pages/SpEmpresasBloqueio'
@@ -188,6 +189,9 @@ function AppLayout() {
 
               {/* Resumo Executivo Semanal (IA) */}
               <Route path="/resumos" element={<ProtectedRoute><SpResumoExecutivo /></ProtectedRoute>} />
+
+              {/* Faturamento sem Calibragem (Farol) */}
+              <Route path="/faturamento-sem-calibragem" element={<ProtectedRoute><SpFaturamentoSemCalibragem /></ProtectedRoute>} />
 
               {/* PDF (Epic 6) */}
               <Route path="/pdf/gerar" element={<ProtectedRoute><SpGerarPDF /></ProtectedRoute>} />

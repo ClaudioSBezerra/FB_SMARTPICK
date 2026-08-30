@@ -56,6 +56,7 @@ export const modules: Record<string, ModuleConfig> = {
     tabs: [
       { label: 'Resultados e Métricas 4 Ciclos', path: '/resultados' },
       { label: 'Resumos Executivos (IA)',        path: '/resumos' },
+      { label: 'Faturamento sem Calibragem',     path: '/faturamento-sem-calibragem' },
     ],
   },
   // ── Administração (gestor_filial+ — oculto para admin) ───────────────────
@@ -92,6 +93,7 @@ export function getActiveModule(pathname: string): string {
   if (pathname.startsWith('/reincidencia')) return 'reincidencia'
   if (pathname.startsWith('/resultados')) return 'resultados'
   if (pathname.startsWith('/resumos'))    return 'resultados'
+  if (pathname.startsWith('/faturamento-sem-calibragem')) return 'resultados'
   if (pathname.startsWith('/realocacao')) return 'realocacao'
   if (pathname.startsWith('/gestao')) return 'gestao'
   if (pathname.startsWith('/config')) return 'config'

@@ -505,6 +505,9 @@ func main() {
 	http.HandleFunc("/api/sp/resultados",          withSP(handlers.SpResultadosHandler,          "gestor_filial"))
 	http.HandleFunc("/api/sp/resultados/historico", withSP(handlers.SpResultadosHistoricoHandler, "gestor_filial"))
 
+	// ── SmartPick — Monitor de Faturamento sem Calibragem (Farol) ────────────
+	http.HandleFunc("/api/sp/faturamento-sem-calibragem", withSP(handlers.SpFaturamentoSemCalibragemHandler, "gestor_filial"))
+
 	// ── SmartPick — Geração de PDF (Epic 6) ──────────────────────────────────
 	http.HandleFunc("/api/sp/pdf/calibracao", withSP(handlers.SpPDFCalibracaoHandler, "gestor_filial"))
 
