@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 )
@@ -213,10 +212,10 @@ func EnviarFaturamentoPorEmail(db *sql.DB, relatorioID int) ([]string, error) {
 
 // ─── Renderização do email ─────────────────────────────────────────────────
 
-// buildFaturamentoHTML monta o corpo HTML: número de pendências, top 3-5
+// buildFaturamentoHTML monta o corpo HTML: número de pendências e top 3-5
 // produtos por gap (maior primeiro — resp.Pendencias já vem ordenado dessa
-// forma por ColetarFaturamentoSemCalibragem) e um botão linkando para o
-// painel (o PDF completo em si vai anexado no e-mail, não por este link).
+// forma por ColetarFaturamentoSemCalibragem). Sem link pro painel — o PDF
+// completo vai anexado no e-mail, então basta o anexo.
 func buildFaturamentoHTML(r *FaturamentoSemCalibragemResponse, periodoIni, periodoFim string) string {
 	var sb strings.Builder
 	sb.WriteString(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -293,12 +292,6 @@ table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
 		sb.WriteString(`</tbody></table></div>`)
 	}
 
-	appURL := os.Getenv("APP_URL")
-	if appURL == "" {
-		appURL = "https://smartpick.fbtax.cloud"
-	}
-	fmt.Fprintf(&sb, `<div style="text-align:center;margin:22px 0"><a href="%s/faturamento-sem-calibragem" style="display:inline-block;padding:10px 24px;background:#2d3748;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;font-size:13px">Abrir painel completo</a></div><p style="text-align:center;font-size:11px;color:#a0aec0;margin:-14px 0 0">O PDF completo com todos os produtos pendentes est&aacute; anexado a este e-mail.</p>`, appURL)
-
 	sb.WriteString(`</div><div class="footer">&copy; SmartPick &mdash; Calibragem Inteligente de Picking</div></div></body></html>`)
 	return sb.String()
 }
@@ -347,11 +340,7 @@ func buildFaturamentoPlainText(r *FaturamentoSemCalibragemResponse, periodoIni, 
 		sb.WriteString("\n")
 	}
 
-	appURL := os.Getenv("APP_URL")
-	if appURL == "" {
-		appURL = "https://smartpick.fbtax.cloud"
-	}
-	fmt.Fprintf(&sb, "O PDF completo esta anexado a este e-mail.\nPainel: %s/faturamento-sem-calibragem\n\n---\n(c) SmartPick\n", appURL)
+	sb.WriteString("O PDF completo esta anexado a este e-mail.\n\n---\n(c) SmartPick\n")
 	return sb.String()
 }
 
