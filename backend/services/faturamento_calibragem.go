@@ -57,12 +57,14 @@ type FaturamentoPendenciaItem struct {
 	AcessosPicking *int `json:"acessos_picking,omitempty"` // acessos na importação atual
 	AcessosInicial *int `json:"acessos_inicial,omitempty"` // acessos na 1ª importação do CD (evolução até hoje)
 
-	// Sazonalidade da Seção do produto (Farol, /api/farol/sazonalidade-secao,
-	// índice sobre 2025) — adicionado 31/08/2026. Puramente informativo: ajuda
-	// a distinguir "pico sazonal real" (ex: Bacalhau na Páscoa) de "falta de
-	// calibragem genuína" antes de priorizar o produto. Ausente (nil) quando o
-	// produto não tem cod_sec no Farol, ou quando a consulta de sazonalidade
-	// falhou — nunca afeta se o produto entra ou não na lista de pendências.
+	// Sazonalidade da Seção do produto: índice mensal calculado no Farol
+	// (/api/farol/sazonalidade-secao, sobre 2025), casado pelo codepto/codsec
+	// que o SmartPick já classifica em sp_enderecos — adicionado 31/08/2026.
+	// Puramente informativo: ajuda a distinguir "pico sazonal real" (ex:
+	// Bacalhau na Páscoa) de "falta de calibragem genuína" antes de priorizar
+	// o produto. Ausente (nil) quando o produto não tem codsec classificado no
+	// SmartPick, ou quando a consulta de sazonalidade ao Farol falhou — nunca
+	// afeta se o produto entra ou não na lista de pendências.
 	SazonalidadeSecao      string   `json:"sazonalidade_secao,omitempty"`
 	SazonalidadeIndicePico *float64 `json:"sazonalidade_indice_pico,omitempty"`
 	SazonalidadeMesPico    *int     `json:"sazonalidade_mes_pico,omitempty"`
@@ -203,7 +205,10 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string, periodoIn
 		} else {
 			porCodprod[codprod] = &agregado{
 				classe: classif.classe, produto: classif.produto, qtd: p.Qt,
-				codDepto: p.CodDepto, codSec: p.CodSec,
+				// codDepto/codSec vêm da classificação do próprio SmartPick
+				// (sp_enderecos), não do Farol — ver comentário em
+				// classificacaoProduto.
+				codDepto: classif.codDepto, codSec: classif.codSec,
 			}
 		}
 	}
@@ -327,14 +332,23 @@ type classificacaoProduto struct {
 	produto    string
 	acessos90  int
 	temAcessos bool
+	// Departamento/Seção do produto (sp_enderecos.codepto/codsec — mesma
+	// numeração WinThor do Farol, carregada pelo CSV próprio do SmartPick).
+	// Usados pra casar com o índice sazonal por Seção (GetSazonalidadeSecao)
+	// — ver coletarFaturamentoInterno. Preferidos ao cod_depto/cod_sec que
+	// viriam do Farol (vendas_faturadas): achado em 31/08/2026, esses campos
+	// no Farol pertencem a um layout de importação novo (jul/2026) ainda
+	// opcional/não adotado em produção, chegando sempre vazios.
+	codDepto string
+	codSec   string
 }
 
-// carregarClassificacaoCurva retorna a classificação Curva ABC (apenas A/B) e
+// carregarClassificacaoCurva retorna a classificação Curva ABC (apenas A/B),
 // o qt_acesso_90 (nº de acessos ao picking nos últimos 90 dias, direto do WMS)
-// de cada codprod a partir da importação CALIBRACAO concluída mais recente do
-// CD (mesmo padrão de calcularEvolucaoAcesso em resumo_executivo.go). Erro de
-// query ou de iteração (rows.Err()) é sempre propagado — nunca mapa vazio
-// silencioso quando a causa é falha de banco.
+// e o Departamento/Seção de cada codprod a partir da importação CALIBRACAO
+// concluída mais recente do CD (mesmo padrão de calcularEvolucaoAcesso em
+// resumo_executivo.go). Erro de query ou de iteração (rows.Err()) é sempre
+// propagado — nunca mapa vazio silencioso quando a causa é falha de banco.
 func carregarClassificacaoCurva(db *sql.DB, cdID int) (map[int]classificacaoProduto, error) {
 	rows, err := db.Query(`
 		WITH job AS (
@@ -342,7 +356,8 @@ func carregarClassificacaoCurva(db *sql.DB, cdID int) (map[int]classificacaoProd
 			 WHERE cd_id = $1 AND status = 'done'
 			 ORDER BY created_at DESC LIMIT 1
 		)
-		SELECT e.codprod, e.classe_venda, COALESCE(e.produto, ''), e.qt_acesso_90
+		SELECT e.codprod, e.classe_venda, COALESCE(e.produto, ''), e.qt_acesso_90,
+		       e.codepto, e.codsec
 		  FROM smartpick.sp_enderecos e
 		 WHERE e.job_id = (SELECT id FROM job)
 		   AND e.tipo_rel = 'CALIBRACAO'
@@ -358,13 +373,20 @@ func carregarClassificacaoCurva(db *sql.DB, cdID int) (map[int]classificacaoProd
 		var codprod int
 		var classe, produto string
 		var acessos90 sql.NullInt64
-		if err := rows.Scan(&codprod, &classe, &produto, &acessos90); err != nil {
+		var codepto, codsec sql.NullInt64
+		if err := rows.Scan(&codprod, &classe, &produto, &acessos90, &codepto, &codsec); err != nil {
 			return nil, fmt.Errorf("scan classificação Curva ABC: %w", err)
 		}
 		cp := classificacaoProduto{classe: classe, produto: produto}
 		if acessos90.Valid {
 			cp.acessos90 = int(acessos90.Int64)
 			cp.temAcessos = true
+		}
+		if codepto.Valid {
+			cp.codDepto = strconv.FormatInt(codepto.Int64, 10)
+		}
+		if codsec.Valid {
+			cp.codSec = strconv.FormatInt(codsec.Int64, 10)
 		}
 		out[codprod] = cp
 	}

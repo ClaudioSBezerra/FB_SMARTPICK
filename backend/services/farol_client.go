@@ -39,10 +39,15 @@ type FarolProdutoFaturado struct {
 	Empresa         string  `json:"empresa"`
 	DataFaturamento string  `json:"data_faturamento"`
 	Qt              float64 `json:"qt"`
-	// CodDepto/CodSec — adicionados no Farol em 31/08/2026 pra permitir casar
-	// produto→Seção sem uma segunda chamada de dimensão. Usado por
-	// ColetarFaturamentoSemCalibragem pra buscar o índice sazonal da seção do
-	// produto (GetSazonalidadeSecao).
+	// CodDepto/CodSec — adicionados no Farol em 31/08/2026, mas pertencem a um
+	// layout de importação novo (jul/2026) ainda opcional lá; em produção
+	// chegam sempre vazios (achado 31/08/2026 investigando por que a coluna de
+	// Sazonalidade no relatório vinha sem nada pra todo produto). Por isso
+	// coletarFaturamentoInterno NÃO usa mais estes campos pro cruzamento com o
+	// índice sazonal (GetSazonalidadeSecao) — usa codepto/codsec do próprio
+	// sp_enderecos (classificacaoProduto), carregados pelo CSV do SmartPick.
+	// Mantidos aqui (não removidos) só porque ainda fazem parte do contrato
+	// JSON do endpoint — sem uso hoje.
 	CodDepto string `json:"cod_depto,omitempty"`
 	CodSec   string `json:"cod_sec,omitempty"`
 }
