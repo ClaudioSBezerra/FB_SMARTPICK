@@ -95,6 +95,19 @@ func formatarMilharInt(v int) string {
 	return formatarMilhar(float64(v), 0)
 }
 
+var mesAbrevPT = [...]string{"Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"}
+
+// formatarSazonalidade monta o texto compacto "3.24× (Mar)" da coluna de
+// sazonalidade — igual à SazonalidadeCell do painel web (mesma fonte de
+// dado, /api/farol/sazonalidade-secao). "—" quando o produto não tem
+// sazonalidade calculada (sem Seção no Farol, ou consulta indisponível).
+func formatarSazonalidade(indicePico *float64, mesPico *int) string {
+	if indicePico == nil || mesPico == nil || *mesPico < 1 || *mesPico > 12 {
+		return "—"
+	}
+	return fmt.Sprintf("%.2f× (%s)", *indicePico, mesAbrevPT[*mesPico-1])
+}
+
 // GerarPDFFaturamentoSemCalibragem monta o PDF A4 paisagem do snapshot: logo
 // (se houver), cabeçalho com CD/filial/período, ribbon de KPIs (pendências,
 // curva A/B, nunca calibrados, acessos ao picking) e a tabela de produtos
@@ -138,6 +151,9 @@ func GerarPDFFaturamentoSemCalibragem(resp *FaturamentoSemCalibragemResponse, pe
 	cinzaBorda := &props.Color{Red: 210, Green: 214, Blue: 220}
 	vermelho := &props.Color{Red: 176, Green: 44, Blue: 44}
 	verde := &props.Color{Red: 30, Green: 122, Blue: 72}
+	// Sazonalidade forte (índice de pico >= 1.5×) — mesmo tom de aviso do
+	// painel web (amber-800), pra destacar sem soar como alerta de erro.
+	amarelo := &props.Color{Red: 146, Green: 64, Blue: 14}
 
 	// Cabeçalho: logo (se houver) + título + CD/período
 	headerCols := []core.Col{}
@@ -227,12 +243,13 @@ func GerarPDFFaturamentoSemCalibragem(resp *FaturamentoSemCalibragemResponse, pe
 			row.New(6.5).WithStyle(&props.Cell{BackgroundColor: azul}).Add(
 				hdr("Cv", 1, align.Center),
 				hdr("Cód.", 1, align.Left),
-				hdr("Produto", 3, align.Left),
-				hdr("Qtd. fat.", 2, align.Right),
+				hdr("Produto", 2, align.Left),
+				hdr("Qtd. fat.", 1, align.Right),
 				hdr("Status", 2, align.Left),
 				hdr("Gap", 1, align.Right),
 				hdr("Atualiz.", 1, align.Center),
 				hdr("Acessos 90d", 1, align.Right),
+				hdr("Sazonalidade", 2, align.Right),
 			),
 		)
 		_ = mrt.RegisterFooter(
@@ -271,15 +288,23 @@ func GerarPDFFaturamentoSemCalibragem(resp *FaturamentoSemCalibragemResponse, pe
 			if p.AcessosPicking != nil {
 				acessos = formatarMilharInt(*p.AcessosPicking)
 			}
+			sazonalidade := formatarSazonalidade(p.SazonalidadeIndicePico, p.SazonalidadeMesPico)
+			sazonalidadeCor := cinza
+			sazonalidadeNegrito := false
+			if p.SazonalidadeIndicePico != nil && *p.SazonalidadeIndicePico >= 1.5 {
+				sazonalidadeCor = amarelo
+				sazonalidadeNegrito = true
+			}
 			linha := row.New().Add(
 				cell(p.ClasseVenda, 1, align.Center, true, nil),
 				cell(strconv.Itoa(p.CodProd), 1, align.Left, false, nil),
-				cell(prod, 3, align.Left, false, nil),
-				cell(formatarMilhar(p.QtdFaturada, 2), 2, align.Right, false, nil),
+				cell(prod, 2, align.Left, false, nil),
+				cell(formatarMilhar(p.QtdFaturada, 2), 1, align.Right, false, nil),
 				cell(p.UltimoStatus, 2, align.Left, false, nil),
 				cell(gap, 1, align.Right, true, gapCor),
 				cell(atualizado, 1, align.Center, false, nil),
 				cell(acessos, 1, align.Right, false, nil),
+				cell(sazonalidade, 2, align.Right, sazonalidadeNegrito, sazonalidadeCor),
 			)
 			if i%2 == 1 {
 				linha = linha.WithStyle(&props.Cell{BackgroundColor: cinzaZebra})
