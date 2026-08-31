@@ -28,6 +28,17 @@ import (
 // esperando indefinidamente; falha rápido e o painel mostra indisponibilidade.
 var farolHTTPClient = &http.Client{Timeout: 20 * time.Second}
 
+// Timeout maior, só pra GetSazonalidadeSecao — a consulta agrega
+// vendas_faturadas do ano inteiro (2025) por Departamento×Seção×Mês, bem
+// mais pesada que produtos-faturados (janela curta de dias). Achado
+// 31/08/2026, investigando por que a coluna de Sazonalidade vinha vazia pra
+// TODO produto mesmo com codepto/codsec corretos (confirmado em produção): os
+// logs mostravam "context deadline exceeded" nos 20s do cliente padrão, toda
+// vez — não era problema de dado, era a chamada estourando o timeout antes
+// do Farol terminar de agregar. A falha continua best-effort (nunca aborta a
+// coleta principal), só com mais margem pra essa consulta específica.
+var farolSazonalidadeHTTPClient = &http.Client{Timeout: 60 * time.Second}
+
 // ErrCDNaoEncontrado sinaliza que o cd_id genuinamente não existe ou não pertence
 // à empresa do usuário — distinto de uma falha de banco (o handler mapeia cada
 // caso para HTTP diferente: 404 vs 500).
@@ -162,7 +173,7 @@ func GetSazonalidadeSecao(codFilial int) ([]FarolSazonalidadeSecao, error) {
 	}
 	req.Header.Set("X-API-Key", apiKey)
 
-	resp, err := farolHTTPClient.Do(req)
+	resp, err := farolSazonalidadeHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("erro de transporte ao chamar Farol: %w", err)
 	}
