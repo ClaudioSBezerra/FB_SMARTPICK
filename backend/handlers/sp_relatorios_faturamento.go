@@ -6,7 +6,7 @@ package handlers
 // SpResumoEnviarHandler) — spec-faturamento-pdf-email.md.
 //
 // Rotas (registradas em main.go, dispatch por sufixo em /api/sp/relatorios-faturamento/):
-//   POST /api/sp/relatorios-faturamento/gerar?cd_id=X → cria o snapshot
+//   POST /api/sp/relatorios-faturamento/gerar?cd_id=X[&data_ini=AAAA-MM-DD&data_fim=AAAA-MM-DD] → cria o snapshot
 //   GET  /api/sp/relatorios-faturamento/{id}          → detalhe (json)
 //   POST /api/sp/relatorios-faturamento/{id}/enviar   → envia por email
 //   GET  /api/sp/relatorios-faturamento/{id}/pdf       → (sp_relatorios_faturamento_pdf.go)
@@ -69,7 +69,13 @@ func SpRelatoriosFaturamentoGerarHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		id, _, err := services.GerarRelatorioFaturamento(db, cdID, spCtx.EmpresaID, spCtx.UserID)
+		periodoIni, periodoFim, err := parsePeriodoFaturamentoQuery(r)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+			return
+		}
+
+		id, _, err := services.GerarRelatorioFaturamento(db, cdID, spCtx.EmpresaID, spCtx.UserID, periodoIni, periodoFim)
 		if err != nil {
 			log.Printf("[relatorios-faturamento] CD=%d erro ao gerar: %v", cdID, err)
 			status := http.StatusInternalServerError

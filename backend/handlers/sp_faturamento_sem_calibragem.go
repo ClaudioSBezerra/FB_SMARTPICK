@@ -2,7 +2,10 @@ package handlers
 
 // sp_faturamento_sem_calibragem.go — Monitor de Faturamento sem Calibragem (Farol)
 //
-// GET /api/sp/faturamento-sem-calibragem?cd_id=X
+// GET /api/sp/faturamento-sem-calibragem?cd_id=X[&data_ini=AAAA-MM-DD&data_fim=AAAA-MM-DD]
+//
+// data_ini/data_fim são opcionais — sem eles, usa os últimos 30 dias (padrão
+// histórico, ver services.ResolverPeriodoFaturamento).
 //
 // A coleta/comparação em si vive em services.ColetarFaturamentoSemCalibragem
 // (extraída para ser reaproveitada pelo snapshot manual/worker — ver
@@ -22,12 +25,37 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"fb_smartpick/services"
 )
+
+// parsePeriodoFaturamentoQuery lê os query params opcionais data_ini/data_fim
+// (AAAA-MM-DD) usados tanto pelo GET ao vivo quanto pelo gerar manual do
+// snapshot. Ausentes (string vazia) viram time.Time{} — ColetarFaturamentoSemCalibragem/
+// GerarRelatorioFaturamento resolvem o padrão de últimos 30 dias nesse caso.
+func parsePeriodoFaturamentoQuery(r *http.Request) (periodoIni, periodoFim time.Time, err error) {
+	if s := r.URL.Query().Get("data_ini"); s != "" {
+		periodoIni, err = time.Parse("2006-01-02", s)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("data_ini inválida (use AAAA-MM-DD)")
+		}
+	}
+	if s := r.URL.Query().Get("data_fim"); s != "" {
+		periodoFim, err = time.Parse("2006-01-02", s)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("data_fim inválida (use AAAA-MM-DD)")
+		}
+	}
+	if !periodoIni.IsZero() && !periodoFim.IsZero() && periodoFim.Before(periodoIni) {
+		return time.Time{}, time.Time{}, fmt.Errorf("data_fim não pode ser anterior a data_ini")
+	}
+	return periodoIni, periodoFim, nil
+}
 
 func SpFaturamentoSemCalibragemHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +102,13 @@ func SpFaturamentoSemCalibragemHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		resp, err := services.ColetarFaturamentoSemCalibragem(db, cdID, spCtx.EmpresaID)
+		periodoIni, periodoFim, err := parsePeriodoFaturamentoQuery(r)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+			return
+		}
+
+		resp, err := services.ColetarFaturamentoSemCalibragem(db, cdID, spCtx.EmpresaID, periodoIni, periodoFim)
 		if err != nil {
 			if errors.Is(err, services.ErrFarolIndisponivel) {
 				log.Printf("[faturamento-sem-calibragem] Farol indisponível (CD=%d): %v", cdID, err)

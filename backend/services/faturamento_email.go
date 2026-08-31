@@ -257,8 +257,8 @@ table.dt td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
 				totalAcessos += *p.AcessosPicking
 			}
 		}
-		fmt.Fprintf(&sb, `<div class="alert-box">&#9888;&#65039; <strong>%s produtos</strong> faturados nos &uacute;ltimos 30 dias seguem sem calibragem aprovada`,
-			formatarMilharInt(len(r.Pendencias)))
+		fmt.Fprintf(&sb, `<div class="alert-box">&#9888;&#65039; <strong>%s produtos</strong> faturados entre %s e %s seguem sem calibragem aprovada`,
+			formatarMilharInt(len(r.Pendencias)), periodoIni, periodoFim)
 		if curvaA > 0 {
 			fmt.Fprintf(&sb, ` &mdash; <strong>%s de Curva A</strong> (alto giro)`, formatarMilharInt(curvaA))
 		}
@@ -312,7 +312,7 @@ func buildFaturamentoPlainText(r *FaturamentoSemCalibragemResponse, periodoIni, 
 			}
 		}
 		sb.WriteString("ATENCAO: ")
-		fmt.Fprintf(&sb, "%s produtos faturados nos ultimos 30 dias seguem sem calibragem aprovada", formatarMilharInt(len(r.Pendencias)))
+		fmt.Fprintf(&sb, "%s produtos faturados entre %s e %s seguem sem calibragem aprovada", formatarMilharInt(len(r.Pendencias)), periodoIni, periodoFim)
 		if curvaA > 0 {
 			fmt.Fprintf(&sb, " (%s de Curva A, alto giro)", formatarMilharInt(curvaA))
 		}

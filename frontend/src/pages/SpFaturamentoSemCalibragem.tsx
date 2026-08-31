@@ -74,6 +74,19 @@ function fmtDate(iso: string) {
   return `${d}/${m}/${y}`
 }
 
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10)
+}
+
+// Período padrão: últimos 30 dias (mesmo default que o backend aplica quando
+// data_ini/data_fim não são informados — ver services.ResolverPeriodoFaturamento).
+function periodoPadrao() {
+  const hoje = new Date()
+  const inicio = new Date(hoje)
+  inicio.setDate(hoje.getDate() - 30)
+  return { dataIni: isoDate(inicio), dataFim: isoDate(hoje) }
+}
+
 const STATUS_LABEL: Record<PendenciaItem['ultimo_status'], string> = {
   nunca: 'Nunca calibrado',
   pendente: 'Pendente',
@@ -159,6 +172,7 @@ export default function SpFaturamentoSemCalibragem() {
 
   const [filialID, setFilialID] = useState('')
   const [cdID, setCdID] = useState('')
+  const [{ dataIni, dataFim }, setPeriodo] = useState(periodoPadrao)
 
   const { data: filiais = [] } = useQuery<SpFilial[]>({
     queryKey: ['filiais'],
@@ -182,11 +196,14 @@ export default function SpFaturamentoSemCalibragem() {
   const {
     data, isLoading, isError, error, refetch, isFetching,
   } = useQuery<FaturamentoSemCalibragemResp>({
-    queryKey: ['sp-faturamento-sem-calibragem', cdID],
+    queryKey: ['sp-faturamento-sem-calibragem', cdID, dataIni, dataFim],
     enabled: !!cdID,
     retry: false,
     queryFn: async () => {
-      const r = await fetch(`/api/sp/faturamento-sem-calibragem?cd_id=${cdID}`, { headers })
+      const r = await fetch(
+        `/api/sp/faturamento-sem-calibragem?cd_id=${cdID}&data_ini=${dataIni}&data_fim=${dataFim}`,
+        { headers },
+      )
       if (!r.ok) {
         const body = await r.json().catch(() => ({}) as { error?: string })
         throw new ApiError(r.status, body.error ?? 'Erro ao carregar o painel')
@@ -202,7 +219,10 @@ export default function SpFaturamentoSemCalibragem() {
   //    e "Enviar por e-mail", cada botão gera seu próprio snapshot antes de
   //    agir sobre ele (o painel não mantém um histórico selecionável). ──────
   async function gerarSnapshot(): Promise<number> {
-    const r = await fetch(`/api/sp/relatorios-faturamento/gerar?cd_id=${cdID}`, { method: 'POST', headers })
+    const r = await fetch(
+      `/api/sp/relatorios-faturamento/gerar?cd_id=${cdID}&data_ini=${dataIni}&data_fim=${dataFim}`,
+      { method: 'POST', headers },
+    )
     const body = await r.json()
     if (!r.ok) throw new Error(body.error ?? 'Erro ao gerar relatório')
     return (body as { id: number }).id
@@ -255,7 +275,7 @@ export default function SpFaturamentoSemCalibragem() {
         <div>
           <h1 className="text-base font-semibold">Faturamento sem Calibragem</h1>
           <p className="text-xs text-muted-foreground">
-            Produtos Curva A/B faturados no CD nos últimos 30 dias (Farol) sem calibragem aprovada correspondente no mesmo período.
+            Produtos Curva A/B faturados no CD no período selecionado (Farol) sem calibragem aprovada correspondente no mesmo período. Padrão: últimos 30 dias.
           </p>
         </div>
       </div>
@@ -282,6 +302,28 @@ export default function SpFaturamentoSemCalibragem() {
               {cds.map(cd => <SelectItem key={cd.id} value={String(cd.id)}>{cd.nome}</SelectItem>)}
             </SelectContent>
           </Select>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium mb-1 block">Início</label>
+          <input
+            type="date"
+            value={dataIni}
+            max={dataFim}
+            onChange={e => setPeriodo(p => ({ ...p, dataIni: e.target.value }))}
+            className="h-8 w-36 rounded-md border px-2 text-xs"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-medium mb-1 block">Fim</label>
+          <input
+            type="date"
+            value={dataFim}
+            min={dataIni}
+            onChange={e => setPeriodo(p => ({ ...p, dataFim: e.target.value }))}
+            className="h-8 w-36 rounded-md border px-2 text-xs"
+          />
         </div>
 
         {cdID && (
@@ -364,7 +406,7 @@ export default function SpFaturamentoSemCalibragem() {
           <CheckCircle2 className="h-8 w-8 mx-auto text-green-600 mb-2" />
           <div className="text-green-700 font-medium text-sm">Nenhuma pendência</div>
           <div className="text-xs text-green-600 mt-1">
-            Todos os produtos Curva A/B faturados neste CD nos últimos 30 dias já têm calibragem aprovada correspondente.
+            Todos os produtos Curva A/B faturados neste CD no período selecionado já têm calibragem aprovada correspondente.
           </div>
         </div>
       )}

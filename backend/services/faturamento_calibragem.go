@@ -37,7 +37,7 @@ var ErrFarolIndisponivel = errors.New("integração com Farol indisponível")
 // ─── DTOs ───────────────────────────────────────────────────────────────────
 
 // FaturamentoPendenciaItem é um produto Curva A/B faturado no Farol sem
-// calibragem aprovada correspondente nos últimos 30 dias.
+// calibragem aprovada correspondente no período selecionado (padrão: últimos 30 dias).
 type FaturamentoPendenciaItem struct {
 	CodProd     int     `json:"codprod"`
 	Produto     string  `json:"produto,omitempty"`
@@ -86,20 +86,39 @@ type FaturamentoSemCalibragemResponse struct {
 
 // ─── Coleta (reaproveitada pelo GET ao vivo e pela geração de snapshot) ──────
 
+// ResolverPeriodoFaturamento aplica o padrão de "últimos 30 dias até hoje"
+// quando periodoIni/periodoFim não são informados (zero value) — mesmo
+// comportamento fixo de antes do período ficar configurável. Usada pelos
+// handlers HTTP pra resolver os query params opcionais antes de chamar
+// ColetarFaturamentoSemCalibragem/GerarRelatorioFaturamento.
+func ResolverPeriodoFaturamento(periodoIni, periodoFim time.Time) (time.Time, time.Time) {
+	if periodoFim.IsZero() {
+		periodoFim = time.Now()
+	}
+	if periodoIni.IsZero() {
+		periodoIni = periodoFim.AddDate(0, 0, -30)
+	}
+	return periodoIni, periodoFim
+}
+
 // ColetarFaturamentoSemCalibragem cruza produtos Curva A/B faturados no Farol
-// (últimos 30 dias) com sp_propostas aprovadas do SmartPick no mesmo período,
-// retornando os produtos faturados sem calibragem aprovada correspondente.
-// empresaID escopa a resolução do CD (mesma regra do painel ao vivo).
-func ColetarFaturamentoSemCalibragem(db *sql.DB, cdID int, empresaID string) (*FaturamentoSemCalibragemResponse, error) {
-	resp, _, _, err := coletarFaturamentoInterno(db, cdID, empresaID)
+// no período [periodoIni, periodoFim] com sp_propostas aprovadas do SmartPick
+// no mesmo período, retornando os produtos faturados sem calibragem aprovada
+// correspondente. periodoIni/periodoFim zero (time.Time{}) usam o padrão de
+// últimos 30 dias (ver ResolverPeriodoFaturamento). empresaID escopa a
+// resolução do CD (mesma regra do painel ao vivo).
+func ColetarFaturamentoSemCalibragem(db *sql.DB, cdID int, empresaID string, periodoIni, periodoFim time.Time) (*FaturamentoSemCalibragemResponse, error) {
+	periodoIni, periodoFim = ResolverPeriodoFaturamento(periodoIni, periodoFim)
+	resp, _, _, err := coletarFaturamentoInterno(db, cdID, empresaID, periodoIni, periodoFim)
 	return resp, err
 }
 
 // coletarFaturamentoInterno é o corpo real da coleta, retornando também os
 // limites exatos (time.Time) do período usado — necessários para persistir o
 // snapshot com timestamp preciso (GerarRelatorioFaturamento), sem depender de
-// reparsear as datas já truncadas (YYYY-MM-DD) da resposta JSON.
-func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string) (*FaturamentoSemCalibragemResponse, time.Time, time.Time, error) {
+// reparsear as datas já truncadas (YYYY-MM-DD) da resposta JSON. periodoIni/
+// periodoFim já vêm resolvidos (nunca zero) — quem chama decide o padrão.
+func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string, periodoIni, periodoFim time.Time) (*FaturamentoSemCalibragemResponse, time.Time, time.Time, error) {
 	// ── Resolve CD: ErrCDNaoEncontrado (genuinamente inexistente/fora da
 	//    empresa) vs erro comum (falha real de banco) — quem chama decide o
 	//    mapeamento HTTP (404 vs 500), igual ao painel ao vivo. ──────────────
@@ -107,9 +126,6 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string) (*Faturam
 	if err != nil {
 		return nil, time.Time{}, time.Time{}, err
 	}
-
-	hoje := time.Now()
-	periodoIni := hoje.AddDate(0, 0, -30)
 
 	// ── Classificação Curva ABC (sp_enderecos, importação CALIBRACAO mais
 	//    recente e concluída do CD). Falha de query NUNCA vira mapa vazio
@@ -120,15 +136,15 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string) (*Faturam
 		return nil, time.Time{}, time.Time{}, fmt.Errorf("erro carregando classificação de produtos: %w", err)
 	}
 
-	// ── Propostas aprovadas nos últimos 30 dias. Falha de query NUNCA é
+	// ── Propostas aprovadas no mesmo período. Falha de query NUNCA é
 	//    tratada como "nenhum produto aprovado" — isso geraria falsos positivos. ──
 	aprovados, err := carregarCodprodsAprovados(db, cdID, periodoIni)
 	if err != nil {
 		return nil, time.Time{}, time.Time{}, fmt.Errorf("erro carregando calibragens aprovadas: %w", err)
 	}
 
-	// ── Farol: produtos faturados na filial do CD (janela 30d) ──────────────
-	produtosFarol, err := GetProdutosFaturados(info.CodFilial, periodoIni, hoje)
+	// ── Farol: produtos faturados na filial do CD, no período informado ───
+	produtosFarol, err := GetProdutosFaturados(info.CodFilial, periodoIni, periodoFim)
 	if err != nil {
 		return nil, time.Time{}, time.Time{}, fmt.Errorf("%w: %v", ErrFarolIndisponivel, err)
 	}
@@ -258,11 +274,11 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string) (*Faturam
 		CdNome:                   info.CdNome,
 		FilialNome:               info.FilialNome,
 		PeriodoInicio:            periodoIni.Format("2006-01-02"),
-		PeriodoFim:               hoje.Format("2006-01-02"),
+		PeriodoFim:               periodoFim.Format("2006-01-02"),
 		Pendencias:               pendencias,
 		TotalNaoCorrespondencias: naoCorrespondencias,
 	}
-	return resp, periodoIni, hoje, nil
+	return resp, periodoIni, periodoFim, nil
 }
 
 // ─── Persistência de snapshot ─────────────────────────────────────────────
@@ -270,9 +286,13 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string) (*Faturam
 // GerarRelatorioFaturamento coleta o painel (ColetarFaturamentoSemCalibragem)
 // e persiste o snapshot em sp_relatorios_faturamento, retornando o id criado.
 // Reaproveitado tanto pelo endpoint manual ("Gerar PDF"/"Enviar por email")
-// quanto pelo worker diário.
-func GerarRelatorioFaturamento(db *sql.DB, cdID int, empresaID string, criadoPor string) (int, *FaturamentoSemCalibragemResponse, error) {
-	resp, periodoIni, periodoFim, err := coletarFaturamentoInterno(db, cdID, empresaID)
+// quanto pelo worker diário — o worker sempre passa periodoIni/periodoFim
+// zero (últimos 30 dias, ver ResolverPeriodoFaturamento), pois roda sem
+// intervenção manual; os endpoints manuais podem informar um período
+// explícito.
+func GerarRelatorioFaturamento(db *sql.DB, cdID int, empresaID string, criadoPor string, periodoIni, periodoFim time.Time) (int, *FaturamentoSemCalibragemResponse, error) {
+	periodoIni, periodoFim = ResolverPeriodoFaturamento(periodoIni, periodoFim)
+	resp, periodoIni, periodoFim, err := coletarFaturamentoInterno(db, cdID, empresaID, periodoIni, periodoFim)
 	if err != nil {
 		log.Printf("[faturamento] CD=%d coletar dados FALHOU: %v", cdID, err)
 		return 0, nil, err

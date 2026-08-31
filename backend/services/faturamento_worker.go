@@ -102,7 +102,10 @@ func processarFaturamentoDiario(db *sql.DB) {
 }
 
 func gerarEEnviarFaturamento(db *sql.DB, cdID int, empresaID string) {
-	id, _, err := GerarRelatorioFaturamento(db, cdID, empresaID, "worker")
+	// Worker roda sem intervenção manual — sempre período padrão (últimos
+	// 30 dias, ver ResolverPeriodoFaturamento). Período customizado é só
+	// pros endpoints manuais (gerar/enviar pelo painel).
+	id, _, err := GerarRelatorioFaturamento(db, cdID, empresaID, "worker", time.Time{}, time.Time{})
 	if err != nil {
 		log.Printf("[FaturamentoWorker] CD %d falhou ao gerar: %v", cdID, err)
 		return
