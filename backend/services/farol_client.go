@@ -39,6 +39,25 @@ type FarolProdutoFaturado struct {
 	Empresa         string  `json:"empresa"`
 	DataFaturamento string  `json:"data_faturamento"`
 	Qt              float64 `json:"qt"`
+	// CodDepto/CodSec — adicionados no Farol em 31/08/2026 pra permitir casar
+	// produto→Seção sem uma segunda chamada de dimensão. Usado por
+	// ColetarFaturamentoSemCalibragem pra buscar o índice sazonal da seção do
+	// produto (GetSazonalidadeSecao).
+	CodDepto string `json:"cod_depto,omitempty"`
+	CodSec   string `json:"cod_sec,omitempty"`
+}
+
+// FarolSazonalidadeSecao é um item da resposta do endpoint de sazonalidade por
+// Seção do Farol — índice mensal (venda do mês / média do ano, sobre 2025) e o
+// mês de maior impacto, por Departamento×Seção de uma filial.
+type FarolSazonalidadeSecao struct {
+	CodDepto   string      `json:"cod_depto"`
+	Depto      string      `json:"depto"`
+	CodSec     string      `json:"cod_sec"`
+	Secao      string      `json:"secao"`
+	Indices    [12]float64 `json:"indices"`
+	MesPico    int         `json:"mes_pico"`
+	IndicePico float64     `json:"indice_pico"`
 }
 
 // CDFarolInfo agrega os dados do CD necessários para chamar o Farol e exibir o painel.
@@ -113,4 +132,49 @@ func GetProdutosFaturados(codFilial int, dataIni, dataFim time.Time) ([]FarolPro
 		return nil, fmt.Errorf("erro parseando resposta do Farol: %w", err)
 	}
 	return produtos, nil
+}
+
+// GetSazonalidadeSecao busca no Farol o índice sazonal mensal por Seção
+// (Departamento×Seção) de uma filial — calculado sobre 2025 (único ano
+// fechado). Erro sempre tratado (rede, HTTP não-200, corpo ilegível ou JSON
+// inválido) — nunca panic. Ver ColetarFaturamentoSemCalibragem: falha aqui é
+// tratada como indisponibilidade PONTUAL (não aborta a coleta principal, só
+// deixa a coluna de sazonalidade vazia) — a lista de pendências em si não
+// depende deste dado.
+func GetSazonalidadeSecao(codFilial int) ([]FarolSazonalidadeSecao, error) {
+	baseURL := os.Getenv("FAROL_BASE_URL")
+	apiKey := os.Getenv("FAROL_API_KEY")
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("FAROL_BASE_URL/FAROL_API_KEY não configuradas")
+	}
+
+	url := fmt.Sprintf("%s/api/farol/sazonalidade-secao?empresa=%d",
+		strings.TrimRight(baseURL, "/"), codFilial)
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("erro montando requisição ao Farol: %w", err)
+	}
+	req.Header.Set("X-API-Key", apiKey)
+
+	resp, err := farolHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("erro de transporte ao chamar Farol: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("erro lendo resposta do Farol: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Farol respondeu status %d: %s", resp.StatusCode, string(raw))
+	}
+
+	var secoes []FarolSazonalidadeSecao
+	if err := json.Unmarshal(raw, &secoes); err != nil {
+		return nil, fmt.Errorf("erro parseando resposta do Farol: %w", err)
+	}
+	return secoes, nil
 }

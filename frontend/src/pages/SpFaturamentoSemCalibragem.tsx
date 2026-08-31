@@ -27,6 +27,12 @@ interface PendenciaItem {
   ultima_atualizacao?: string
   acessos_picking?: number
   acessos_inicial?: number
+  // Sazonalidade da Seção do produto (Farol, sobre 2025) — adicionado
+  // 31/08/2026. Ausente quando o produto não tem Seção no Farol, ou quando a
+  // consulta de sazonalidade falhou (nunca afeta a lista em si).
+  sazonalidade_secao?: string
+  sazonalidade_indice_pico?: number
+  sazonalidade_mes_pico?: number
 }
 
 interface FaturamentoSemCalibragemResp {
@@ -120,6 +126,28 @@ function AcessosCell({ atual, inicial }: { atual?: number; inicial?: number }) {
         {up ? '+' : ''}{diff.toLocaleString('pt-BR')}
       </span>
     </div>
+  )
+}
+
+const MES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+
+// Sazonalidade: índice de pico (venda do mês / média do ano, sobre 2025) + mês
+// em que ele ocorre, pra ajudar a distinguir "pico sazonal real" (ex: Bacalhau
+// na Páscoa) de falta de calibragem genuína. >=1.5× destacado (padrão sazonal
+// forte) — abaixo disso mostrado discreto (padrão fraco/quase não sazonal).
+function SazonalidadeCell({ secao, indicePico, mesPico }: { secao?: string; indicePico?: number; mesPico?: number }) {
+  if (indicePico === undefined || indicePico === null || !mesPico) {
+    return <span className="text-xs text-muted-foreground">—</span>
+  }
+  const forte = indicePico >= 1.5
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap ${forte ? 'text-amber-800' : 'text-muted-foreground'}`}
+      title={secao ? `Seção: ${secao}` : undefined}
+    >
+      {forte && <TrendingUp className="h-3 w-3" />}
+      {indicePico.toFixed(2)}× em {MES_ABREV[mesPico - 1] ?? mesPico}
+    </span>
   )
 }
 
@@ -368,6 +396,7 @@ export default function SpFaturamentoSemCalibragem() {
                 <TableHead className="w-20 text-right">Gap</TableHead>
                 <TableHead className="w-24">Atualizado</TableHead>
                 <TableHead className="w-40">Acessos ao picking (90d)</TableHead>
+                <TableHead className="w-32" title="Índice sazonal (venda do mês / média do ano, sobre 2025) e o mês de maior impacto — pico sazonal real não é necessariamente falta de calibragem">Sazonalidade</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -381,6 +410,9 @@ export default function SpFaturamentoSemCalibragem() {
                   <TableCell className="text-xs text-right font-mono">{fmtGap(p.gap)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.ultima_atualizacao ? fmtDate(p.ultima_atualizacao) : '—'}</TableCell>
                   <TableCell><AcessosCell atual={p.acessos_picking} inicial={p.acessos_inicial} /></TableCell>
+                  <TableCell>
+                    <SazonalidadeCell secao={p.sazonalidade_secao} indicePico={p.sazonalidade_indice_pico} mesPico={p.sazonalidade_mes_pico} />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

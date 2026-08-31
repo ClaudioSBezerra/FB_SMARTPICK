@@ -56,6 +56,16 @@ type FaturamentoPendenciaItem struct {
 	// informativo — evidencia o impacto de não ter calibrado ainda.
 	AcessosPicking *int `json:"acessos_picking,omitempty"` // acessos na importação atual
 	AcessosInicial *int `json:"acessos_inicial,omitempty"` // acessos na 1ª importação do CD (evolução até hoje)
+
+	// Sazonalidade da Seção do produto (Farol, /api/farol/sazonalidade-secao,
+	// índice sobre 2025) — adicionado 31/08/2026. Puramente informativo: ajuda
+	// a distinguir "pico sazonal real" (ex: Bacalhau na Páscoa) de "falta de
+	// calibragem genuína" antes de priorizar o produto. Ausente (nil) quando o
+	// produto não tem cod_sec no Farol, ou quando a consulta de sazonalidade
+	// falhou — nunca afeta se o produto entra ou não na lista de pendências.
+	SazonalidadeSecao      string   `json:"sazonalidade_secao,omitempty"`
+	SazonalidadeIndicePico *float64 `json:"sazonalidade_indice_pico,omitempty"`
+	SazonalidadeMesPico    *int     `json:"sazonalidade_mes_pico,omitempty"`
 }
 
 // FaturamentoSemCalibragemResponse é a resposta completa do painel.
@@ -147,9 +157,11 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string) (*Faturam
 
 	// ── Comparação ────────────────────────────────────────────────────────
 	type agregado struct {
-		classe  string
-		produto string
-		qtd     float64
+		classe   string
+		produto  string
+		qtd      float64
+		codDepto string // p/ casar com o índice sazonal da Seção (best-effort)
+		codSec   string
 	}
 	porCodprod := map[int]*agregado{}
 	naoCorrespondencias := 0
@@ -173,7 +185,22 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string) (*Faturam
 		if ag, exists := porCodprod[codprod]; exists {
 			ag.qtd += p.Qt
 		} else {
-			porCodprod[codprod] = &agregado{classe: classif.classe, produto: classif.produto, qtd: p.Qt}
+			porCodprod[codprod] = &agregado{
+				classe: classif.classe, produto: classif.produto, qtd: p.Qt,
+				codDepto: p.CodDepto, codSec: p.CodSec,
+			}
+		}
+	}
+
+	// ── Sazonalidade por Seção (best-effort — nunca aborta a coleta) ───────
+	// Falha ou seção sem índice: os campos de sazonalidade ficam vazios no
+	// item, o resto do painel continua normal.
+	sazonalidadePorSecao := map[string]FarolSazonalidadeSecao{}
+	if secoes, err := GetSazonalidadeSecao(info.CodFilial); err != nil {
+		log.Printf("[faturamento] CD=%d: sazonalidade por seção indisponível: %v", cdID, err)
+	} else {
+		for _, s := range secoes {
+			sazonalidadePorSecao[s.CodDepto+"|"+s.CodSec] = s
 		}
 	}
 
@@ -204,6 +231,15 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string) (*Faturam
 		}
 		if inicial, ok := acessoInicialMap[codprod]; ok {
 			item.AcessosInicial = &inicial
+		}
+		if ag.codSec != "" {
+			if saz, ok := sazonalidadePorSecao[ag.codDepto+"|"+ag.codSec]; ok && saz.MesPico > 0 {
+				item.SazonalidadeSecao = saz.Secao
+				indicePico := saz.IndicePico
+				mesPico := saz.MesPico
+				item.SazonalidadeIndicePico = &indicePico
+				item.SazonalidadeMesPico = &mesPico
+			}
 		}
 		pendencias = append(pendencias, item)
 	}
