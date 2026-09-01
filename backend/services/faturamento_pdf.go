@@ -99,8 +99,8 @@ var mesAbrevPT = [...]string{"Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "A
 
 // formatarSazonalidade monta o texto compacto "3.24× (Mar)" da coluna de
 // sazonalidade — igual à SazonalidadeCell do painel web (mesma fonte de
-// dado, /api/farol/sazonalidade-secao). "—" quando o produto não tem
-// sazonalidade calculada (sem Seção no Farol, ou consulta indisponível).
+// dado, /api/farol/sazonalidade-produto). "—" quando o produto não tem
+// sazonalidade calculada no Farol, ou a consulta está indisponível.
 func formatarSazonalidade(indicePico *float64, mesPico *int) string {
 	if indicePico == nil || mesPico == nil || *mesPico < 1 || *mesPico > 12 {
 		return "—"
@@ -151,7 +151,7 @@ func GerarPDFFaturamentoSemCalibragem(resp *FaturamentoSemCalibragemResponse, pe
 	cinzaBorda := &props.Color{Red: 210, Green: 214, Blue: 220}
 	vermelho := &props.Color{Red: 176, Green: 44, Blue: 44}
 	verde := &props.Color{Red: 30, Green: 122, Blue: 72}
-	// Sazonalidade forte (índice de pico >= 1.5×) — mesmo tom de aviso do
+	// Produto sazonal (flag calculada no Farol) — mesmo tom de aviso do
 	// painel web (amber-800), pra destacar sem soar como alerta de erro.
 	amarelo := &props.Color{Red: 146, Green: 64, Blue: 14}
 
@@ -291,7 +291,10 @@ func GerarPDFFaturamentoSemCalibragem(resp *FaturamentoSemCalibragemResponse, pe
 			sazonalidade := formatarSazonalidade(p.SazonalidadeIndicePico, p.SazonalidadeMesPico)
 			sazonalidadeCor := cinza
 			sazonalidadeNegrito := false
-			if p.SazonalidadeIndicePico != nil && *p.SazonalidadeIndicePico >= 1.5 {
+			// Sazonal já vem calculado do Farol (threshold calibrado pro grão
+			// produto, mais rígido que um corte fixo de 1.5× — ver mig
+			// 212_sazonalidade_produto_ano.sql lá) — não reimplementa a regra aqui.
+			if p.SazonalidadeSazonal != nil && *p.SazonalidadeSazonal {
 				sazonalidadeCor = amarelo
 				sazonalidadeNegrito = true
 			}

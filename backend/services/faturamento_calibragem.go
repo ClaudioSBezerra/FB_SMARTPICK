@@ -57,17 +57,20 @@ type FaturamentoPendenciaItem struct {
 	AcessosPicking *int `json:"acessos_picking,omitempty"` // acessos na importação atual
 	AcessosInicial *int `json:"acessos_inicial,omitempty"` // acessos na 1ª importação do CD (evolução até hoje)
 
-	// Sazonalidade da Seção do produto: índice mensal calculado no Farol
-	// (/api/farol/sazonalidade-secao, sobre 2025), casado pelo codepto/codsec
-	// que o SmartPick já classifica em sp_enderecos — adicionado 31/08/2026.
-	// Puramente informativo: ajuda a distinguir "pico sazonal real" (ex:
-	// Bacalhau na Páscoa) de "falta de calibragem genuína" antes de priorizar
-	// o produto. Ausente (nil) quando o produto não tem codsec classificado no
-	// SmartPick, ou quando a consulta de sazonalidade ao Farol falhou — nunca
-	// afeta se o produto entra ou não na lista de pendências.
-	SazonalidadeSecao      string   `json:"sazonalidade_secao,omitempty"`
+	// Sazonalidade do PRODUTO (não mais da Seção — trocado em 01/09/2026):
+	// persistida no Farol em grão Produto×Filial×Ano (agg_sazonalidade_produto_ano,
+	// via /api/farol/sazonalidade-produto), join direto por codprod. Mais
+	// precisa que a versão por Seção (produtos de perfil sazonal oposto na
+	// mesma seção se cancelavam na média). Puramente informativo: ajuda a
+	// distinguir "pico sazonal real" (ex: Bacalhau na Páscoa) de "falta de
+	// calibragem genuína" antes de priorizar o produto. Ausente (nil) quando
+	// o produto não tem sazonalidade calculada no Farol, ou quando a consulta
+	// falhou — nunca afeta se o produto entra ou não na lista de pendências.
+	SazonalidadeSazonal    *bool    `json:"sazonalidade_sazonal,omitempty"`
 	SazonalidadeIndicePico *float64 `json:"sazonalidade_indice_pico,omitempty"`
 	SazonalidadeMesPico    *int     `json:"sazonalidade_mes_pico,omitempty"`
+	SazonalidadeQtMesPico  *float64 `json:"sazonalidade_qt_mes_pico,omitempty"`
+	SazonalidadeQtTotalAno *float64 `json:"sazonalidade_qt_total_ano,omitempty"`
 }
 
 // FaturamentoSemCalibragemResponse é a resposta completa do painel.
@@ -175,11 +178,9 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string, periodoIn
 
 	// ── Comparação ────────────────────────────────────────────────────────
 	type agregado struct {
-		classe   string
-		produto  string
-		qtd      float64
-		codDepto string // p/ casar com o índice sazonal da Seção (best-effort)
-		codSec   string
+		classe  string
+		produto string
+		qtd     float64
 	}
 	porCodprod := map[int]*agregado{}
 	naoCorrespondencias := 0
@@ -205,23 +206,24 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string, periodoIn
 		} else {
 			porCodprod[codprod] = &agregado{
 				classe: classif.classe, produto: classif.produto, qtd: p.Qt,
-				// codDepto/codSec vêm da classificação do próprio SmartPick
-				// (sp_enderecos), não do Farol — ver comentário em
-				// classificacaoProduto.
-				codDepto: classif.codDepto, codSec: classif.codSec,
 			}
 		}
 	}
 
-	// ── Sazonalidade por Seção (best-effort — nunca aborta a coleta) ───────
-	// Falha ou seção sem índice: os campos de sazonalidade ficam vazios no
-	// item, o resto do painel continua normal.
-	sazonalidadePorSecao := map[string]FarolSazonalidadeSecao{}
-	if secoes, err := GetSazonalidadeSecao(info.CodFilial); err != nil {
-		log.Printf("[faturamento] CD=%d: sazonalidade por seção indisponível: %v", cdID, err)
+	// ── Sazonalidade por Produto (best-effort — nunca aborta a coleta) ─────
+	// Persistida no Farol (agg_sazonalidade_produto_ano — mig 212 lá),
+	// substituiu a versão por Seção: join direto por codprod, mais preciso
+	// (produtos de perfil sazonal oposto na mesma seção se cancelavam na
+	// média). Falha ou produto sem sazonalidade calculada: os campos ficam
+	// vazios no item, o resto do painel continua normal.
+	sazonalidadePorProduto := map[int]FarolSazonalidadeProduto{}
+	if prods, err := GetSazonalidadeProduto(info.CodFilial, 0); err != nil {
+		log.Printf("[faturamento] CD=%d: sazonalidade por produto indisponível: %v", cdID, err)
 	} else {
-		for _, s := range secoes {
-			sazonalidadePorSecao[s.CodDepto+"|"+s.CodSec] = s
+		for _, s := range prods {
+			if cp, convErr := strconv.Atoi(strings.TrimSpace(s.CodProd)); convErr == nil {
+				sazonalidadePorProduto[cp] = s
+			}
 		}
 	}
 
@@ -253,14 +255,14 @@ func coletarFaturamentoInterno(db *sql.DB, cdID int, empresaID string, periodoIn
 		if inicial, ok := acessoInicialMap[codprod]; ok {
 			item.AcessosInicial = &inicial
 		}
-		if ag.codSec != "" {
-			if saz, ok := sazonalidadePorSecao[ag.codDepto+"|"+ag.codSec]; ok && saz.MesPico > 0 {
-				item.SazonalidadeSecao = saz.Secao
-				indicePico := saz.IndicePico
-				mesPico := saz.MesPico
-				item.SazonalidadeIndicePico = &indicePico
-				item.SazonalidadeMesPico = &mesPico
-			}
+		if saz, ok := sazonalidadePorProduto[codprod]; ok {
+			item.SazonalidadeSazonal = &saz.Sazonal
+			item.SazonalidadeMesPico = saz.MesPico
+			item.SazonalidadeIndicePico = saz.IndicePico
+			qtMesPico := saz.QtMesPico
+			qtTotalAno := saz.QtTotalAno
+			item.SazonalidadeQtMesPico = &qtMesPico
+			item.SazonalidadeQtTotalAno = &qtTotalAno
 		}
 		pendencias = append(pendencias, item)
 	}
@@ -332,23 +334,14 @@ type classificacaoProduto struct {
 	produto    string
 	acessos90  int
 	temAcessos bool
-	// Departamento/Seção do produto (sp_enderecos.codepto/codsec — mesma
-	// numeração WinThor do Farol, carregada pelo CSV próprio do SmartPick).
-	// Usados pra casar com o índice sazonal por Seção (GetSazonalidadeSecao)
-	// — ver coletarFaturamentoInterno. Preferidos ao cod_depto/cod_sec que
-	// viriam do Farol (vendas_faturadas): achado em 31/08/2026, esses campos
-	// no Farol pertencem a um layout de importação novo (jul/2026) ainda
-	// opcional/não adotado em produção, chegando sempre vazios.
-	codDepto string
-	codSec   string
 }
 
-// carregarClassificacaoCurva retorna a classificação Curva ABC (apenas A/B),
+// carregarClassificacaoCurva retorna a classificação Curva ABC (apenas A/B) e
 // o qt_acesso_90 (nº de acessos ao picking nos últimos 90 dias, direto do WMS)
-// e o Departamento/Seção de cada codprod a partir da importação CALIBRACAO
-// concluída mais recente do CD (mesmo padrão de calcularEvolucaoAcesso em
-// resumo_executivo.go). Erro de query ou de iteração (rows.Err()) é sempre
-// propagado — nunca mapa vazio silencioso quando a causa é falha de banco.
+// de cada codprod a partir da importação CALIBRACAO concluída mais recente do
+// CD (mesmo padrão de calcularEvolucaoAcesso em resumo_executivo.go). Erro de
+// query ou de iteração (rows.Err()) é sempre propagado — nunca mapa vazio
+// silencioso quando a causa é falha de banco.
 func carregarClassificacaoCurva(db *sql.DB, cdID int) (map[int]classificacaoProduto, error) {
 	rows, err := db.Query(`
 		WITH job AS (
@@ -356,8 +349,7 @@ func carregarClassificacaoCurva(db *sql.DB, cdID int) (map[int]classificacaoProd
 			 WHERE cd_id = $1 AND status = 'done'
 			 ORDER BY created_at DESC LIMIT 1
 		)
-		SELECT e.codprod, e.classe_venda, COALESCE(e.produto, ''), e.qt_acesso_90,
-		       e.codepto, e.codsec
+		SELECT e.codprod, e.classe_venda, COALESCE(e.produto, ''), e.qt_acesso_90
 		  FROM smartpick.sp_enderecos e
 		 WHERE e.job_id = (SELECT id FROM job)
 		   AND e.tipo_rel = 'CALIBRACAO'
@@ -373,20 +365,13 @@ func carregarClassificacaoCurva(db *sql.DB, cdID int) (map[int]classificacaoProd
 		var codprod int
 		var classe, produto string
 		var acessos90 sql.NullInt64
-		var codepto, codsec sql.NullInt64
-		if err := rows.Scan(&codprod, &classe, &produto, &acessos90, &codepto, &codsec); err != nil {
+		if err := rows.Scan(&codprod, &classe, &produto, &acessos90); err != nil {
 			return nil, fmt.Errorf("scan classificação Curva ABC: %w", err)
 		}
 		cp := classificacaoProduto{classe: classe, produto: produto}
 		if acessos90.Valid {
 			cp.acessos90 = int(acessos90.Int64)
 			cp.temAcessos = true
-		}
-		if codepto.Valid {
-			cp.codDepto = strconv.FormatInt(codepto.Int64, 10)
-		}
-		if codsec.Valid {
-			cp.codSec = strconv.FormatInt(codsec.Int64, 10)
 		}
 		out[codprod] = cp
 	}

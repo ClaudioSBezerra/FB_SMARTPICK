@@ -17,7 +17,7 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, EyeOff, Flame, Filter } from 'lucide-react'
+import { CheckCheck, ThumbsDown, RefreshCw, Pencil, Check, X, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, EyeOff, Flame, Filter, CalendarClock } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuth } from '@/contexts/AuthContext'
 import { BatchStatusBar } from '@/components/BatchStatusBar'
@@ -57,6 +57,12 @@ interface Proposta {
   participacao: number | null
   norma_palete: number | null
   prioridade: number
+  // Sazonalidade do produto (Farol, persistida) — ausente quando o Farol
+  // está indisponível ou o produto não tem sazonalidade calculada lá.
+  sazonalidade_sazonal?: boolean
+  sazonalidade_mes_pico?: number
+  sazonalidade_indice_pico?: number
+  sazonalidade_qt_mes_pico?: number
 }
 
 interface Resumo {
@@ -135,6 +141,36 @@ function CurvaCell({ classe, participacao }: { classe: string | null; participac
     <span className={`text-sm font-bold whitespace-nowrap ${colors[classe] ?? 'text-gray-700'}`}>
       {classe}{participacao != null ? ` – ${participacao.toFixed(2)}%` : ''}
     </span>
+  )
+}
+
+const MES_ABREV_SAZ = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+
+// Sazonalidade do produto (Farol, persistida — mesma fonte do relatório de
+// Faturamento sem Calibragem). `sazonal` já vem calculado de lá (threshold +
+// piso de volume/cobertura calibrados pro grão produto); célula vazia quando
+// ausente (Farol indisponível, ou produto sem sazonalidade calculada).
+function SazonalidadeCell({ sazonal, mesPico, indicePico, qtMesPico }: {
+  sazonal?: boolean; mesPico?: number; indicePico?: number; qtMesPico?: number
+}) {
+  if (!sazonal || !mesPico) return <span className="text-xs text-muted-foreground">—</span>
+  const mes = MES_ABREV_SAZ[mesPico - 1] ?? String(mesPico)
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[11px] font-medium cursor-default whitespace-nowrap">
+            <CalendarClock className="h-3 w-3" />
+            {mes}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="text-xs">
+          <p className="font-semibold">Sazonal — pico em {mes}</p>
+          {indicePico != null && <p className="text-muted-foreground">Índice de pico: {indicePico.toFixed(2)}×</p>}
+          {qtMesPico != null && <p className="text-muted-foreground">Qtd no mês de pico: {qtMesPico.toLocaleString('pt-BR')} un.</p>}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -718,6 +754,9 @@ function PropostasTable({
                   )}
                 </div>
               </TableHead>
+              <TableHead className="w-[80px] py-2" title="Sazonalidade do produto (Farol) — pico de giro sazonal, não confundir com falta de calibragem">
+                Sazonal.
+              </TableHead>
               <TableHead className="text-right py-2 w-[68px]">
                 <div className="inline-flex items-center gap-0.5 justify-end">
                   <button
@@ -894,6 +933,14 @@ function PropostasTable({
                   </div>
                 </TableCell>
                 <TableCell className="py-1.5 w-[100px]"><CurvaCell classe={p.classe_venda} participacao={p.participacao} /></TableCell>
+                <TableCell className="py-1.5 w-[80px]">
+                  <SazonalidadeCell
+                    sazonal={p.sazonalidade_sazonal}
+                    mesPico={p.sazonalidade_mes_pico}
+                    indicePico={p.sazonalidade_indice_pico}
+                    qtMesPico={p.sazonalidade_qt_mes_pico}
+                  />
+                </TableCell>
                 <TableCell className="py-1 text-right w-[68px]">
                   {p.capacidade_atual != null
                     ? <span className="whitespace-nowrap">{p.capacidade_atual} <span className="text-muted-foreground text-[10px]">cx</span></span>

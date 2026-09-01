@@ -27,12 +27,14 @@ interface PendenciaItem {
   ultima_atualizacao?: string
   acessos_picking?: number
   acessos_inicial?: number
-  // Sazonalidade da Seção do produto (Farol, sobre 2025) — adicionado
-  // 31/08/2026. Ausente quando o produto não tem Seção no Farol, ou quando a
-  // consulta de sazonalidade falhou (nunca afeta a lista em si).
-  sazonalidade_secao?: string
+  // Sazonalidade do PRODUTO (Farol, persistida — não mais por Seção, trocado
+  // em 01/09/2026). Ausente quando o produto não tem sazonalidade calculada
+  // no Farol, ou quando a consulta falhou (nunca afeta a lista em si).
+  sazonalidade_sazonal?: boolean
   sazonalidade_indice_pico?: number
   sazonalidade_mes_pico?: number
+  sazonalidade_qt_mes_pico?: number
+  sazonalidade_qt_total_ano?: number
 }
 
 interface FaturamentoSemCalibragemResp {
@@ -144,21 +146,27 @@ function AcessosCell({ atual, inicial }: { atual?: number; inicial?: number }) {
 
 const MES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
-// Sazonalidade: índice de pico (venda do mês / média do ano, sobre 2025) + mês
-// em que ele ocorre, pra ajudar a distinguir "pico sazonal real" (ex: Bacalhau
-// na Páscoa) de falta de calibragem genuína. >=1.5× destacado (padrão sazonal
-// forte) — abaixo disso mostrado discreto (padrão fraco/quase não sazonal).
-function SazonalidadeCell({ secao, indicePico, mesPico }: { secao?: string; indicePico?: number; mesPico?: number }) {
+// Sazonalidade do PRODUTO: índice de pico (qtd do mês de maior giro / média
+// mensal do ano) + mês em que ele ocorre, pra ajudar a distinguir "pico
+// sazonal real" (ex: Bacalhau na Páscoa) de falta de calibragem genuína.
+// `sazonal` já vem calculado do Farol (threshold + piso de volume/cobertura
+// calibrados pro grão produto — mais rígido que um corte fixo de índice,
+// evita falso positivo em produto de giro baixíssimo).
+function SazonalidadeCell({ sazonal, indicePico, mesPico, qtMesPico, qtTotalAno }: {
+  sazonal?: boolean; indicePico?: number; mesPico?: number; qtMesPico?: number; qtTotalAno?: number
+}) {
   if (indicePico === undefined || indicePico === null || !mesPico) {
     return <span className="text-xs text-muted-foreground">—</span>
   }
-  const forte = indicePico >= 1.5
+  const titulo = qtMesPico !== undefined && qtTotalAno !== undefined
+    ? `Pico: ${qtMesPico.toLocaleString('pt-BR')} un. em ${MES_ABREV[mesPico - 1] ?? mesPico} · Total no ano: ${qtTotalAno.toLocaleString('pt-BR')} un.`
+    : undefined
   return (
     <span
-      className={`inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap ${forte ? 'text-amber-800' : 'text-muted-foreground'}`}
-      title={secao ? `Seção: ${secao}` : undefined}
+      className={`inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap ${sazonal ? 'text-amber-800' : 'text-muted-foreground'}`}
+      title={titulo}
     >
-      {forte && <TrendingUp className="h-3 w-3" />}
+      {sazonal && <TrendingUp className="h-3 w-3" />}
       {indicePico.toFixed(2)}× em {MES_ABREV[mesPico - 1] ?? mesPico}
     </span>
   )
@@ -438,7 +446,7 @@ export default function SpFaturamentoSemCalibragem() {
                 <TableHead className="w-20 text-right">Gap</TableHead>
                 <TableHead className="w-24">Atualizado</TableHead>
                 <TableHead className="w-40">Acessos ao picking (90d)</TableHead>
-                <TableHead className="w-32" title="Índice sazonal (venda do mês / média do ano, sobre 2025) e o mês de maior impacto — pico sazonal real não é necessariamente falta de calibragem">Sazonalidade</TableHead>
+                <TableHead className="w-32" title="Índice sazonal do produto (qtd do mês de maior giro / média mensal do ano) e o mês de maior impacto — pico sazonal real não é necessariamente falta de calibragem">Sazonalidade</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -453,7 +461,13 @@ export default function SpFaturamentoSemCalibragem() {
                   <TableCell className="text-xs text-muted-foreground">{p.ultima_atualizacao ? fmtDate(p.ultima_atualizacao) : '—'}</TableCell>
                   <TableCell><AcessosCell atual={p.acessos_picking} inicial={p.acessos_inicial} /></TableCell>
                   <TableCell>
-                    <SazonalidadeCell secao={p.sazonalidade_secao} indicePico={p.sazonalidade_indice_pico} mesPico={p.sazonalidade_mes_pico} />
+                    <SazonalidadeCell
+                      sazonal={p.sazonalidade_sazonal}
+                      indicePico={p.sazonalidade_indice_pico}
+                      mesPico={p.sazonalidade_mes_pico}
+                      qtMesPico={p.sazonalidade_qt_mes_pico}
+                      qtTotalAno={p.sazonalidade_qt_total_ano}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

@@ -76,6 +76,30 @@ type FarolSazonalidadeSecao struct {
 	IndicePico float64     `json:"indice_pico"`
 }
 
+// FarolSazonalidadeProduto é um item da resposta do endpoint de sazonalidade
+// por Produto do Farol (agg_sazonalidade_produto_ano, persistida — não
+// calculada ao vivo) — grão Produto×Filial×Ano. Substitui, no cruzamento de
+// coletarFaturamentoInterno, a versão por Seção (FarolSazonalidadeSecao):
+// mais precisa (produtos de perfil sazonal oposto dentro da mesma seção se
+// cancelavam na média) e o join fica direto por CodProd, sem precisar do
+// codepto/codsec de sp_enderecos como intermediário.
+type FarolSazonalidadeProduto struct {
+	CodProd        string   `json:"cod_prod"`
+	NomeProd       string   `json:"nome_prod"`
+	Empresa        string   `json:"empresa"`
+	Ano            int      `json:"ano"`
+	CodDepto       string   `json:"cod_depto"`
+	CodSec         string   `json:"cod_sec"`
+	Sazonal        bool     `json:"sazonal"`
+	MesPico        *int     `json:"mes_pico,omitempty"`
+	IndicePico     *float64 `json:"indice_pico,omitempty"`
+	QtMesPico      float64  `json:"qt_mes_pico"`
+	QtTotalAno     float64  `json:"qt_total_ano"`
+	PvendaMesPico  float64  `json:"pvenda_mes_pico"`
+	PvendaTotalAno float64  `json:"pvenda_total_ano"`
+	MesesComDado   int      `json:"meses_com_dado"`
+}
+
 // CDFarolInfo agrega os dados do CD necessários para chamar o Farol e exibir o painel.
 type CDFarolInfo struct {
 	CdNome     string
@@ -193,4 +217,54 @@ func GetSazonalidadeSecao(codFilial int) ([]FarolSazonalidadeSecao, error) {
 		return nil, fmt.Errorf("erro parseando resposta do Farol: %w", err)
 	}
 	return secoes, nil
+}
+
+// GetSazonalidadeProduto busca no Farol a sazonalidade persistida por Produto
+// (agg_sazonalidade_produto_ano) de uma filial. ano=0 deixa o Farol resolver
+// o último ano fechado (ver SazonalidadeProdutoAPIHandler, sem hardcode de
+// calendário). Mesmo tratamento de erro dos demais clients — nunca panic;
+// best-effort no chamador (coletarFaturamentoInterno), como a versão por
+// Seção. Reusa o client de timeout maior: embora a consulta agora seja um
+// SELECT indexado sobre uma tabela persistida (rápida por natureza), a
+// margem extra não custa nada e evita reabrir o incidente de 31/08 caso o
+// Farol fique sob carga.
+func GetSazonalidadeProduto(codFilial int, ano int) ([]FarolSazonalidadeProduto, error) {
+	baseURL := os.Getenv("FAROL_BASE_URL")
+	apiKey := os.Getenv("FAROL_API_KEY")
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("FAROL_BASE_URL/FAROL_API_KEY não configuradas")
+	}
+
+	url := fmt.Sprintf("%s/api/farol/sazonalidade-produto?empresa=%d",
+		strings.TrimRight(baseURL, "/"), codFilial)
+	if ano > 0 {
+		url += fmt.Sprintf("&ano=%d", ano)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("erro montando requisição ao Farol: %w", err)
+	}
+	req.Header.Set("X-API-Key", apiKey)
+
+	resp, err := farolSazonalidadeHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("erro de transporte ao chamar Farol: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("erro lendo resposta do Farol: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Farol respondeu status %d: %s", resp.StatusCode, string(raw))
+	}
+
+	var produtos []FarolSazonalidadeProduto
+	if err := json.Unmarshal(raw, &produtos); err != nil {
+		return nil, fmt.Errorf("erro parseando resposta do Farol: %w", err)
+	}
+	return produtos, nil
 }

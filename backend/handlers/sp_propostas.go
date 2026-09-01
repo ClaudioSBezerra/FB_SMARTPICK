@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,49 +33,59 @@ import (
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
 type PropostaResponse struct {
-	ID                 int64   `json:"id"`
-	JobID              string  `json:"job_id"`
-	EnderecoID         int64   `json:"endereco_id"`
-	CdID               int     `json:"cd_id"`
-	CodFilial          int     `json:"cod_filial"`
-	CodProd            int     `json:"codprod"`
-	Produto            string  `json:"produto"`
-	Departamento       *string `json:"departamento,omitempty"`
-	Secao              *string `json:"secao,omitempty"`
-	Rua                *int    `json:"rua"`
-	Predio             *int    `json:"predio"`
-	Apto               *int    `json:"apto"`
-	ClasseVenda        *string `json:"classe_venda"`
-	CapacidadeAtual    *int    `json:"capacidade_atual"`
-	SugestaoCalibragem int     `json:"sugestao_calibragem"`
-	Delta              int     `json:"delta"`
-	Justificativa      *string `json:"justificativa"`
-	Status             string  `json:"status"`
-	AprovadoPor        *string `json:"aprovado_por,omitempty"`
-	AprovadoEm         *string `json:"aprovado_em,omitempty"`
-	SugestaoEditada    *int      `json:"sugestao_editada,omitempty"`
-	EditadoPor         *string   `json:"editado_por,omitempty"`
-	EditadoEm          *string   `json:"editado_em,omitempty"`
-	CreatedAt          string    `json:"created_at"`
-	GiroDiaCx          *float64  `json:"giro_dia_cx,omitempty"`
-	MedVendaCx         *float64  `json:"med_venda_cx,omitempty"`
-	PontoReposicao     *int      `json:"ponto_reposicao,omitempty"`
-	Participacao       *float64  `json:"participacao,omitempty"` // % participação na curva ABC
-	NormaPalete        *int      `json:"norma_palete,omitempty"` // caixas por palete (para Sug. Pallet)
-	QtAcesso90         *int      `json:"qt_acesso_90,omitempty"` // acessos ao picking nos últimos 90 dias
-	ForaLinha          *bool     `json:"fora_linha,omitempty"`   // produto descontinuado (S no CSV)
-	Prioridade         int       `json:"prioridade"`              // score 0..100 calculado em runtime
+	ID                 int64    `json:"id"`
+	JobID              string   `json:"job_id"`
+	EnderecoID         int64    `json:"endereco_id"`
+	CdID               int      `json:"cd_id"`
+	CodFilial          int      `json:"cod_filial"`
+	CodProd            int      `json:"codprod"`
+	Produto            string   `json:"produto"`
+	Departamento       *string  `json:"departamento,omitempty"`
+	Secao              *string  `json:"secao,omitempty"`
+	Rua                *int     `json:"rua"`
+	Predio             *int     `json:"predio"`
+	Apto               *int     `json:"apto"`
+	ClasseVenda        *string  `json:"classe_venda"`
+	CapacidadeAtual    *int     `json:"capacidade_atual"`
+	SugestaoCalibragem int      `json:"sugestao_calibragem"`
+	Delta              int      `json:"delta"`
+	Justificativa      *string  `json:"justificativa"`
+	Status             string   `json:"status"`
+	AprovadoPor        *string  `json:"aprovado_por,omitempty"`
+	AprovadoEm         *string  `json:"aprovado_em,omitempty"`
+	SugestaoEditada    *int     `json:"sugestao_editada,omitempty"`
+	EditadoPor         *string  `json:"editado_por,omitempty"`
+	EditadoEm          *string  `json:"editado_em,omitempty"`
+	CreatedAt          string   `json:"created_at"`
+	GiroDiaCx          *float64 `json:"giro_dia_cx,omitempty"`
+	MedVendaCx         *float64 `json:"med_venda_cx,omitempty"`
+	PontoReposicao     *int     `json:"ponto_reposicao,omitempty"`
+	Participacao       *float64 `json:"participacao,omitempty"` // % participação na curva ABC
+	NormaPalete        *int     `json:"norma_palete,omitempty"` // caixas por palete (para Sug. Pallet)
+	QtAcesso90         *int     `json:"qt_acesso_90,omitempty"` // acessos ao picking nos últimos 90 dias
+	ForaLinha          *bool    `json:"fora_linha,omitempty"`   // produto descontinuado (S no CSV)
+	Prioridade         int      `json:"prioridade"`             // score 0..100 calculado em runtime
+
+	// Sazonalidade do produto (Farol, persistida — agg_sazonalidade_produto_ano),
+	// mesma fonte do relatório de Faturamento sem Calibragem. Enriquecida
+	// best-effort após a query principal (uma chamada por CodFilial distinto
+	// na página, nunca por linha) — ausente quando o Farol está indisponível
+	// ou o produto não tem sazonalidade calculada lá.
+	SazonalidadeSazonal    *bool    `json:"sazonalidade_sazonal,omitempty"`
+	SazonalidadeMesPico    *int     `json:"sazonalidade_mes_pico,omitempty"`
+	SazonalidadeIndicePico *float64 `json:"sazonalidade_indice_pico,omitempty"`
+	SazonalidadeQtMesPico  *float64 `json:"sazonalidade_qt_mes_pico,omitempty"`
 }
 
 type PropostasResumo struct {
-	TotalPendente    int `json:"total_pendente"`
-	TotalAprovada    int `json:"total_aprovada"`
-	TotalRejeitada   int `json:"total_rejeitada"`
-	FaltaPendente    int `json:"falta_pendente"`
-	EspacoPendente   int `json:"espaco_pendente"`
-	CalibradoTotal   int `json:"calibrado_total"`
-	IgnoradoTotal    int `json:"ignorado_total"`
-	CurvaAMantida    int `json:"curva_a_mantida"`
+	TotalPendente  int `json:"total_pendente"`
+	TotalAprovada  int `json:"total_aprovada"`
+	TotalRejeitada int `json:"total_rejeitada"`
+	FaltaPendente  int `json:"falta_pendente"`
+	EspacoPendente int `json:"espaco_pendente"`
+	CalibradoTotal int `json:"calibrado_total"`
+	IgnoradoTotal  int `json:"ignorado_total"`
+	CurvaAMantida  int `json:"curva_a_mantida"`
 }
 
 // ─── Lista de Propostas ───────────────────────────────────────────────────────
@@ -96,9 +107,9 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 		q := r.URL.Query()
 		cdIDStr := q.Get("cd_id")
 		jobIDStr := q.Get("job_id")
-		tipo     := q.Get("tipo")   // falta | espaco | "" (todos)
-		status   := q.Get("status") // pendente | aprovada | rejeitada | "" (todos)
-		tipoRel  := services.NormalizeTipoRel(q.Get("tipo_rel")) // CALIBRACAO | REALOCACAO | "" (todos)
+		tipo := q.Get("tipo")                                   // falta | espaco | "" (todos)
+		status := q.Get("status")                               // pendente | aprovada | rejeitada | "" (todos)
+		tipoRel := services.NormalizeTipoRel(q.Get("tipo_rel")) // CALIBRACAO | REALOCACAO | "" (todos)
 		limitStr := q.Get("limit")
 
 		limit := 200
@@ -223,6 +234,41 @@ func SpPropostasHandler(db *sql.DB) http.HandlerFunc {
 			propostas = []PropostaResponse{}
 		}
 
+		// ── Sazonalidade por produto (best-effort, uma chamada por CodFilial
+		//    distinto na página — nunca por linha; mesmo padrão de
+		//    coletarFaturamentoInterno). Falha loga e segue sem os campos,
+		//    nunca derruba a listagem de propostas. ──────────────────────────
+		filiais := map[int]struct{}{}
+		for _, p := range propostas {
+			filiais[p.CodFilial] = struct{}{}
+		}
+		sazonalidadePorProduto := map[int]services.FarolSazonalidadeProduto{}
+		for codFilial := range filiais {
+			prods, err := services.GetSazonalidadeProduto(codFilial, 0)
+			if err != nil {
+				log.Printf("[propostas] sazonalidade por produto indisponível (filial=%d): %v", codFilial, err)
+				continue
+			}
+			for _, s := range prods {
+				if cp, convErr := strconv.Atoi(strings.TrimSpace(s.CodProd)); convErr == nil {
+					sazonalidadePorProduto[cp] = s
+				}
+			}
+		}
+		if len(sazonalidadePorProduto) > 0 {
+			for i := range propostas {
+				saz, ok := sazonalidadePorProduto[propostas[i].CodProd]
+				if !ok {
+					continue
+				}
+				propostas[i].SazonalidadeSazonal = &saz.Sazonal
+				propostas[i].SazonalidadeMesPico = saz.MesPico
+				propostas[i].SazonalidadeIndicePico = saz.IndicePico
+				qtMesPico := saz.QtMesPico
+				propostas[i].SazonalidadeQtMesPico = &qtMesPico
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		// Cache curto no browser para refetches rápidos (mudou filtro,
 		// voltou para a página); private = não cacheia em proxy compartilhado.
@@ -250,7 +296,7 @@ func SpPropostasResumoHandler(db *sql.DB) http.HandlerFunc {
 		q := r.URL.Query()
 		cdIDStr := q.Get("cd_id")
 		jobIDStr := q.Get("job_id")
-		tipoRel  := services.NormalizeTipoRel(q.Get("tipo_rel"))
+		tipoRel := services.NormalizeTipoRel(q.Get("tipo_rel"))
 
 		filter := "WHERE empresa_id = $1"
 		args := []interface{}{spCtx.EmpresaID}
@@ -524,8 +570,8 @@ func SpMotivoRejeicaoHandler(db *sql.DB) http.HandlerFunc {
 		defer rows.Close()
 
 		type motivo struct {
-			ID       int    `json:"id"`
-			Codigo   int    `json:"codigo"`
+			ID        int    `json:"id"`
+			Codigo    int    `json:"codigo"`
 			Descricao string `json:"descricao"`
 		}
 		var lista []motivo
@@ -624,7 +670,7 @@ func SpPropostasAprovarLoteHandler(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message":  fmt.Sprintf("%d propostas aprovadas", count),
+			"message":   fmt.Sprintf("%d propostas aprovadas", count),
 			"aprovadas": count,
 		})
 	}
@@ -713,7 +759,7 @@ func SpPropostasRuasHandler(db *sql.DB) http.HandlerFunc {
 
 		q := r.URL.Query()
 		jobIDStr := q.Get("job_id")
-		cdIDStr  := q.Get("cd_id")
+		cdIDStr := q.Get("cd_id")
 		if jobIDStr == "" && cdIDStr == "" {
 			http.Error(w, "job_id ou cd_id obrigatório", http.StatusBadRequest)
 			return
@@ -731,8 +777,8 @@ func SpPropostasRuasHandler(db *sql.DB) http.HandlerFunc {
 			    SELECT 1 FROM smartpick.sp_historico h
 			    WHERE h.job_id = p.job_id AND h.status = 'concluido'
 			)` + filterStatus
-		args   := []any{spCtx.EmpresaID}
-		idx    := 2
+		args := []any{spCtx.EmpresaID}
+		idx := 2
 
 		if jobIDStr != "" {
 			filter += fmt.Sprintf(" AND job_id = $%d", idx)
