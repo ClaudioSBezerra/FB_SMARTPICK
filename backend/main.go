@@ -492,6 +492,19 @@ func main() {
 	http.HandleFunc("/api/sp/historico/compliance", withSP(handlers.SpComplianceHandler, "gestor_filial"))
 	http.HandleFunc("/api/sp/historico/", withSP(handlers.SpHistoricoFecharHandler, "gestor_filial"))
 
+	// ── SmartPick API (machine-to-machine) — consumida por agentes de IA
+	//    (Paperclip). Não usa withSP: autenticação por API key estática
+	//    (SmartPickAPIKeyAuth), não sessão de usuário — mesmo padrão do
+	//    FAROL_API_KEY já usado do lado do Farol. ──────────────────────────────
+	http.HandleFunc("/api/relatorios/historico-calibragem", func(w http.ResponseWriter, r *http.Request) {
+		database := getDB()
+		if database == nil {
+			http.Error(w, `{"error":"Database initializing..."}`, http.StatusServiceUnavailable)
+			return
+		}
+		handlers.SmartPickAPIKeyAuth(handlers.HistoricoCalibragemAPIHandler)(database)(w, r)
+	})
+
 	// ── SmartPick — Reincidência (Epic 8) ────────────────────────────────────
 	http.HandleFunc("/api/sp/reincidencia", withSP(handlers.SpReincidenciaHandler, "gestor_filial"))
 
