@@ -504,6 +504,14 @@ func main() {
 		}
 		handlers.SmartPickAPIKeyAuth(handlers.HistoricoCalibragemAPIHandler)(database)(w, r)
 	})
+	http.HandleFunc("/api/relatorios/centros-distribuicao", func(w http.ResponseWriter, r *http.Request) {
+		database := getDB()
+		if database == nil {
+			http.Error(w, `{"error":"Database initializing..."}`, http.StatusServiceUnavailable)
+			return
+		}
+		handlers.SmartPickAPIKeyAuth(handlers.CentrosDistribuicaoAPIHandler)(database)(w, r)
+	})
 
 	// ── SmartPick — Reincidência (Epic 8) ────────────────────────────────────
 	http.HandleFunc("/api/sp/reincidencia", withSP(handlers.SpReincidenciaHandler, "gestor_filial"))
