@@ -78,6 +78,10 @@ func SpCDsByEmpresaHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
+		if !spCtx.IsMasterTenant(db) {
+			http.Error(w, "Forbidden: apenas usuários MASTER podem consultar CDs de outra empresa", http.StatusForbidden)
+			return
+		}
 
 		empresaID := r.URL.Query().Get("empresa_id")
 		filialIDStr := r.URL.Query().Get("filial_id")
@@ -137,6 +141,10 @@ func SpFiliaisByEmpresaHandler(db *sql.DB) http.HandlerFunc {
 		spCtx := GetSpContext(r)
 		if spCtx == nil || !spCtx.IsAdminFbtax() {
 			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		if !spCtx.IsMasterTenant(db) {
+			http.Error(w, "Forbidden: apenas usuários MASTER podem consultar filiais de outra empresa", http.StatusForbidden)
 			return
 		}
 

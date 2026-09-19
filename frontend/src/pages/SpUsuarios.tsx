@@ -174,16 +174,20 @@ export default function SpUsuarios() {
     },
   })
 
-  // filiais para o dialog de vincular filiais de usuários existentes (empresa ativa do admin)
+  // filiais para o dialog de vincular filiais de usuários existentes — escopadas
+  // pela empresa do usuário-alvo (`selected`), não pela empresa ativa do admin
+  // logado, senão vaza filiais de outra empresa quando o admin é admin_fbtax.
   const { data: filiais = [] } = useQuery<Filial[]>({
-    queryKey: ['filiais'],
+    queryKey: ['filiais-empresa', selected?.company_id],
     queryFn: async () => {
-      const res = await fetch('/api/filiais', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const url = selected?.company_id
+        ? `/api/sp/filiais-empresa?empresa_id=${selected.company_id}`
+        : '/api/filiais'
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) throw new Error('Erro ao carregar filiais')
       return res.json()
     },
+    enabled: filiaisDialog,
   })
 
   // filiais para o form de criação: usa a empresa-alvo quando selecionada,
