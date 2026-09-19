@@ -38,8 +38,8 @@ const mainItems = [
   { id: 'reincidencia', icon: Repeat2,         label: 'Reincidência',         path: '/reincidencia' },
   { id: 'resultados',   icon: TrendingUp,       label: 'Painel de Resultados', path: '/resultados' },
   { id: 'realocacao',   icon: ArrowLeftRight,  label: 'Painel de Realocação', path: '/realocacao' },
-  // Administração: visível para todos (admin + gestores)
-  { id: 'gestao',       icon: Building2,       label: 'Administração',        path: '/gestao/filiais' },
+  // Administração: restrita a admin_fbtax
+  { id: 'gestao',       icon: Building2,       label: 'Administração',        path: '/gestao/filiais', adminOnly: true },
 ] as const
 
 export function AppRail() {
@@ -134,7 +134,10 @@ export function AppRail() {
 
         {/* Nav principal */}
         <nav className="flex flex-col items-center gap-1 p-2 flex-1 pt-3">
-          {mainItems.filter(item => item.id !== 'resultados' || canAccessResultados).map(item => (
+          {mainItems
+            .filter(item => item.id !== 'resultados' || canAccessResultados)
+            .filter(item => !('adminOnly' in item && item.adminOnly) || isAdmin)
+            .map(item => (
               <Tooltip key={item.id}>
                 <TooltipTrigger asChild>
                   <button

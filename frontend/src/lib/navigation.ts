@@ -59,9 +59,10 @@ export const modules: Record<string, ModuleConfig> = {
       { label: 'Faturamento sem Calibragem',     path: '/faturamento-sem-calibragem' },
     ],
   },
-  // ── Administração (gestor_filial+ — oculto para admin) ───────────────────
+  // ── Administração (somente admin_fbtax) ───────────────────────────────────
   gestao: {
     label: 'Administração',
+    adminOnly: true,
     tabs: [
       { label: 'Filiais e CDs',        path: '/gestao/filiais' },
       { label: 'Regras de Calibragem', path: '/gestao/regras' },

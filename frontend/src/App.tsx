@@ -60,6 +60,17 @@ function MasterRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// Restrito a admin_fbtax (perfil "Administração" do SmartPick) — não confundir
+// com AdminRoute (role de plataforma) nem MasterRoute (equipe interna FbTax).
+function SpAdminRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, loading, group, spRole } = useAuth()
+  const location = useLocation()
+  if (loading) return null
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />
+  if (group !== 'MASTER' && spRole !== 'admin_fbtax') return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
 // ── Barra de abas por módulo ─────────────────────────────────────────────────
 function ModuleTabs() {
   const location  = useLocation()
@@ -194,9 +205,9 @@ function AppLayout() {
               {/* PDF (Epic 6) */}
               <Route path="/pdf/gerar" element={<ProtectedRoute><SpGerarPDF /></ProtectedRoute>} />
 
-              {/* Gestão de CD (gestor_filial+) */}
-              <Route path="/gestao/filiais" element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
-              <Route path="/gestao/regras"  element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />
+              {/* Gestão de CD (admin_fbtax) */}
+              <Route path="/gestao/filiais" element={<SpAdminRoute><SpAmbiente /></SpAdminRoute>} />
+              <Route path="/gestao/regras"  element={<SpAdminRoute><SpAmbiente /></SpAdminRoute>} />
 
               {/* Configurações (admin) */}
               <Route path="/config/planos"      element={<ProtectedRoute><SpAmbiente /></ProtectedRoute>} />

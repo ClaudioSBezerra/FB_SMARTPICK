@@ -190,7 +190,8 @@ func SpFiliaisHandler(db *sql.DB) http.HandlerFunc {
 			json.NewEncoder(w).Encode(filiais)
 
 		case http.MethodPost:
-			if !RequireWrite(spCtx, w) {
+			if !spCtx.IsAdminFbtax() {
+				http.Error(w, "Forbidden: apenas admin_fbtax pode gerenciar filiais", http.StatusForbidden)
 				return
 			}
 			if err := checkLimiteFiliais(db, spCtx.EmpresaID); err != nil {
@@ -254,7 +255,8 @@ func SpFilialItemHandler(db *sql.DB) http.HandlerFunc {
 
 		switch r.Method {
 		case http.MethodPut:
-			if !RequireWrite(spCtx, w) {
+			if !spCtx.IsAdminFbtax() {
+				http.Error(w, "Forbidden: apenas admin_fbtax pode gerenciar filiais", http.StatusForbidden)
 				return
 			}
 			var req SpFilialRequest
@@ -283,8 +285,8 @@ func SpFilialItemHandler(db *sql.DB) http.HandlerFunc {
 			json.NewEncoder(w).Encode(map[string]string{"message": "Filial atualizada"})
 
 		case http.MethodDelete:
-			if !spCtx.CanApprove() {
-				http.Error(w, "Forbidden: gestor_geral+ necessário para remover filiais", http.StatusForbidden)
+			if !spCtx.IsAdminFbtax() {
+				http.Error(w, "Forbidden: apenas admin_fbtax pode remover filiais", http.StatusForbidden)
 				return
 			}
 			// Soft delete: marca ativo = false
@@ -417,7 +419,8 @@ func SpCDsHandler(db *sql.DB) http.HandlerFunc {
 			json.NewEncoder(w).Encode(cds)
 
 		case http.MethodPost:
-			if !RequireWrite(spCtx, w) {
+			if !spCtx.IsAdminFbtax() {
+				http.Error(w, "Forbidden: apenas admin_fbtax pode gerenciar CDs", http.StatusForbidden)
 				return
 			}
 			if err := checkLimiteCDs(db, spCtx.EmpresaID); err != nil {
@@ -491,7 +494,8 @@ func SpCDItemHandler(db *sql.DB) http.HandlerFunc {
 			json.NewEncoder(w).Encode(cd)
 
 		case http.MethodPut:
-			if !RequireWrite(spCtx, w) {
+			if !spCtx.IsAdminFbtax() {
+				http.Error(w, "Forbidden: apenas admin_fbtax pode gerenciar CDs", http.StatusForbidden)
 				return
 			}
 			var req SpCDRequest
@@ -524,8 +528,8 @@ func SpCDItemHandler(db *sql.DB) http.HandlerFunc {
 			json.NewEncoder(w).Encode(map[string]string{"message": "CD atualizado"})
 
 		case http.MethodDelete:
-			if !spCtx.CanApprove() {
-				http.Error(w, "Forbidden: gestor_geral+ para remover CDs", http.StatusForbidden)
+			if !spCtx.IsAdminFbtax() {
+				http.Error(w, "Forbidden: apenas admin_fbtax pode remover CDs", http.StatusForbidden)
 				return
 			}
 			res, err := db.Exec(`
@@ -560,7 +564,12 @@ func SpDuplicarCDHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		spCtx := GetSpContext(r)
-		if spCtx == nil || !RequireWrite(spCtx, w) {
+		if spCtx == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !spCtx.IsAdminFbtax() {
+			http.Error(w, "Forbidden: apenas admin_fbtax pode gerenciar CDs", http.StatusForbidden)
 			return
 		}
 		if err := checkLimiteCDs(db, spCtx.EmpresaID); err != nil {
@@ -683,6 +692,10 @@ func SpMotorParamsHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "CD não encontrado", http.StatusNotFound)
 			return
 		}
+		if !spCtx.IsAdminFbtax() {
+			http.Error(w, "Forbidden: apenas admin_fbtax pode ver/gerenciar parâmetros do motor", http.StatusForbidden)
+			return
+		}
 
 		switch r.Method {
 		case http.MethodGet:
@@ -727,9 +740,6 @@ func SpMotorParamsHandler(db *sql.DB) http.HandlerFunc {
 			json.NewEncoder(w).Encode(p)
 
 		case http.MethodPut:
-			if !RequireWrite(spCtx, w) {
-				return
-			}
 			var req SpMotorParamsRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, "Invalid body", http.StatusBadRequest)
