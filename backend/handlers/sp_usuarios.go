@@ -203,6 +203,10 @@ func SpUpdateRoleHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Forbidden: apenas admin_fbtax pode alterar perfis", http.StatusForbidden)
 			return
 		}
+		if !spCtx.IsMasterTenant(db) {
+			http.Error(w, "Forbidden: apenas usuários MASTER podem alterar perfis", http.StatusForbidden)
+			return
+		}
 
 		targetID := strings.TrimPrefix(r.URL.Path, "/api/sp/usuarios/")
 		targetID = strings.TrimSuffix(targetID, "/role")
@@ -637,6 +641,10 @@ func SpGetVinculosHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
+		if !spCtx.IsMasterTenant(db) {
+			http.Error(w, "Forbidden: apenas usuários MASTER podem ver vínculos", http.StatusForbidden)
+			return
+		}
 
 		path := strings.TrimPrefix(r.URL.Path, "/api/sp/usuarios/")
 		targetID := strings.TrimSuffix(path, "/vinculos")
@@ -704,6 +712,10 @@ func SpSaveVinculosHandler(db *sql.DB) http.HandlerFunc {
 		spCtx := GetSpContext(r)
 		if spCtx == nil || !spCtx.IsAdminFbtax() {
 			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		if !spCtx.IsMasterTenant(db) {
+			http.Error(w, "Forbidden: apenas usuários MASTER podem alterar vínculos", http.StatusForbidden)
 			return
 		}
 

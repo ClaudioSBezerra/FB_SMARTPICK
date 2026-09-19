@@ -767,18 +767,20 @@ func SpPropostasRuasHandler(db *sql.DB) http.HandlerFunc {
 
 		// status param: se fornecido filtra; se omitido retorna todas as ruas com propostas
 		statusParam := q.Get("status")
-		filterStatus := ""
-		if statusParam != "" {
-			filterStatus = fmt.Sprintf(" AND status = '%s'", statusParam)
-		}
 		// p.* + oculta ruas cujas propostas pertencem a lote já finalizado (concluido)
 		filter := `WHERE p.empresa_id = $1 AND p.rua IS NOT NULL
 			AND NOT EXISTS (
 			    SELECT 1 FROM smartpick.sp_historico h
 			    WHERE h.job_id = p.job_id AND h.status = 'concluido'
-			)` + filterStatus
+			)`
 		args := []any{spCtx.EmpresaID}
 		idx := 2
+
+		if statusParam != "" {
+			filter += fmt.Sprintf(" AND status = $%d", idx)
+			args = append(args, statusParam)
+			idx++
+		}
 
 		if jobIDStr != "" {
 			filter += fmt.Sprintf(" AND job_id = $%d", idx)

@@ -32,6 +32,43 @@ type destinatarioResp struct {
 // POST   /api/sp/admin/destinatarios          → cria  {cd_id, nome_completo, cargo, email}
 // PUT    /api/sp/admin/destinatarios/{id}     → atualiza {nome_completo, cargo, email, ativo}
 // DELETE /api/sp/admin/destinatarios/{id}     → remove
+// cdPertenceEmpresa confirma que o CD pertence à empresa do contexto — admin_fbtax
+// (MASTER) tem bypass, igual ao filtro já usado no GET deste handler.
+func cdPertenceEmpresa(db *sql.DB, cdID int, spCtx *SmartPickContext) bool {
+	if spCtx != nil && spCtx.IsAdminFbtax() {
+		return true
+	}
+	if spCtx == nil || spCtx.EmpresaID == "" {
+		return false
+	}
+	var exists bool
+	err := db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM smartpick.sp_centros_dist WHERE id = $1 AND empresa_id = $2::uuid)`,
+		cdID, spCtx.EmpresaID,
+	).Scan(&exists)
+	return err == nil && exists
+}
+
+// destinatarioPertenceEmpresa confirma que o destinatário pertence (via cd_id) à
+// empresa do contexto — mesmo critério de cdPertenceEmpresa.
+func destinatarioPertenceEmpresa(db *sql.DB, destinatarioID int, spCtx *SmartPickContext) bool {
+	if spCtx != nil && spCtx.IsAdminFbtax() {
+		return true
+	}
+	if spCtx == nil || spCtx.EmpresaID == "" {
+		return false
+	}
+	var exists bool
+	err := db.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM smartpick.sp_destinatarios_resumo d
+			JOIN smartpick.sp_centros_dist c ON c.id = d.cd_id
+			WHERE d.id = $1 AND c.empresa_id = $2::uuid
+		)`, destinatarioID, spCtx.EmpresaID,
+	).Scan(&exists)
+	return err == nil && exists
+}
+
 func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -112,6 +149,11 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 				http.Error(w, `{"error":"campos obrigatórios: cd_id, nome_completo, email"}`, http.StatusBadRequest)
 				return
 			}
+			spCtx := GetSpContext(r)
+			if !cdPertenceEmpresa(db, body.CdID, spCtx) {
+				http.Error(w, `{"error":"cd_id não encontrado"}`, http.StatusForbidden)
+				return
+			}
 			var id int
 			err := db.QueryRow(`
 				INSERT INTO smartpick.sp_destinatarios_resumo (cd_id, nome_completo, cargo, email)
@@ -138,6 +180,11 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 				Ativo        *bool  `json:"ativo"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
+			spCtx := GetSpContext(r)
+			if !destinatarioPertenceEmpresa(db, id, spCtx) {
+				http.Error(w, `{"error":"destinatário não encontrado"}`, http.StatusForbidden)
+				return
+			}
 			ativo := true
 			if body.Ativo != nil {
 				ativo = *body.Ativo
@@ -145,6 +192,10 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 			cdID := 0
 			if body.CdID != nil {
 				cdID = *body.CdID
+				if !cdPertenceEmpresa(db, cdID, spCtx) {
+					http.Error(w, `{"error":"cd_id não encontrado"}`, http.StatusForbidden)
+					return
+				}
 			}
 			_, err := db.Exec(`
 				UPDATE smartpick.sp_destinatarios_resumo
@@ -166,6 +217,11 @@ func SpDestinatariosHandler(db *sql.DB) http.HandlerFunc {
 			id, _ := strconv.Atoi(path)
 			if id == 0 {
 				http.Error(w, `{"error":"id obrigatório"}`, http.StatusBadRequest)
+				return
+			}
+			spCtx := GetSpContext(r)
+			if !destinatarioPertenceEmpresa(db, id, spCtx) {
+				http.Error(w, `{"error":"destinatário não encontrado"}`, http.StatusForbidden)
 				return
 			}
 			_, err := db.Exec(`DELETE FROM smartpick.sp_destinatarios_resumo WHERE id = $1`, id)

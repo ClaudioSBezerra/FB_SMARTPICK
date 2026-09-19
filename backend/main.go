@@ -377,7 +377,7 @@ func main() {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
 		}
-	}, ""))
+	}, "admin"))
 
 	http.HandleFunc("/api/config/groups", withAuth(func(db *sql.DB) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
@@ -392,7 +392,7 @@ func main() {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
 		}
-	}, ""))
+	}, "admin"))
 
 	http.HandleFunc("/api/config/companies", withAuth(func(db *sql.DB) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
@@ -407,7 +407,7 @@ func main() {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
 		}
-	}, ""))
+	}, "admin"))
 
 	// ── Config — Logo da empresa ─────────────────────────────────────────────
 	http.HandleFunc("/api/config/empresa/logo", func(w http.ResponseWriter, r *http.Request) {

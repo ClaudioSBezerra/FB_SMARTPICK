@@ -327,15 +327,20 @@ func GetEffectiveCompanyID(db *sql.DB, userID, requestedCompanyID string) (strin
 	// 1. If a specific company is requested, verify access
 	if requestedCompanyID != "" {
 		var exists bool
-		// Check if Owner OR Member in the same Group/Environment
+		// Security fix: a checagem antiga autorizava por "tem vínculo em qualquer
+		// lugar do mesmo environment_id" — como enterprise_groups pertence a um
+		// único ambiente, isso deixava qualquer empresa que compartilhasse
+		// ambiente (ex.: mesmo grupo econômico) acessível a qualquer usuário do
+		// grupo, mesmo sem vínculo com aquela empresa específica. Agora exige
+		// ownership direto OU vínculo explícito em sp_user_filiais para a
+		// empresa pedida — mesmo critério já usado como fallback abaixo (Estratégia C).
 		err := db.QueryRowContext(ctx, `
-			SELECT EXISTS(
-				SELECT 1 
-				FROM companies c
-				LEFT JOIN enterprise_groups eg ON c.group_id = eg.id
-				LEFT JOIN user_environments ue ON eg.environment_id = ue.environment_id
-				WHERE c.id = $1 
-				AND (c.owner_id = $2 OR ue.user_id = $2)
+			SELECT (
+				EXISTS(SELECT 1 FROM companies c WHERE c.id = $1 AND c.owner_id = $2)
+				OR EXISTS(
+					SELECT 1 FROM smartpick.sp_user_filiais uf
+					WHERE uf.user_id = $2::uuid AND uf.empresa_id = $1::uuid
+				)
 			)
 		`, requestedCompanyID, userID).Scan(&exists)
 
