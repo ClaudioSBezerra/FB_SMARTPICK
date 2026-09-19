@@ -146,8 +146,8 @@ func SmartPickAuthMiddleware(db *sql.DB, next http.HandlerFunc, requiredSpRole s
 			return
 		}
 
-		// Determina a empresa ativa (X-Company-ID header ou preferred_company_id)
-		empresaID, err := GetEffectiveCompanyID(db, userID, r.Header.Get("X-Company-ID"))
+		// Determina a empresa do usuário (owner > user_environments > sp_user_filiais)
+		empresaID, err := GetEffectiveCompanyID(db, userID)
 		if err != nil || empresaID == "" {
 			http.Error(w, "Could not determine active company", http.StatusUnauthorized)
 			return

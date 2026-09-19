@@ -34,7 +34,7 @@ func GetFiliaisHandler(db *sql.DB) http.HandlerFunc {
 		}
 		userID := claims["user_id"].(string)
 
-		companyID, err := GetEffectiveCompanyID(db, userID, r.Header.Get("X-Company-ID"))
+		companyID, err := GetEffectiveCompanyID(db, userID)
 		if err != nil {
 			http.Error(w, "Error getting company: "+err.Error(), http.StatusInternalServerError)
 			return

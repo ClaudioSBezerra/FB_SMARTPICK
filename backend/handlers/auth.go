@@ -270,88 +270,13 @@ func GetUserIDFromContext(r *http.Request) string {
 	return userID
 }
 
-// UpdatePreferredCompanyHandler persiste a empresa preferida do usuário no banco,
-// garantindo que após logout+login a última empresa usada seja restaurada.
-func UpdatePreferredCompanyHandler(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		userID := GetUserIDFromContext(r)
-		if userID == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		var req struct {
-			CompanyID string `json:"company_id"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.CompanyID == "" {
-			http.Error(w, "company_id required", http.StatusBadRequest)
-			return
-		}
-
-		// Obtém o environment_id da empresa
-		var envID string
-		err := db.QueryRow(`
-			SELECT e.id FROM companies c
-			JOIN enterprise_groups eg ON c.group_id = eg.id
-			JOIN environments e ON eg.environment_id = e.id
-			WHERE c.id = $1
-		`, req.CompanyID).Scan(&envID)
-		if err != nil {
-			http.Error(w, "Company not found", http.StatusNotFound)
-			return
-		}
-
-		// UPSERT: cria ou atualiza preferred_company_id em user_environments
-		_, err = db.Exec(`
-			INSERT INTO user_environments (user_id, environment_id, role, preferred_company_id)
-			VALUES ($1, $2, 'admin', $3)
-			ON CONFLICT (user_id, environment_id) DO UPDATE SET preferred_company_id = $3
-		`, userID, envID, req.CompanyID)
-		if err != nil {
-			log.Printf("[PreferredCompany] Erro ao salvar preferência userID=%s companyID=%s: %v", userID, req.CompanyID, err)
-			http.Error(w, "Error saving preference", http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusNoContent)
-	}
-}
-
-// GetEffectiveCompanyID fetches the company ID to use for the current request.
-// If requestedCompanyID is provided (e.g. via header), it verifies if the user has access to it.
-// If not provided or invalid, it falls back to the default company (Owner > Member).
-func GetEffectiveCompanyID(db *sql.DB, userID, requestedCompanyID string) (string, error) {
+// GetEffectiveCompanyID resolve a única empresa do usuário (Owner > Member >
+// vínculo explícito). Não há mais troca de empresa por sessão/header: cada
+// usuário fica preso à empresa a que pertence.
+func GetEffectiveCompanyID(db *sql.DB, userID string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	// 1. If a specific company is requested, verify access
-	if requestedCompanyID != "" {
-		var exists bool
-		// Security fix: a checagem antiga autorizava por "tem vínculo em qualquer
-		// lugar do mesmo environment_id" — como enterprise_groups pertence a um
-		// único ambiente, isso deixava qualquer empresa que compartilhasse
-		// ambiente (ex.: mesmo grupo econômico) acessível a qualquer usuário do
-		// grupo, mesmo sem vínculo com aquela empresa específica. Agora exige
-		// ownership direto OU vínculo explícito em sp_user_filiais para a
-		// empresa pedida — mesmo critério já usado como fallback abaixo (Estratégia C).
-		err := db.QueryRowContext(ctx, `
-			SELECT (
-				EXISTS(SELECT 1 FROM companies c WHERE c.id = $1 AND c.owner_id = $2)
-				OR EXISTS(
-					SELECT 1 FROM smartpick.sp_user_filiais uf
-					WHERE uf.user_id = $2::uuid AND uf.empresa_id = $1::uuid
-				)
-			)
-		`, requestedCompanyID, userID).Scan(&exists)
-
-		if err == nil && exists {
-			return requestedCompanyID, nil
-		}
-		// If requested ID is invalid/unauthorized, fall through to default logic
-		log.Printf("User %s requested invalid/unauthorized company %s. Falling back to default.", userID, requestedCompanyID)
-	}
-
-	// 2. Default Logic (Owner > Member)
 	var companyID string
 
 	// Strategy A: Check if user OWNS a company — prioriza preferred_company_id se existir
@@ -418,11 +343,6 @@ func GetEffectiveCompanyID(db *sql.DB, userID, requestedCompanyID string) (strin
 	}
 
 	return "", sql.ErrNoRows
-}
-
-// Deprecated: Use GetEffectiveCompanyID instead
-func GetUserCompanyID(db *sql.DB, userID string) (string, error) {
-	return GetEffectiveCompanyID(db, userID, "")
 }
 
 type UserCompany struct {

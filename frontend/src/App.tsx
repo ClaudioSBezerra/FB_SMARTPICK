@@ -25,7 +25,6 @@ import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import { AppRail } from '@/components/AppRail'
-import { CompanySwitcher } from '@/components/CompanySwitcher'
 import { AjudaChat } from '@/components/AjudaChat'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { FilialProvider } from './contexts/FilialContext'
@@ -138,7 +137,6 @@ function AppHeader() {
             <span className="truncate">{company}</span>
           </span>
         )}
-        <CompanySwitcher compact />
       </div>
     </header>
   )

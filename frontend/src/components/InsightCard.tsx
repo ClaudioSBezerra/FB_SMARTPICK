@@ -34,7 +34,7 @@ const tipoConfig = {
 };
 
 export function InsightCard() {
-  const { token, companyId } = useAuth();
+  const { token } = useAuth();
   const [insight, setInsight] = useState<InsightData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,9 +45,6 @@ export function InsightCard() {
         const headers: Record<string, string> = {
           Authorization: `Bearer ${token || localStorage.getItem('token')}`,
         };
-        if (companyId) {
-          headers['X-Company-ID'] = companyId;
-        }
         const response = await fetch('/api/insights/daily', { headers });
         if (response.ok) {
           const data = await response.json();

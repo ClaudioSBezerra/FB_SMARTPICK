@@ -20,7 +20,6 @@ interface AuthContextType {
   loading: boolean;
   login: (data: any) => void;
   logout: () => void;
-  switchCompany: (id: string, name: string, cnpj: string) => void;
   isAuthenticated: boolean;
 }
 
@@ -44,30 +43,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .catch(() => {});
   };
 
-  // Refs para o interceptor de fetch (sem stale closure)
+  // Ref para o interceptor de fetch (sem stale closure)
   const tokenRef = useRef<string | null>(null);
-  // Inicializa do localStorage de forma síncrona para evitar race condition:
-  // effects de filhos rodam ANTES do useEffect de AuthProvider, então se o ref
-  // começar null o primeiro fetch de qualquer página filha vai sem X-Company-ID.
-  const companyIdRef = useRef<string | null>(localStorage.getItem('companyId'));
-
-  // Mantém refs atualizados com o estado mais recente
   useEffect(() => { tokenRef.current = token; }, [token]);
-  useEffect(() => { companyIdRef.current = companyId; }, [companyId]);
 
-  // Interceptor global de fetch: injeta Authorization e X-Company-ID em todas as chamadas
+  // Interceptor global de fetch: injeta Authorization em todas as chamadas
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
     window.fetch = (input: RequestInfo | URL, init: RequestInit = {}) => {
       const headers = new Headers(init.headers || {});
       if (!headers.has('Authorization') && tokenRef.current) {
         headers.set('Authorization', `Bearer ${tokenRef.current}`);
-      }
-      // Só injeta X-Company-ID quando o chamador NÃO definiu um explícito.
-      // Caso contrário, fluxos admin (ex: upload de logo per-empresa em
-      // GestaoAmbiente) eram silenciosamente redirecionados p/ a empresa logada.
-      if (!headers.has('X-Company-ID') && companyIdRef.current) {
-        headers.set('X-Company-ID', companyIdRef.current);
       }
       return originalFetch(input, { ...init, headers });
     };
@@ -92,7 +78,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setGroup(storedGroup);
       setCompany(storedCompany);
       setCompanyId(storedCompanyId);
-      companyIdRef.current = storedCompanyId;
       setCnpj(storedCnpj);
 
       // Refresh user profile from server to ensure role and trial status are up to date
@@ -125,50 +110,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(data.user);
     setEnvironment(data.environment_name);
     setGroup(data.group_name);
-
-    // Restaura preferência de empresa salva para este usuário (persiste após logout)
-    let companyName = data.company_name;
-    let companyIdVal = data.company_id;
-    let cnpjVal = data.cnpj;
-    if (data.user?.id) {
-      const saved = localStorage.getItem(`pref_company_${data.user.id}`);
-      if (saved) {
-        try {
-          const pref = JSON.parse(saved);
-          if (pref.id) {
-            companyName = pref.name;
-            companyIdVal = pref.id;
-            cnpjVal = pref.cnpj || '';
-          }
-        } catch {}
-      }
-    }
-
-    setCompany(companyName);
-    setCompanyId(companyIdVal);
-    setCnpj(cnpjVal);
+    setCompany(data.company_name);
+    setCompanyId(data.company_id);
+    setCnpj(data.cnpj);
 
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     localStorage.setItem('environment', data.environment_name || '');
     localStorage.setItem('group', data.group_name || '');
-    localStorage.setItem('company', companyName || '');
-    localStorage.setItem('companyId', companyIdVal || '');
-    localStorage.setItem('cnpj', cnpjVal || '');
+    localStorage.setItem('company', data.company_name || '');
+    localStorage.setItem('companyId', data.company_id || '');
+    localStorage.setItem('cnpj', data.cnpj || '');
     fetchSpRole(data.token);
   };
 
   const logout = () => {
-    // Preserva preferências de empresa antes de limpar o storage
-    const prefs: Record<string, string> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('pref_company_')) {
-        prefs[key] = localStorage.getItem(key) || '';
-      }
-    }
     localStorage.clear();
-    Object.entries(prefs).forEach(([k, v]) => localStorage.setItem(k, v));
 
     setUser(null);
     setToken(null);
@@ -179,28 +136,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setCnpj(null);
     setSpRole(null);
     window.location.href = '/login';
-  };
-
-  const switchCompany = (id: string, name: string, newCnpj: string) => {
-    setCompany(name);
-    setCompanyId(id);
-    setCnpj(newCnpj);
-    localStorage.setItem('company', name);
-    localStorage.setItem('companyId', id);
-    localStorage.setItem('cnpj', newCnpj);
-    // Salva preferência persistente para este usuário (localStorage + banco)
-    if (user?.id) {
-      localStorage.setItem(`pref_company_${user.id}`, JSON.stringify({ id, name, cnpj: newCnpj }));
-    }
-    const tok = localStorage.getItem('token');
-    if (tok) {
-      fetch('/api/user/preferred-company', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ company_id: id }),
-      }).catch(() => {}); // fire-and-forget
-    }
-    window.location.reload();
   };
 
   return (
@@ -216,7 +151,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       loading,
       login,
       logout,
-      switchCompany,
       isAuthenticated: !!user
     }}>
       {children}

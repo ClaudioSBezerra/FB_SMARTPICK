@@ -352,7 +352,6 @@ func main() {
 	// ── Hierarchy (tenant/grupo/empresa) ──────────────────────────────────────
 	http.HandleFunc("/api/user/hierarchy",          withAuth(handlers.GetUserHierarchyHandler, ""))
 	http.HandleFunc("/api/user/companies",          withAuth(handlers.GetUserCompaniesHandler, ""))
-	http.HandleFunc("/api/user/preferred-company",  withAuth(handlers.UpdatePreferredCompanyHandler, ""))
 
 	// ── Admin — Usuários ─────────────────────────────────────────────────────
 	http.HandleFunc("/api/admin/users",         withAuth(handlers.ListUsersHandler, "admin"))

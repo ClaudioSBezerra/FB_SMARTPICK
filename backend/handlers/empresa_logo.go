@@ -24,7 +24,7 @@ func logoCompanyID(db *sql.DB, r *http.Request) (string, error) {
 	if role, _ := claims["role"].(string); role == "admin" && requested != "" {
 		return requested, nil
 	}
-	return GetEffectiveCompanyID(db, userID, requested)
+	return GetEffectiveCompanyID(db, userID)
 }
 
 // ServeEmpresaLogoHandler serve o logotipo da empresa como imagem binária.
