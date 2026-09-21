@@ -208,6 +208,8 @@ func parseAndInsertCSV(db *sql.DB, jobID, filePath, _ string, filialID int) (ok,
 	r.Comma = ';'
 	r.LazyQuotes = true
 	r.TrimLeadingSpace = true
+	// Tolera linhas com nº de colunas diferente do cabeçalho (ex: ";" sobrando no fim do header)
+	r.FieldsPerRecord = -1
 
 	// Lê cabeçalho (primeira linha)
 	header, err := r.Read()
