@@ -82,7 +82,7 @@ func processarResumosSemanais(db *sql.DB) {
 
 	for _, cdID := range cdIDs {
 		gerarEEnviar(db, cdID)
-		// pequeno espaçamento entre CDs para não sobrecarregar a Z.AI
+		// pequeno espaçamento entre CDs para não sobrecarregar o OmniRoute
 		time.Sleep(3 * time.Second)
 	}
 }

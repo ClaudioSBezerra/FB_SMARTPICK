@@ -474,15 +474,15 @@ CASO ESPECIAL — sem_atividade=true:
 
 Não inclua saudações, despedidas ou nome do destinatário — apenas o conteúdo do resumo.`
 
-// GerarNarrativaIA chama a Z.AI (cliente compartilhado em zai.go: thinking
-// desligado, retry e fallback) com os KPIs em JSON e retorna o markdown.
+// GerarNarrativaIA chama o OmniRoute (cliente compartilhado em omniroute.go:
+// combo_omniroute, retry em timeout) com os KPIs em JSON e retorna o markdown.
 // A lista realoc_itens é omitida do prompt: a IA só precisa dos agregados,
 // e 200 itens inflariam tokens/custo sem melhorar a narrativa.
 func GerarNarrativaIA(kpis *KPIsResumoExecutivo) (string, error) {
 	semItens := *kpis
 	semItens.RealocItens = nil
 	dadosJSON, _ := json.MarshalIndent(&semItens, "", "  ")
-	return ZAIChat([]ZAIMessage{
+	return OmniRouteChat([]OmniRouteMessage{
 		{Role: "system", Content: promptResumoExecutivo},
 		{Role: "user", Content: fmt.Sprintf(
 			"KPIs do CD no período de %s a %s:\n\n%s",

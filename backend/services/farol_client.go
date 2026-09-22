@@ -2,7 +2,7 @@ package services
 
 // farol_client.go — Cliente HTTP para a API de vendas faturadas do Farol (FB_FAROL).
 //
-// Segue o padrão de zai.go: configuração via env vars, erro claro se ausentes,
+// Segue o padrão de omniroute.go: configuração via env vars, erro claro se ausentes,
 // falha sempre tratada (nunca panic). O endpoint do Farol é um pré-requisito
 // externo ainda não implementado — ver spec-farol-faturamento-sem-calibragem.md.
 //

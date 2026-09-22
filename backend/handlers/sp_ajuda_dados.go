@@ -16,11 +16,11 @@ import (
 //
 // Pipeline:
 //   1. Valida usuário e empresa
-//   2. Z.AI gera SQL (system prompt com schema das views)
+//   2. OmniRoute gera SQL (system prompt com schema das views)
 //   3. Validador rejeita SQL inseguro
 //   4. Filtra por empresa_id automaticamente
 //   5. Executa em transação READ ONLY com statement_timeout=5s, LIMIT 100
-//   6. Z.AI gera narrativa curta sobre o resultado
+//   6. OmniRoute gera narrativa curta sobre o resultado
 func SpAjudaDadosHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -93,7 +93,7 @@ func SpAjudaChatHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if os.Getenv("ZAI_API_KEY") == "" {
+		if os.Getenv("OMNIROUTE_API_KEY") == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			w.Write([]byte(`{"error":"Assistente não configurado. Contate o administrador."}`))
@@ -120,32 +120,27 @@ func SpAjudaChatHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Monta o array de mensagens com a mensagem de sistema no início
-		messages := []services.ZAIMessage{
+		messages := []services.OmniRouteMessage{
 			{Role: "system", Content: systemContent},
 		}
 		for _, m := range req.Messages {
-			messages = append(messages, services.ZAIMessage{Role: m.Role, Content: m.Content})
+			messages = append(messages, services.OmniRouteMessage{Role: m.Role, Content: m.Content})
 		}
 
-		// Cliente compartilhado (services/zai.go): thinking desligado, retry em
-		// timeout e fallback glm-4.6 em sobrecarga — corrige os "context deadline
-		// exceeded" que apareciam em produção.
-		reply, err := services.ZAIChat(messages, 1024, 0.3)
+		// Cliente compartilhado (services/omniroute.go): combo_omniroute, retry
+		// em timeout — corrige os "context deadline exceeded" que apareciam em
+		// produção com o provedor antigo (Z.AI).
+		reply, err := services.OmniRouteChat(messages, 1024, 0.3)
 		if err != nil {
-			log.Printf("[ajuda] Z.AI falhou: %v", err)
+			log.Printf("[ajuda] OmniRoute falhou: %v", err)
 			w.Header().Set("Content-Type", "application/json")
 
-			if ze, ok := err.(*services.ZAIError); ok {
-				if ze.Code == "1113" {
-					w.WriteHeader(http.StatusBadGateway)
-					w.Write([]byte(`{"error":"Saldo insuficiente na conta da plataforma de IA. Contate o administrador para recarregar."}`))
-					return
-				}
+			if ze, ok := err.(*services.OmniRouteError); ok {
 				w.WriteHeader(http.StatusBadGateway)
 				fmt.Fprintf(w, `{"error":%q}`, fmt.Sprintf("Erro da API (%d): %s", ze.Status, ze.Message))
 				return
 			}
-			// Erro de transporte (timeout/rede) mesmo após retry+fallback
+			// Erro de transporte (timeout/rede) mesmo após retry
 			w.WriteHeader(http.StatusServiceUnavailable)
 			w.Write([]byte(`{"error":"Serviço de IA momentaneamente indisponível. Tente novamente em alguns segundos."}`))
 			return

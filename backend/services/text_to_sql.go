@@ -115,12 +115,12 @@ type DataQueryResult struct {
 	ErroDetalhe string                   `json:"erro,omitempty"`
 }
 
-// ── Cliente Z.AI ──────────────────────────────────────────────────────────────
+// ── Cliente OmniRoute ─────────────────────────────────────────────────────────
 
-// chamarZAI delega ao cliente compartilhado (zai.go): thinking desligado,
-// retry em timeout e fallback de modelo. Temperature 0.1 p/ SQL determinístico.
-func chamarZAI(systemPrompt, userMsg string, maxTokens int) (string, error) {
-	return ZAIChat([]ZAIMessage{
+// chamarLLM delega ao cliente compartilhado (omniroute.go): combo_omniroute,
+// retry em timeout. Temperature 0.1 p/ SQL determinístico.
+func chamarLLM(systemPrompt, userMsg string, maxTokens int) (string, error) {
+	return OmniRouteChat([]OmniRouteMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userMsg},
 	}, maxTokens, 0.1)
@@ -238,7 +238,7 @@ func ResponderPerguntaDados(db *sql.DB, pergunta, empresaID string, historico []
 		hb.WriteString(pergunta)
 		userPrompt = hb.String()
 	}
-	respIA, err := chamarZAI(dataSystemPrompt, userPrompt, 512)
+	respIA, err := chamarLLM(dataSystemPrompt, userPrompt, 512)
 	if err != nil {
 		return nil, fmt.Errorf("IA falhou ao gerar SQL: %w", err)
 	}
@@ -312,7 +312,7 @@ func ResponderPerguntaDados(db *sql.DB, pergunta, empresaID string, historico []
 		map[bool]string{true: ", truncado em 100", false: ""}[truncado],
 		jsonOrEmpty(resultado),
 	)
-	narrativa, errNarra := chamarZAI(narrarSystemPrompt, narrativaUserMsg, 256)
+	narrativa, errNarra := chamarLLM(narrarSystemPrompt, narrativaUserMsg, 256)
 	if errNarra != nil {
 		log.Printf("[chat-dados] narrativa falhou: %v", errNarra)
 		narrativa = fmt.Sprintf("Encontrei %d resultado(s). Veja a tabela abaixo.", len(resultado))
