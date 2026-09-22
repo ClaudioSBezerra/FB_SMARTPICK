@@ -61,9 +61,22 @@ func CreateUserHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if req.EnvironmentID != "" {
-			_, _ = db.Exec("INSERT INTO user_environments (user_id, environment_id, role) VALUES ($1, $2, 'user')", userID, req.EnvironmentID)
+			// Vincula via preferred_company_id, NÃO via companies.owner_id — owner_id é
+			// tratado como sinal de posse de prioridade MÁXIMA por GetEffectiveCompanyID
+			// (Strategy A, acima até de preferred_company_id). Um UPDATE incondicional
+			// aqui já sequestrou a empresa MULTICANAL ATACADO LTDA pra um usuário da JC
+			// DISTRIBUICAO em produção (2026-09-19): bastava escolher a empresa errada
+			// no dropdown deste formulário pra roubar a posse de uma empresa alheia já
+			// existente, sem checagem nenhuma. Novo usuário nunca deve virar dono de
+			// empresa existente por este fluxo — só ganha acesso como membro.
 			if req.CompanyID != "" {
-				_, _ = db.Exec("UPDATE companies SET owner_id = $1 WHERE id = $2", userID, req.CompanyID)
+				_, _ = db.Exec(`
+					INSERT INTO user_environments (user_id, environment_id, role, preferred_company_id)
+					VALUES ($1, $2, 'user', $3) ON CONFLICT (user_id, environment_id)
+					DO UPDATE SET preferred_company_id = EXCLUDED.preferred_company_id
+				`, userID, req.EnvironmentID, req.CompanyID)
+			} else {
+				_, _ = db.Exec("INSERT INTO user_environments (user_id, environment_id, role) VALUES ($1, $2, 'user')", userID, req.EnvironmentID)
 			}
 		} else {
 			var envID string
