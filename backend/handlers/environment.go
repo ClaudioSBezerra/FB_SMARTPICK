@@ -280,21 +280,21 @@ func CreateCompanyHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Resolve owner: use group's environment owner (first user linked to the environment)
+		// owner_id fica NULL na criação — GetEffectiveCompanyID trata dono como sinal de
+		// prioridade MÁXIMA (Strategy A, acima até de preferred_company_id), então nunca
+		// deve ser adivinhado. Já existia aqui uma heurística que atribuía como "dono" o
+		// usuário mais antigo vinculado ao mesmo environment_id do grupo — isso fazia
+		// qualquer empresa nova criada num ambiente compartilhado (ex: onboarding de um
+		// segundo grupo/empresa no mesmo ambiente) virar "propriedade" de um usuário sem
+		// nenhuma relação real com ela, sequestrando o login dele pra essa empresa errada
+		// (caso real: claudio@jcdistribuicao.com.br virou dono de "MULTICANAL ATACADO
+		// LTDA" só por ser o usuário mais antigo do AMBIENTE_JC). owner_id NULL é estado
+		// já suportado (admin.go, auth.go, hierarchy.go tratam NULL/NULLS LAST); vínculo
+		// real de dono deve ser feito explicitamente (ex: SpCriarUsuarioHandler via
+		// preferred_company_id, ou UPDATE companies SET owner_id direto).
 		var ownerID *string
-		err := db.QueryRow(`
-			SELECT ue.user_id
-			FROM enterprise_groups eg
-			JOIN user_environments ue ON ue.environment_id = eg.environment_id
-			WHERE eg.id = $1
-			ORDER BY ue.created_at ASC
-			LIMIT 1
-		`, c.GroupID).Scan(&ownerID)
-		if err != nil {
-			ownerID = nil // no owner found, leave NULL (still visible via group query)
-		}
 
-		err = db.QueryRow(
+		err := db.QueryRow(
 			"INSERT INTO companies (group_id, name, trade_name, owner_id) VALUES ($1, $2, $3, $4) RETURNING id, created_at",
 			c.GroupID, c.Name, c.TradeName, ownerID,
 		).Scan(&c.ID, &c.CreatedAt)
