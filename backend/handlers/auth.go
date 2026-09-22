@@ -300,16 +300,16 @@ func GetEffectiveCompanyID(db *sql.DB, userID string) (string, error) {
 		return "", err
 	}
 
-	// Strategy B: Check via User Environment — prioriza preferred_company_id
+	// Strategy B: usuário membro com preferred_company_id explícito.
+	// Liga direto em companies.id — NÃO passa por environment_id/group_id,
+	// que podem estar inconsistentes (ex: user_environments.environment_id
+	// diferente do ambiente da empresa preferida) e mascarar o match.
+	// Sem preferred_company_id definido, não adivinha: cai pra Strategy C.
 	err = db.QueryRowContext(ctx, `
 		SELECT c.id
 		FROM user_environments ue
-		JOIN enterprise_groups eg ON eg.environment_id = ue.environment_id
-		JOIN companies c ON c.group_id = eg.id
+		JOIN companies c ON c.id = ue.preferred_company_id
 		WHERE ue.user_id = $1
-		ORDER BY
-			(ue.preferred_company_id IS NOT NULL AND ue.preferred_company_id = c.id) DESC,
-			c.created_at DESC
 		LIMIT 1
 	`, userID).Scan(&companyID)
 
@@ -616,44 +616,29 @@ func LoginHandler(db *sql.DB) http.HandlerFunc {
 		setRefreshCookie(w, r, refreshToken)
 
 		// 4. Get Environment, Group, and Company Context
-		// OPTIMIZATION: Split query to avoid complex joins and potential locks/slowdowns
-		// Added Timeout context to prevent 504 Gateway Timeouts on slow DB
+		// Resolve via GetEffectiveCompanyID — fonte única de verdade (mesma função
+		// usada em toda requisição autenticada do SmartPick). Antes havia aqui uma
+		// cópia própria das estratégias Owner/Member com critério de desempate
+		// DIFERENTE do de GetEffectiveCompanyID, o que podia fazer o login exibir
+		// uma empresa e as chamadas de API operarem em outra.
 		var envName, groupName, companyName, companyID string
 
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		// Strategy A: Check if user OWNS a company — prioriza preferred_company_id se existir
-		err = db.QueryRowContext(ctx, `
-			SELECT e.name, eg.name, c.name, c.id
-			FROM companies c
-			JOIN enterprise_groups eg ON c.group_id = eg.id
-			JOIN environments e ON eg.environment_id = e.id
-			LEFT JOIN user_environments ue ON ue.user_id = $1 AND ue.environment_id = e.id
-			WHERE c.owner_id = $1
-			ORDER BY
-				(ue.preferred_company_id IS NOT NULL AND ue.preferred_company_id = c.id) DESC,
-				c.created_at DESC
-			LIMIT 1
-		`, user.ID).Scan(&envName, &groupName, &companyName, &companyID)
-
-		if err == sql.ErrNoRows {
-			// Strategy B: If not owner, check via User Environment (team members).
-			// Prioridade: preferred_company_id > owner > primeiro do grupo.
-			log.Printf("[Login] User %s owns no company, checking memberships...", req.Email)
-			err = db.QueryRowContext(ctx, `
-				SELECT e.name, eg.name, c.name, c.id
-				FROM user_environments ue
-				JOIN environments e ON ue.environment_id = e.id
-				JOIN enterprise_groups eg ON eg.environment_id = e.id
-				JOIN companies c ON c.group_id = eg.id
-				WHERE ue.user_id = $1
-				ORDER BY
-					(ue.preferred_company_id IS NOT NULL AND ue.preferred_company_id = c.id) DESC,
-					(c.owner_id = $1) DESC,
-					c.created_at ASC
-				LIMIT 1
-			`, user.ID).Scan(&envName, &groupName, &companyName, &companyID)
+		companyID, err = GetEffectiveCompanyID(db, user.ID)
+		if err == nil && companyID != "" {
+			nameErr := db.QueryRowContext(ctx, `
+				SELECT e.name, eg.name, c.name
+				FROM companies c
+				JOIN enterprise_groups eg ON eg.id = c.group_id
+				JOIN environments e ON e.id = eg.environment_id
+				WHERE c.id = $1
+			`, companyID).Scan(&envName, &groupName, &companyName)
+			if nameErr != nil {
+				log.Printf("[Login] Warning: failed to load company names for %s: %v", companyID, nameErr)
+				envName, groupName, companyName = "Carregando...", "Carregando...", "Carregando..."
+			}
 		}
 
 		if err == sql.ErrNoRows {
