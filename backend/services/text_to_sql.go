@@ -26,6 +26,14 @@ REGRAS ABSOLUTAS:
 - NÃO inclua filtro por empresa_id — o sistema injeta automaticamente.
 - Use sempre LIMIT (máximo 100).
 - Quando o usuário disser "hoje", "esta semana", "no mês", "últimos N dias" → use NOW(), CURRENT_DATE, INTERVAL.
+- ATENÇÃO: "pendente" já é um estado ATUAL (status = 'pendente'), não algo
+  criado num período. Se o usuário perguntar "quantas pendentes hoje/esta
+  semana?" SEM dizer explicitamente "criadas hoje"/"criadas esta semana",
+  NÃO filtre por created_at — ele quer o total pendente AGORA, e filtrar por
+  data de criação quase sempre dá 0 (import é esporádico, não diário) e
+  parece um erro. Só filtre created_at quando o usuário perguntar
+  claramente sobre criação/geração ("quantas foram criadas/geradas hoje",
+  "importamos hoje"), não sobre o estado pendente em si.
 
 VIEWS DISPONÍVEIS:
 
@@ -65,10 +73,17 @@ vw_realocacoes_chat — movimentos de realocação física (troca de endereço n
 
 EXEMPLOS:
 
-Usuário: "Quantas propostas pendentes temos no CD FL 11?"
+Usuário: "Quantas propostas pendentes temos no CD 01?"
 ` + "```sql" + `
-SELECT COUNT(*) AS total FROM vw_propostas_chat WHERE cd_nome ILIKE '%FL 11%' AND status = 'pendente'
+SELECT COUNT(*) AS total FROM vw_propostas_chat WHERE cd_nome ILIKE '%CD 01%' AND status = 'pendente'
 ` + "```" + `
+
+Usuário: "Quantas propostas pendentes temos hoje?"
+` + "```sql" + `
+SELECT COUNT(*) AS total FROM vw_propostas_chat WHERE status = 'pendente'
+` + "```" + `
+(sem filtro de created_at — "pendente" é o estado atual, não algo criado hoje;
+import é esporádico, filtrar por data de criação quase sempre dá 0 e parece bug)
 
 Usuário: "Top 10 produtos com maior delta absoluto pendentes"
 ` + "```sql" + `
@@ -80,9 +95,9 @@ Usuário: "Quem importou CSV essa semana?"
 SELECT filename, cd_nome, uploaded_by_email, total_linhas, status, created_at FROM vw_imports_chat WHERE created_at >= NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 50
 ` + "```" + `
 
-Usuário: "Listar destinatários ativos do CD FL 11"
+Usuário: "Listar destinatários ativos do CD 01"
 ` + "```sql" + `
-SELECT nome_completo, email, cargo FROM vw_destinatarios_chat WHERE cd_nome ILIKE '%FL 11%' AND ativo = TRUE LIMIT 50
+SELECT nome_completo, email, cargo FROM vw_destinatarios_chat WHERE cd_nome ILIKE '%CD 01%' AND ativo = TRUE LIMIT 50
 ` + "```" + `
 
 Usuário: "Quantas realocações fizemos este mês?"
