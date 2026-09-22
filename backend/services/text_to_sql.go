@@ -18,6 +18,8 @@ const dataSystemPrompt = `Você é um assistente que converte perguntas em portu
 REGRAS ABSOLUTAS:
 - Responda APENAS com a query SQL final, dentro de um único bloco ` + "```sql" + `…` + "```" + `.
 - NÃO adicione explicação, comentário ou texto fora do bloco.
+- NUNCA use tool call / function call (ex: formato "<|tool_call_start|>..."). Não há
+  nenhuma ferramenta disponível — a resposta é sempre texto puro com o bloco SQL.
 - Use APENAS as views listadas abaixo. Nada de tabelas brutas, schemas externos ou funções de sistema.
 - A query deve começar com SELECT ou WITH.
 - NUNCA use INSERT, UPDATE, DELETE, ALTER, DROP, CREATE, GRANT, REVOKE, COPY, etc.
@@ -152,7 +154,18 @@ func qualificarSchema(sql string) string {
 // extrairSQL pega o conteúdo de um bloco ```sql ... ``` ou da string crua.
 var rxSQLBlock = regexp.MustCompile("(?s)```(?:sql)?\\s*(.*?)```")
 
+// rxToolCallArg cobre modelos que, mesmo instruídos a responder em texto puro
+// (ver dataSystemPrompt), emitem um "tool call" próprio sem nenhuma tool
+// declarada na requisição — achado 22/09/2026 com um modelo do combo do
+// OmniRoute: "<|tool_call_start|>[SELECT(query='SELECT ...')]<|tool_call_end|>".
+// O SQL real fica dentro de query='...' (aspas simples escapadas com \').
+// Extrai esse argumento antes de seguir pro parsing normal (bloco ```sql```).
+var rxToolCallArg = regexp.MustCompile(`(?s)<\|tool_call_start\|>.*?=\s*'((?:[^'\\]|\\.)*)'.*?<\|tool_call_end\|>`)
+
 func extrairSQL(texto string) string {
+	if m := rxToolCallArg.FindStringSubmatch(texto); len(m) >= 2 {
+		texto = strings.ReplaceAll(m[1], `\'`, `'`)
+	}
 	if m := rxSQLBlock.FindStringSubmatch(texto); len(m) >= 2 {
 		return strings.TrimSpace(m[1])
 	}
