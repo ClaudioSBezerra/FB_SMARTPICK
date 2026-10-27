@@ -130,6 +130,7 @@ func SpCSVUploadHandler(db *sql.DB) http.HandlerFunc {
 		// Salva arquivo em uploads/
 		uploadDir := "uploads"
 		if err := os.MkdirAll(uploadDir, 0755); err != nil {
+			log.Printf("[sp_csv] erro ao criar diretório %q: %v", uploadDir, err)
 			http.Error(w, "Erro ao criar diretório de uploads", http.StatusInternalServerError)
 			return
 		}
@@ -139,6 +140,7 @@ func SpCSVUploadHandler(db *sql.DB) http.HandlerFunc {
 		filePath := filepath.Join(uploadDir, safeFilename)
 
 		if err := os.WriteFile(filePath, fileBytes, 0644); err != nil {
+			log.Printf("[sp_csv] erro ao gravar %q: %v", filePath, err)
 			http.Error(w, "Erro ao salvar arquivo", http.StatusInternalServerError)
 			return
 		}
